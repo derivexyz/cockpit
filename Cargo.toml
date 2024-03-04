@@ -1,0 +1,9 @@
+[workspace]
+
+members = [
+    "lyra-maker",
+    "orderbook-types",
+    "lyra-client",
+]
+
+resolver = "2"
