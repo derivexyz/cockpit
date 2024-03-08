@@ -153,7 +153,6 @@ for PrivateGetFundingHistoryJsonrpcSchema {
     "instrument_name": {
       "title": "instrument_name",
       "description": "Instrument name (returns history for all perpetuals if not provided)",
-      "default": null,
       "type": [
         "string",
         "null"

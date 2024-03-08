@@ -382,7 +382,6 @@ impl From<i64> for PublicGetTransactionResponseSchemaId {
     "error_log": {
       "title": "error_log",
       "description": "Error log if failed tx",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -403,7 +402,6 @@ impl From<i64> for PublicGetTransactionResponseSchemaId {
     "transaction_hash": {
       "title": "transaction_hash",
       "description": "Transaction hash of a pending tx",
-      "default": null,
       "type": [
         "string",
         "null"

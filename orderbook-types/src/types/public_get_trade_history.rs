@@ -86,7 +86,6 @@ impl std::convert::TryFrom<String> for Direction {
 /**{
   "title": "instrument_type",
   "description": "Instrument type to filter by (defaults to all)",
-  "default": null,
   "type": "string",
   "enum": [
     "erc20",
@@ -363,7 +362,6 @@ impl From<&PublicGetTradeHistoryJsonrpcSchema> for PublicGetTradeHistoryJsonrpcS
     "currency": {
       "title": "currency",
       "description": "Currency to filter by (defaults to all)",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -378,7 +376,6 @@ impl From<&PublicGetTradeHistoryJsonrpcSchema> for PublicGetTradeHistoryJsonrpcS
     "instrument_name": {
       "title": "instrument_name",
       "description": "Instrument name to filter by (defaults to all)",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -387,7 +384,6 @@ impl From<&PublicGetTradeHistoryJsonrpcSchema> for PublicGetTradeHistoryJsonrpcS
     "instrument_type": {
       "title": "instrument_type",
       "description": "Instrument type to filter by (defaults to all)",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -419,7 +415,6 @@ impl From<&PublicGetTradeHistoryJsonrpcSchema> for PublicGetTradeHistoryJsonrpcS
     "trade_id": {
       "title": "trade_id",
       "description": "Trade ID to filter by. If set, all other filters are ignored",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -429,7 +424,6 @@ impl From<&PublicGetTradeHistoryJsonrpcSchema> for PublicGetTradeHistoryJsonrpcS
     "tx_hash": {
       "title": "tx_hash",
       "description": "On-chain tx hash to filter by. If set, all other filters are ignored",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -846,7 +840,6 @@ impl From<&PublicGetTradeHistoryResultSchema> for PublicGetTradeHistoryResultSch
     "quote_id": {
       "title": "quote_id",
       "description": "Quote ID if the trade was executed via RFQ",
-      "default": null,
       "type": [
         "string",
         "null"

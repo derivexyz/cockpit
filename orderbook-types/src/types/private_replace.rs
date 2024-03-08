@@ -704,55 +704,50 @@ impl std::convert::TryFrom<String> for OrderType {
         value.parse()
     }
 }
-/**Transfers a positions from one subaccount to another, owned by the same wallet.
+/**Cancel an existing order with nonce or order_id and create new order with different order_id in a single RPC call.
 
-The transfer is executed as a pair of orders crossing each other.
-The maker order is created first, followed by a taker order crossing it.
-The order amounts, limit prices and instrument name must be the same for both orders.
-Fee is not charged and a zero `max_fee` must be signed.
-The maker order is forcibly considered to be `reduce_only`, meaning it can only reduce the position size.
-
-History: For position transfer history, use the `private/get_trade_history` RPC (not `private/get_erc20_transfer_history`).*/
+If the cancel fails, the new order will not be created.
+If the cancel succeeds but the new order fails, the old order will still be cancelled.*/
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 /**{
-  "title": "private/transfer_position",
-  "description": "Transfers a positions from one subaccount to another, owned by the same wallet.\n\nThe transfer is executed as a pair of orders crossing each other.\nThe maker order is created first, followed by a taker order crossing it.\nThe order amounts, limit prices and instrument name must be the same for both orders.\nFee is not charged and a zero `max_fee` must be signed.\nThe maker order is forcibly considered to be `reduce_only`, meaning it can only reduce the position size.\n\nHistory: For position transfer history, use the `private/get_trade_history` RPC (not `private/get_erc20_transfer_history`).",
+  "title": "private/replace",
+  "description": "Cancel an existing order with nonce or order_id and create new order with different order_id in a single RPC call.\n\nIf the cancel fails, the new order will not be created.\nIf the cancel succeeds but the new order fails, the old order will still be cancelled.",
   "type": "object",
   "allOf": [
     {
-      "$ref": "#/definitions/PrivateTransferPositionJSONRPCSchema"
+      "$ref": "#/definitions/PrivateReplaceJSONRPCSchema"
     }
   ]
 }*/
 /// ```
 /// </details>
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PrivateTransferPosition(pub PrivateTransferPositionJsonrpcSchema);
-impl std::ops::Deref for PrivateTransferPosition {
-    type Target = PrivateTransferPositionJsonrpcSchema;
-    fn deref(&self) -> &PrivateTransferPositionJsonrpcSchema {
+pub struct PrivateReplace(pub PrivateReplaceJsonrpcSchema);
+impl std::ops::Deref for PrivateReplace {
+    type Target = PrivateReplaceJsonrpcSchema;
+    fn deref(&self) -> &PrivateReplaceJsonrpcSchema {
         &self.0
     }
 }
-impl From<PrivateTransferPosition> for PrivateTransferPositionJsonrpcSchema {
-    fn from(value: PrivateTransferPosition) -> Self {
+impl From<PrivateReplace> for PrivateReplaceJsonrpcSchema {
+    fn from(value: PrivateReplace) -> Self {
         value.0
     }
 }
-impl From<&PrivateTransferPosition> for PrivateTransferPosition {
-    fn from(value: &PrivateTransferPosition) -> Self {
+impl From<&PrivateReplace> for PrivateReplace {
+    fn from(value: &PrivateReplace) -> Self {
         value.clone()
     }
 }
-impl From<PrivateTransferPositionJsonrpcSchema> for PrivateTransferPosition {
-    fn from(value: PrivateTransferPositionJsonrpcSchema) -> Self {
+impl From<PrivateReplaceJsonrpcSchema> for PrivateReplace {
+    fn from(value: PrivateReplaceJsonrpcSchema) -> Self {
         Self(value)
     }
 }
-///PrivateTransferPositionJsonrpcSchema
+///PrivateReplaceJsonrpcSchema
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -766,12 +761,12 @@ impl From<PrivateTransferPositionJsonrpcSchema> for PrivateTransferPosition {
   "properties": {
     "request": {
       "type": "object",
-      "$ref": "#/definitions/PrivateTransferPositionRequestSchema",
+      "$ref": "#/definitions/PrivateReplaceRequestSchema",
       "field_many": false
     },
     "response": {
       "type": "object",
-      "$ref": "#/definitions/PrivateTransferPositionResponseSchema",
+      "$ref": "#/definitions/PrivateReplaceResponseSchema",
       "field_many": false
     }
   },
@@ -781,17 +776,16 @@ impl From<PrivateTransferPositionJsonrpcSchema> for PrivateTransferPosition {
 /// </details>
 #[derive(Clone, Debug, Deserialize, Serialize)]
 
-pub struct PrivateTransferPositionJsonrpcSchema {
-    pub request: PrivateTransferPositionRequestSchema,
-    pub response: PrivateTransferPositionResponseSchema,
+pub struct PrivateReplaceJsonrpcSchema {
+    pub request: PrivateReplaceRequestSchema,
+    pub response: PrivateReplaceResponseSchema,
 }
-impl From<&PrivateTransferPositionJsonrpcSchema>
-for PrivateTransferPositionJsonrpcSchema {
-    fn from(value: &PrivateTransferPositionJsonrpcSchema) -> Self {
+impl From<&PrivateReplaceJsonrpcSchema> for PrivateReplaceJsonrpcSchema {
+    fn from(value: &PrivateReplaceJsonrpcSchema) -> Self {
         value.clone()
     }
 }
-///PrivateTransferPositionParamsSchema
+///PrivateReplaceParamsSchema
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -799,27 +793,161 @@ for PrivateTransferPositionJsonrpcSchema {
 /**{
   "type": "object",
   "required": [
-    "maker_params",
-    "taker_params",
-    "wallet"
+    "amount",
+    "direction",
+    "instrument_name",
+    "limit_price",
+    "max_fee",
+    "nonce",
+    "signature",
+    "signature_expiry_sec",
+    "signer",
+    "subaccount_id"
   ],
   "properties": {
-    "maker_params": {
-      "description": "Maker order parameters and signature. Maximum transfer amount is limited by the size of the maker position. Transfers that increase the maker's position size are not allowed.",
-      "type": "object",
-      "$ref": "#/definitions/TradeModuleParamsSchema",
-      "field_many": false
+    "amount": {
+      "title": "amount",
+      "description": "Order amount in units of the base",
+      "type": "string",
+      "format": "decimal"
     },
-    "taker_params": {
-      "description": "Taker order parameters and signature",
-      "type": "object",
-      "$ref": "#/definitions/TradeModuleParamsSchema",
-      "field_many": false
+    "direction": {
+      "title": "direction",
+      "description": "Order direction",
+      "type": "string",
+      "enum": [
+        "buy",
+        "sell"
+      ]
     },
-    "wallet": {
-      "title": "wallet",
-      "description": "Public key (wallet) of the account",
+    "expected_filled_amount": {
+      "title": "expected_filled_amount",
+      "description": "Optional check to only create new order if old order filled_amount is equal to this value.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "decimal"
+    },
+    "instrument_name": {
+      "title": "instrument_name",
+      "description": "Instrument name",
       "type": "string"
+    },
+    "label": {
+      "title": "label",
+      "description": "Optional user-defined label for the order",
+      "default": "",
+      "type": "string"
+    },
+    "limit_price": {
+      "title": "limit_price",
+      "description": "Limit price in quote currency.<br />This field is still required for market orders because it is a component of the signature. However, market orders will not leave a resting order in the book in case of a partial fill.",
+      "type": "string",
+      "format": "decimal"
+    },
+    "max_fee": {
+      "title": "max_fee",
+      "description": "Max fee in units of the quote currency. Order will be rejected if the supplied max fee is below the estimated fee for this order.",
+      "type": "string",
+      "format": "decimal"
+    },
+    "mmp": {
+      "title": "mmp",
+      "description": "Whether the order is tagged for market maker protections (default false)",
+      "default": false,
+      "type": "boolean"
+    },
+    "nonce": {
+      "title": "nonce",
+      "description": "Unique nonce defined as <UTC_timestamp in ms><random_number_up_to_6_digits> (e.g. 1695836058725001, where 001 is the random number)",
+      "type": "integer"
+    },
+    "nonce_to_cancel": {
+      "title": "nonce_to_cancel",
+      "description": "Cancel order by nonce (choose either order_id or nonce).",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "order_id_to_cancel": {
+      "title": "order_id_to_cancel",
+      "description": "Cancel order by order_id (choose either order_id or nonce).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "order_type": {
+      "title": "order_type",
+      "description": "Order type:<br />- `limit`: limit order (default)<br />- `market`: market order, note that limit_price is still required for market orders, but unfilled order portion will be marked as cancelled",
+      "default": "limit",
+      "type": "string",
+      "enum": [
+        "limit",
+        "market"
+      ]
+    },
+    "reduce_only": {
+      "title": "reduce_only",
+      "description": "If true, the order will not be able to increase position's size (default false). If the order amount exceeds available position size, the order will be filled up to the position size and the remainder will be cancelled. This flag is only supported for market orders or non-resting limit orders (IOC or FOK)",
+      "default": false,
+      "type": "boolean"
+    },
+    "referral_code": {
+      "title": "referral_code",
+      "description": "Optional referral code for the order",
+      "default": "",
+      "type": "string"
+    },
+    "reject_timestamp": {
+      "title": "reject_timestamp",
+      "description": "UTC timestamp in ms, if provided the matching engine will reject the order with an error if `reject_timestamp` < `server_time`. Note that the timestamp must be consistent with the server time: use `public/get_time` method to obtain current server time.",
+      "default": 9223372036854775807,
+      "type": "integer"
+    },
+    "replaced_order_id": {
+      "title": "replaced_order_id",
+      "description": "If replaced, ID of the order that was replaced",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "signature": {
+      "title": "signature",
+      "description": "Etherium signature of the order",
+      "type": "string"
+    },
+    "signature_expiry_sec": {
+      "title": "signature_expiry_sec",
+      "description": "Unix timestamp in seconds. Order signature becomes invalid after this time, and the system will cancel the order.Expiry MUST be at least 5 min from now.",
+      "type": "integer"
+    },
+    "signer": {
+      "title": "signer",
+      "description": "Owner wallet address or registered session key that signed order",
+      "type": "string"
+    },
+    "subaccount_id": {
+      "title": "subaccount_id",
+      "description": "Subaccount ID",
+      "type": "integer"
+    },
+    "time_in_force": {
+      "title": "time_in_force",
+      "description": "Time in force behaviour:<br />- `gtc`: good til cancelled (default)<br />- `post_only`: a limit order that will be rejected if it crosses any order in the book, i.e. acts as a taker order<br />- `fok`: fill or kill, will be rejected if it is not fully filled<br />- `ioc`: immediate or cancel, fill at best bid/ask (market) or at limit price (limit), the unfilled portion is cancelled<br />Note that the order will still expire on the `signature_expiry_sec` timestamp.",
+      "default": "gtc",
+      "type": "string",
+      "enum": [
+        "gtc",
+        "post_only",
+        "fok",
+        "ioc"
+      ]
     }
   },
   "additionalProperties": false
@@ -828,20 +956,67 @@ for PrivateTransferPositionJsonrpcSchema {
 /// </details>
 #[derive(Clone, Debug, Deserialize, Serialize)]
 
-pub struct PrivateTransferPositionParamsSchema {
-    ///Maker order parameters and signature. Maximum transfer amount is limited by the size of the maker position. Transfers that increase the maker's position size are not allowed.
-    pub maker_params: TradeModuleParamsSchema,
-    ///Taker order parameters and signature
-    pub taker_params: TradeModuleParamsSchema,
-    ///Public key (wallet) of the account
-    pub wallet: String,
+pub struct PrivateReplaceParamsSchema {
+    ///Order amount in units of the base
+    pub amount: bigdecimal::BigDecimal,
+    ///Order direction
+    pub direction: Direction,
+    ///Optional check to only create new order if old order filled_amount is equal to this value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_filled_amount: Option<bigdecimal::BigDecimal>,
+    ///Instrument name
+    pub instrument_name: String,
+    ///Optional user-defined label for the order
+    #[serde(default)]
+    pub label: String,
+    ///Limit price in quote currency.<br />This field is still required for market orders because it is a component of the signature. However, market orders will not leave a resting order in the book in case of a partial fill.
+    pub limit_price: bigdecimal::BigDecimal,
+    ///Max fee in units of the quote currency. Order will be rejected if the supplied max fee is below the estimated fee for this order.
+    pub max_fee: bigdecimal::BigDecimal,
+    ///Whether the order is tagged for market maker protections (default false)
+    #[serde(default)]
+    pub mmp: bool,
+    ///Unique nonce defined as <UTC_timestamp in ms><random_number_up_to_6_digits> (e.g. 1695836058725001, where 001 is the random number)
+    pub nonce: i64,
+    ///Cancel order by nonce (choose either order_id or nonce).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nonce_to_cancel: Option<i64>,
+    ///Cancel order by order_id (choose either order_id or nonce).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order_id_to_cancel: Option<uuid::Uuid>,
+    ///Order type:<br />- `limit`: limit order (default)<br />- `market`: market order, note that limit_price is still required for market orders, but unfilled order portion will be marked as cancelled
+    #[serde(default = "defaults::private_replace_params_schema_order_type")]
+    pub order_type: OrderType,
+    ///If true, the order will not be able to increase position's size (default false). If the order amount exceeds available position size, the order will be filled up to the position size and the remainder will be cancelled. This flag is only supported for market orders or non-resting limit orders (IOC or FOK)
+    #[serde(default)]
+    pub reduce_only: bool,
+    ///Optional referral code for the order
+    #[serde(default)]
+    pub referral_code: String,
+    ///UTC timestamp in ms, if provided the matching engine will reject the order with an error if `reject_timestamp` < `server_time`. Note that the timestamp must be consistent with the server time: use `public/get_time` method to obtain current server time.
+    #[serde(default = "defaults::default_u64::<i64, 9223372036854775807>")]
+    pub reject_timestamp: i64,
+    ///If replaced, ID of the order that was replaced
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaced_order_id: Option<uuid::Uuid>,
+    ///Etherium signature of the order
+    pub signature: String,
+    ///Unix timestamp in seconds. Order signature becomes invalid after this time, and the system will cancel the order.Expiry MUST be at least 5 min from now.
+    pub signature_expiry_sec: i64,
+    ///Owner wallet address or registered session key that signed order
+    pub signer: String,
+    ///Subaccount ID
+    pub subaccount_id: i64,
+    ///Time in force behaviour:<br />- `gtc`: good til cancelled (default)<br />- `post_only`: a limit order that will be rejected if it crosses any order in the book, i.e. acts as a taker order<br />- `fok`: fill or kill, will be rejected if it is not fully filled<br />- `ioc`: immediate or cancel, fill at best bid/ask (market) or at limit price (limit), the unfilled portion is cancelled<br />Note that the order will still expire on the `signature_expiry_sec` timestamp.
+    #[serde(default = "defaults::private_replace_params_schema_time_in_force")]
+    pub time_in_force: TimeInForce,
 }
-impl From<&PrivateTransferPositionParamsSchema> for PrivateTransferPositionParamsSchema {
-    fn from(value: &PrivateTransferPositionParamsSchema) -> Self {
+impl From<&PrivateReplaceParamsSchema> for PrivateReplaceParamsSchema {
+    fn from(value: &PrivateReplaceParamsSchema) -> Self {
         value.clone()
     }
 }
-///PrivateTransferPositionRequestSchema
+///PrivateReplaceRequestSchema
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -868,11 +1043,11 @@ impl From<&PrivateTransferPositionParamsSchema> for PrivateTransferPositionParam
     "method": {
       "title": "method",
       "type": "string",
-      "const": "private/transfer_position"
+      "const": "private/replace"
     },
     "params": {
       "type": "object",
-      "$ref": "#/definitions/PrivateTransferPositionParamsSchema",
+      "$ref": "#/definitions/PrivateReplaceParamsSchema",
       "field_many": false
     }
   },
@@ -882,19 +1057,18 @@ impl From<&PrivateTransferPositionParamsSchema> for PrivateTransferPositionParam
 /// </details>
 #[derive(Clone, Debug, Deserialize, Serialize)]
 
-pub struct PrivateTransferPositionRequestSchema {
+pub struct PrivateReplaceRequestSchema {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<PrivateTransferPositionRequestSchemaId>,
+    pub id: Option<PrivateReplaceRequestSchemaId>,
     pub method: String,
-    pub params: PrivateTransferPositionParamsSchema,
+    pub params: PrivateReplaceParamsSchema,
 }
-impl From<&PrivateTransferPositionRequestSchema>
-for PrivateTransferPositionRequestSchema {
-    fn from(value: &PrivateTransferPositionRequestSchema) -> Self {
+impl From<&PrivateReplaceRequestSchema> for PrivateReplaceRequestSchema {
+    fn from(value: &PrivateReplaceRequestSchema) -> Self {
         value.clone()
     }
 }
-///PrivateTransferPositionRequestSchemaId
+///PrivateReplaceRequestSchemaId
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -915,17 +1089,16 @@ for PrivateTransferPositionRequestSchema {
 /// </details>
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
-pub enum PrivateTransferPositionRequestSchemaId {
+pub enum PrivateReplaceRequestSchemaId {
     Variant0(String),
     Variant1(i64),
 }
-impl From<&PrivateTransferPositionRequestSchemaId>
-for PrivateTransferPositionRequestSchemaId {
-    fn from(value: &PrivateTransferPositionRequestSchemaId) -> Self {
+impl From<&PrivateReplaceRequestSchemaId> for PrivateReplaceRequestSchemaId {
+    fn from(value: &PrivateReplaceRequestSchemaId) -> Self {
         value.clone()
     }
 }
-impl std::str::FromStr for PrivateTransferPositionRequestSchemaId {
+impl std::str::FromStr for PrivateReplaceRequestSchemaId {
     type Err = &'static str;
     fn from_str(value: &str) -> Result<Self, &'static str> {
         if let Ok(v) = value.parse() {
@@ -937,25 +1110,25 @@ impl std::str::FromStr for PrivateTransferPositionRequestSchemaId {
         }
     }
 }
-impl std::convert::TryFrom<&str> for PrivateTransferPositionRequestSchemaId {
+impl std::convert::TryFrom<&str> for PrivateReplaceRequestSchemaId {
     type Error = &'static str;
     fn try_from(value: &str) -> Result<Self, &'static str> {
         value.parse()
     }
 }
-impl std::convert::TryFrom<&String> for PrivateTransferPositionRequestSchemaId {
+impl std::convert::TryFrom<&String> for PrivateReplaceRequestSchemaId {
     type Error = &'static str;
     fn try_from(value: &String) -> Result<Self, &'static str> {
         value.parse()
     }
 }
-impl std::convert::TryFrom<String> for PrivateTransferPositionRequestSchemaId {
+impl std::convert::TryFrom<String> for PrivateReplaceRequestSchemaId {
     type Error = &'static str;
     fn try_from(value: String) -> Result<Self, &'static str> {
         value.parse()
     }
 }
-impl ToString for PrivateTransferPositionRequestSchemaId {
+impl ToString for PrivateReplaceRequestSchemaId {
     fn to_string(&self) -> String {
         match self {
             Self::Variant0(x) => x.to_string(),
@@ -963,12 +1136,12 @@ impl ToString for PrivateTransferPositionRequestSchemaId {
         }
     }
 }
-impl From<i64> for PrivateTransferPositionRequestSchemaId {
+impl From<i64> for PrivateReplaceRequestSchemaId {
     fn from(value: i64) -> Self {
         Self::Variant1(value)
     }
 }
-///PrivateTransferPositionResponseSchema
+///PrivateReplaceResponseSchema
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -995,7 +1168,7 @@ impl From<i64> for PrivateTransferPositionRequestSchemaId {
     "result": {
       "description": "",
       "type": "object",
-      "$ref": "#/definitions/PrivateTransferPositionResultSchema",
+      "$ref": "#/definitions/PrivateReplaceResultSchema",
       "field_many": false
     }
   },
@@ -1005,18 +1178,17 @@ impl From<i64> for PrivateTransferPositionRequestSchemaId {
 /// </details>
 #[derive(Clone, Debug, Deserialize, Serialize)]
 
-pub struct PrivateTransferPositionResponseSchema {
-    pub id: PrivateTransferPositionResponseSchemaId,
+pub struct PrivateReplaceResponseSchema {
+    pub id: PrivateReplaceResponseSchemaId,
     ///
-    pub result: PrivateTransferPositionResultSchema,
+    pub result: PrivateReplaceResultSchema,
 }
-impl From<&PrivateTransferPositionResponseSchema>
-for PrivateTransferPositionResponseSchema {
-    fn from(value: &PrivateTransferPositionResponseSchema) -> Self {
+impl From<&PrivateReplaceResponseSchema> for PrivateReplaceResponseSchema {
+    fn from(value: &PrivateReplaceResponseSchema) -> Self {
         value.clone()
     }
 }
-///PrivateTransferPositionResponseSchemaId
+///PrivateReplaceResponseSchemaId
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -1037,17 +1209,16 @@ for PrivateTransferPositionResponseSchema {
 /// </details>
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
-pub enum PrivateTransferPositionResponseSchemaId {
+pub enum PrivateReplaceResponseSchemaId {
     Variant0(String),
     Variant1(i64),
 }
-impl From<&PrivateTransferPositionResponseSchemaId>
-for PrivateTransferPositionResponseSchemaId {
-    fn from(value: &PrivateTransferPositionResponseSchemaId) -> Self {
+impl From<&PrivateReplaceResponseSchemaId> for PrivateReplaceResponseSchemaId {
+    fn from(value: &PrivateReplaceResponseSchemaId) -> Self {
         value.clone()
     }
 }
-impl std::str::FromStr for PrivateTransferPositionResponseSchemaId {
+impl std::str::FromStr for PrivateReplaceResponseSchemaId {
     type Err = &'static str;
     fn from_str(value: &str) -> Result<Self, &'static str> {
         if let Ok(v) = value.parse() {
@@ -1059,25 +1230,25 @@ impl std::str::FromStr for PrivateTransferPositionResponseSchemaId {
         }
     }
 }
-impl std::convert::TryFrom<&str> for PrivateTransferPositionResponseSchemaId {
+impl std::convert::TryFrom<&str> for PrivateReplaceResponseSchemaId {
     type Error = &'static str;
     fn try_from(value: &str) -> Result<Self, &'static str> {
         value.parse()
     }
 }
-impl std::convert::TryFrom<&String> for PrivateTransferPositionResponseSchemaId {
+impl std::convert::TryFrom<&String> for PrivateReplaceResponseSchemaId {
     type Error = &'static str;
     fn try_from(value: &String) -> Result<Self, &'static str> {
         value.parse()
     }
 }
-impl std::convert::TryFrom<String> for PrivateTransferPositionResponseSchemaId {
+impl std::convert::TryFrom<String> for PrivateReplaceResponseSchemaId {
     type Error = &'static str;
     fn try_from(value: String) -> Result<Self, &'static str> {
         value.parse()
     }
 }
-impl ToString for PrivateTransferPositionResponseSchemaId {
+impl ToString for PrivateReplaceResponseSchemaId {
     fn to_string(&self) -> String {
         match self {
             Self::Variant0(x) => x.to_string(),
@@ -1085,12 +1256,12 @@ impl ToString for PrivateTransferPositionResponseSchemaId {
         }
     }
 }
-impl From<i64> for PrivateTransferPositionResponseSchemaId {
+impl From<i64> for PrivateReplaceResponseSchemaId {
     fn from(value: i64) -> Self {
         Self::Variant1(value)
     }
 }
-///PrivateTransferPositionResultSchema
+///PrivateReplaceResultSchema
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -1098,31 +1269,64 @@ impl From<i64> for PrivateTransferPositionResponseSchemaId {
 /**{
   "type": "object",
   "required": [
-    "maker_order",
-    "maker_trade",
-    "taker_order",
-    "taker_trade"
+    "cancelled_order"
   ],
   "properties": {
-    "maker_order": {
+    "cancelled_order": {
+      "description": "Order that was cancelled",
       "type": "object",
       "$ref": "#/definitions/OrderResponseSchema",
       "field_many": false
     },
-    "maker_trade": {
-      "type": "object",
-      "$ref": "#/definitions/TradeResponseSchema",
-      "field_many": false
+    "create_order_error": {
+      "description": "Optional. Returns error during new order creation",
+      "oneOf": [
+        {
+          "description": "Optional. Returns error during new order creation",
+          "default": {
+            "data": null
+          },
+          "type": "object",
+          "$ref": "#/definitions/RPCErrorFormatSchema",
+          "field_many": false
+        },
+        {
+          "title": "",
+          "type": "null"
+        }
+      ]
     },
-    "taker_order": {
-      "type": "object",
-      "$ref": "#/definitions/OrderResponseSchema",
-      "field_many": false
+    "order": {
+      "description": "New order that was created",
+      "oneOf": [
+        {
+          "description": "New order that was created",
+          "default": {
+            "quote_id": null,
+            "replaced_order_id": null
+          },
+          "type": "object",
+          "$ref": "#/definitions/OrderResponseSchema",
+          "field_many": false
+        },
+        {
+          "title": "",
+          "type": "null"
+        }
+      ]
     },
-    "taker_trade": {
-      "type": "object",
-      "$ref": "#/definitions/TradeResponseSchema",
-      "field_many": false
+    "trades": {
+      "title": "trades",
+      "description": "List of trades executed by the created order",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "object",
+        "$ref": "#/definitions/TradeResponseSchema",
+        "field_many": false
+      }
     }
   },
   "additionalProperties": false
@@ -1131,14 +1335,67 @@ impl From<i64> for PrivateTransferPositionResponseSchemaId {
 /// </details>
 #[derive(Clone, Debug, Deserialize, Serialize)]
 
-pub struct PrivateTransferPositionResultSchema {
-    pub maker_order: OrderResponseSchema,
-    pub maker_trade: TradeResponseSchema,
-    pub taker_order: OrderResponseSchema,
-    pub taker_trade: TradeResponseSchema,
+pub struct PrivateReplaceResultSchema {
+    ///Order that was cancelled
+    pub cancelled_order: OrderResponseSchema,
+    ///Optional. Returns error during new order creation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub create_order_error: Option<RpcErrorFormatSchema>,
+    ///New order that was created
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<OrderResponseSchema>,
+    ///List of trades executed by the created order
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trades: Option<Vec<TradeResponseSchema>>,
 }
-impl From<&PrivateTransferPositionResultSchema> for PrivateTransferPositionResultSchema {
-    fn from(value: &PrivateTransferPositionResultSchema) -> Self {
+impl From<&PrivateReplaceResultSchema> for PrivateReplaceResultSchema {
+    fn from(value: &PrivateReplaceResultSchema) -> Self {
+        value.clone()
+    }
+}
+///RpcErrorFormatSchema
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+/**{
+  "type": "object",
+  "required": [
+    "code",
+    "message"
+  ],
+  "properties": {
+    "code": {
+      "title": "code",
+      "type": "integer"
+    },
+    "data": {
+      "title": "data",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "message": {
+      "title": "message",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}*/
+/// ```
+/// </details>
+#[derive(Clone, Debug, Deserialize, Serialize)]
+
+pub struct RpcErrorFormatSchema {
+    pub code: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<String>,
+    pub message: String,
+}
+impl From<&RpcErrorFormatSchema> for RpcErrorFormatSchema {
+    fn from(value: &RpcErrorFormatSchema) -> Self {
         value.clone()
     }
 }
@@ -1225,117 +1482,6 @@ impl std::convert::TryFrom<String> for TimeInForce {
     type Error = &'static str;
     fn try_from(value: String) -> Result<Self, &'static str> {
         value.parse()
-    }
-}
-///TradeModuleParamsSchema
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-/**{
-  "type": "object",
-  "required": [
-    "amount",
-    "direction",
-    "instrument_name",
-    "limit_price",
-    "max_fee",
-    "nonce",
-    "signature",
-    "signature_expiry_sec",
-    "signer",
-    "subaccount_id"
-  ],
-  "properties": {
-    "amount": {
-      "title": "amount",
-      "description": "Order amount in units of the base",
-      "type": "string",
-      "format": "decimal"
-    },
-    "direction": {
-      "title": "direction",
-      "description": "Order direction",
-      "type": "string",
-      "enum": [
-        "buy",
-        "sell"
-      ]
-    },
-    "instrument_name": {
-      "title": "instrument_name",
-      "description": "Instrument name",
-      "type": "string"
-    },
-    "limit_price": {
-      "title": "limit_price",
-      "description": "Limit price in quote currency.<br />This field is still required for market orders because it is a component of the signature. However, market orders will not leave a resting order in the book in case of a partial fill.",
-      "type": "string",
-      "format": "decimal"
-    },
-    "max_fee": {
-      "title": "max_fee",
-      "description": "Max fee in units of the quote currency. Order will be rejected if the supplied max fee is below the estimated fee for this order.",
-      "type": "string",
-      "format": "decimal"
-    },
-    "nonce": {
-      "title": "nonce",
-      "description": "Unique nonce defined as <UTC_timestamp in ms><random_number_up_to_6_digits> (e.g. 1695836058725001, where 001 is the random number)",
-      "type": "integer"
-    },
-    "signature": {
-      "title": "signature",
-      "description": "Etherium signature of the order",
-      "type": "string"
-    },
-    "signature_expiry_sec": {
-      "title": "signature_expiry_sec",
-      "description": "Unix timestamp in seconds. Order signature becomes invalid after this time, and the system will cancel the order.Expiry MUST be at least 5 min from now.",
-      "type": "integer"
-    },
-    "signer": {
-      "title": "signer",
-      "description": "Owner wallet address or registered session key that signed order",
-      "type": "string"
-    },
-    "subaccount_id": {
-      "title": "subaccount_id",
-      "description": "Subaccount ID",
-      "type": "integer"
-    }
-  },
-  "additionalProperties": false
-}*/
-/// ```
-/// </details>
-#[derive(Clone, Debug, Deserialize, Serialize)]
-
-pub struct TradeModuleParamsSchema {
-    ///Order amount in units of the base
-    pub amount: bigdecimal::BigDecimal,
-    ///Order direction
-    pub direction: Direction,
-    ///Instrument name
-    pub instrument_name: String,
-    ///Limit price in quote currency.<br />This field is still required for market orders because it is a component of the signature. However, market orders will not leave a resting order in the book in case of a partial fill.
-    pub limit_price: bigdecimal::BigDecimal,
-    ///Max fee in units of the quote currency. Order will be rejected if the supplied max fee is below the estimated fee for this order.
-    pub max_fee: bigdecimal::BigDecimal,
-    ///Unique nonce defined as <UTC_timestamp in ms><random_number_up_to_6_digits> (e.g. 1695836058725001, where 001 is the random number)
-    pub nonce: i64,
-    ///Etherium signature of the order
-    pub signature: String,
-    ///Unix timestamp in seconds. Order signature becomes invalid after this time, and the system will cancel the order.Expiry MUST be at least 5 min from now.
-    pub signature_expiry_sec: i64,
-    ///Owner wallet address or registered session key that signed order
-    pub signer: String,
-    ///Subaccount ID
-    pub subaccount_id: i64,
-}
-impl From<&TradeModuleParamsSchema> for TradeModuleParamsSchema {
-    fn from(value: &TradeModuleParamsSchema) -> Self {
-        value.clone()
     }
 }
 ///TradeResponseSchema
@@ -1622,5 +1768,20 @@ impl std::convert::TryFrom<String> for TxStatus {
     type Error = &'static str;
     fn try_from(value: String) -> Result<Self, &'static str> {
         value.parse()
+    }
+}
+pub mod defaults {
+    pub(super) fn default_u64<T, const V: u64>() -> T
+    where
+        T: std::convert::TryFrom<u64>,
+        <T as std::convert::TryFrom<u64>>::Error: std::fmt::Debug,
+    {
+        T::try_from(V).unwrap()
+    }
+    pub(super) fn private_replace_params_schema_order_type() -> super::OrderType {
+        super::OrderType::Limit
+    }
+    pub(super) fn private_replace_params_schema_time_in_force() -> super::TimeInForce {
+        super::TimeInForce::Gtc
     }
 }

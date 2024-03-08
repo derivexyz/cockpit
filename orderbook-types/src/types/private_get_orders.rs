@@ -353,7 +353,6 @@ impl std::convert::TryFrom<String> for Direction {
     "quote_id": {
       "title": "quote_id",
       "description": "Quote ID if the trade was executed via RFQ",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -363,7 +362,6 @@ impl std::convert::TryFrom<String> for Direction {
     "replaced_order_id": {
       "title": "replaced_order_id",
       "description": "If replaced, ID of the order that was replaced",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -763,7 +761,6 @@ impl From<&PrivateGetOrdersJsonrpcSchema> for PrivateGetOrdersJsonrpcSchema {
     "instrument_name": {
       "title": "instrument_name",
       "description": "Filter by instrument name",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -772,7 +769,6 @@ impl From<&PrivateGetOrdersJsonrpcSchema> for PrivateGetOrdersJsonrpcSchema {
     "label": {
       "title": "label",
       "description": "Filter by label",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -793,7 +789,6 @@ impl From<&PrivateGetOrdersJsonrpcSchema> for PrivateGetOrdersJsonrpcSchema {
     "status": {
       "title": "status",
       "description": "Filter by order status",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -1149,7 +1144,6 @@ impl From<&PrivateGetOrdersResultSchema> for PrivateGetOrdersResultSchema {
 /**{
   "title": "status",
   "description": "Filter by order status",
-  "default": null,
   "type": "string",
   "enum": [
     "open",

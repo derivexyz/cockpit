@@ -396,7 +396,6 @@ impl From<&PrivatePollRfqsJsonrpcSchema> for PrivatePollRfqsJsonrpcSchema {
     "rfq_id": {
       "title": "rfq_id",
       "description": "RFQ ID filter, if applicable",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -406,7 +405,6 @@ impl From<&PrivatePollRfqsJsonrpcSchema> for PrivatePollRfqsJsonrpcSchema {
     "status": {
       "title": "status",
       "description": "RFQ status filter, if applicable",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -874,7 +872,6 @@ impl From<&RfqResultPublicSchema> for RfqResultPublicSchema {
 /**{
   "title": "status",
   "description": "RFQ status filter, if applicable",
-  "default": null,
   "type": "string",
   "enum": [
     "open",

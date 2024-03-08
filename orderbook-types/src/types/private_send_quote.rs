@@ -943,7 +943,6 @@ impl From<i64> for PrivateSendQuoteResponseSchemaId {
     "tx_hash": {
       "title": "tx_hash",
       "description": "Blockchain transaction hash (only for executed quotes)",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -952,7 +951,6 @@ impl From<i64> for PrivateSendQuoteResponseSchemaId {
     "tx_status": {
       "title": "tx_status",
       "description": "Blockchain transaction status (only for executed quotes)",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -1115,7 +1113,6 @@ impl std::convert::TryFrom<String> for Status {
 /**{
   "title": "tx_status",
   "description": "Blockchain transaction status (only for executed quotes)",
-  "default": null,
   "type": "string",
   "enum": [
     "requested",

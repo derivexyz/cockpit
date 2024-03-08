@@ -291,7 +291,6 @@ impl From<&PrivateGetTradeHistoryJsonrpcSchema> for PrivateGetTradeHistoryJsonrp
     "instrument_name": {
       "title": "instrument_name",
       "description": "Instrument name to filter by",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -300,7 +299,6 @@ impl From<&PrivateGetTradeHistoryJsonrpcSchema> for PrivateGetTradeHistoryJsonrp
     "order_id": {
       "title": "order_id",
       "description": "Order id to filter by",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -746,7 +744,6 @@ impl From<&PrivateGetTradeHistoryResultSchema> for PrivateGetTradeHistoryResultS
     "quote_id": {
       "title": "quote_id",
       "description": "Quote ID if the trade was executed via RFQ",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -795,7 +792,6 @@ impl From<&PrivateGetTradeHistoryResultSchema> for PrivateGetTradeHistoryResultS
     "tx_hash": {
       "title": "tx_hash",
       "description": "Blockchain transaction hash",
-      "default": null,
       "type": [
         "string",
         "null"

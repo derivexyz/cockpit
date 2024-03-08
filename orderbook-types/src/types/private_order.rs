@@ -428,7 +428,6 @@ impl std::convert::TryFrom<String> for LiquidityRole {
     "quote_id": {
       "title": "quote_id",
       "description": "Quote ID if the trade was executed via RFQ",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -438,7 +437,6 @@ impl std::convert::TryFrom<String> for LiquidityRole {
     "replaced_order_id": {
       "title": "replaced_order_id",
       "description": "If replaced, ID of the order that was replaced",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -884,7 +882,6 @@ impl From<&PrivateOrderJsonrpcSchema> for PrivateOrderJsonrpcSchema {
     "replaced_order_id": {
       "title": "replaced_order_id",
       "description": "If replaced, ID of the order that was replaced",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -1434,7 +1431,6 @@ impl std::convert::TryFrom<String> for TimeInForce {
     "quote_id": {
       "title": "quote_id",
       "description": "Quote ID if the trade was executed via RFQ",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -1483,7 +1479,6 @@ impl std::convert::TryFrom<String> for TimeInForce {
     "tx_hash": {
       "title": "tx_hash",
       "description": "Blockchain transaction hash",
-      "default": null,
       "type": [
         "string",
         "null"

@@ -481,7 +481,6 @@ impl From<&PrivatePollQuotesJsonrpcSchema> for PrivatePollQuotesJsonrpcSchema {
     "quote_id": {
       "title": "quote_id",
       "description": "Quote ID filter, if applicable",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -491,7 +490,6 @@ impl From<&PrivatePollQuotesJsonrpcSchema> for PrivatePollQuotesJsonrpcSchema {
     "rfq_id": {
       "title": "rfq_id",
       "description": "RFQ ID filter, if applicable",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -501,7 +499,6 @@ impl From<&PrivatePollQuotesJsonrpcSchema> for PrivatePollQuotesJsonrpcSchema {
     "status": {
       "title": "status",
       "description": "Quote status filter, if applicable",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -966,7 +963,6 @@ impl From<&PrivatePollQuotesResultSchema> for PrivatePollQuotesResultSchema {
     "tx_hash": {
       "title": "tx_hash",
       "description": "Blockchain transaction hash (only for executed quotes)",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -975,7 +971,6 @@ impl From<&PrivatePollQuotesResultSchema> for PrivatePollQuotesResultSchema {
     "tx_status": {
       "title": "tx_status",
       "description": "Blockchain transaction status (only for executed quotes)",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -1036,7 +1031,6 @@ impl From<&QuoteResultPublicSchema> for QuoteResultPublicSchema {
 /**{
   "title": "status",
   "description": "Quote status filter, if applicable",
-  "default": null,
   "type": "string",
   "enum": [
     "open",
@@ -1122,7 +1116,6 @@ impl std::convert::TryFrom<String> for Status {
 /**{
   "title": "tx_status",
   "description": "Blockchain transaction status (only for executed quotes)",
-  "default": null,
   "type": "string",
   "enum": [
     "requested",

@@ -189,7 +189,6 @@ for PrivateCreateSubaccountJsonrpcSchema {
     "currency": {
       "title": "currency",
       "description": "Base currency of the subaccount (only for `PM`)",
-      "default": null,
       "type": [
         "string",
         "null"

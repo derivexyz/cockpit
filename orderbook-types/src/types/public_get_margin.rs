@@ -181,7 +181,6 @@ impl From<&PublicGetMarginJsonrpcSchema> for PublicGetMarginJsonrpcSchema {
     "simulated_position_changes": {
       "title": "simulated_position_changes",
       "description": "Optional, add positions to simulate a trade",
-      "default": null,
       "type": [
         "array",
         "null"
@@ -565,7 +564,6 @@ impl From<&PublicGetMarginResultSchema> for PublicGetMarginResultSchema {
     "entry_price": {
       "title": "entry_price",
       "description": "Only for perps. Entry price to use in the simulation. Mark price is used if not provided.",
-      "default": null,
       "type": [
         "string",
         "null"

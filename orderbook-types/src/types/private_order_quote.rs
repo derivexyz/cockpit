@@ -176,7 +176,6 @@ impl std::convert::TryFrom<String> for EstimatedOrderStatus {
 /**{
   "title": "invalid_reason",
   "description": "Reason for the order being invalid, if any.",
-  "default": null,
   "type": "string",
   "enum": [
     "Account is currently under maintenance margin requirements, trading is frozen.",
@@ -583,7 +582,6 @@ impl From<&PrivateOrderQuoteJsonrpcSchema> for PrivateOrderQuoteJsonrpcSchema {
     "replaced_order_id": {
       "title": "replaced_order_id",
       "description": "If replaced, ID of the order that was replaced",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -985,7 +983,6 @@ impl From<i64> for PrivateOrderQuoteResponseSchemaId {
     "invalid_reason": {
       "title": "invalid_reason",
       "description": "Reason for the order being invalid, if any.",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -1014,7 +1011,6 @@ impl From<i64> for PrivateOrderQuoteResponseSchemaId {
     "post_liquidation_price": {
       "title": "post_liquidation_price",
       "description": "Subaccounts's liquidation price if the order were to be fully filled.",
-      "default": null,
       "type": [
         "string",
         "null"

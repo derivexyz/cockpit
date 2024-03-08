@@ -704,7 +704,6 @@ impl std::convert::TryFrom<String> for MarginType {
     "quote_id": {
       "title": "quote_id",
       "description": "Quote ID if the trade was executed via RFQ",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -714,7 +713,6 @@ impl std::convert::TryFrom<String> for MarginType {
     "replaced_order_id": {
       "title": "replaced_order_id",
       "description": "If replaced, ID of the order that was replaced",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -1079,7 +1077,6 @@ impl std::convert::TryFrom<String> for OrderType {
     "leverage": {
       "title": "leverage",
       "description": "Only for perps. Leverage of the position, defined as `abs(notional) / collateral net of options margin`",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -1089,7 +1086,6 @@ impl std::convert::TryFrom<String> for OrderType {
     "liquidation_price": {
       "title": "liquidation_price",
       "description": "Index price at which position will be liquidated",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -1645,7 +1641,6 @@ impl From<i64> for PrivateGetSubaccountResponseSchemaId {
     "label": {
       "title": "label",
       "description": "User defined label",
-      "default": null,
       "type": [
         "string",
         "null"

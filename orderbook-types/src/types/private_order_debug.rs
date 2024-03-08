@@ -337,7 +337,6 @@ impl From<&PrivateOrderDebugJsonrpcSchema> for PrivateOrderDebugJsonrpcSchema {
     "replaced_order_id": {
       "title": "replaced_order_id",
       "description": "If replaced, ID of the order that was replaced",
-      "default": null,
       "type": [
         "string",
         "null"

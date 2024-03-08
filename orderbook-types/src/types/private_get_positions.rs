@@ -180,7 +180,6 @@ impl std::convert::TryFrom<String> for InstrumentType {
     "leverage": {
       "title": "leverage",
       "description": "Only for perps. Leverage of the position, defined as `abs(notional) / collateral net of options margin`",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -190,7 +189,6 @@ impl std::convert::TryFrom<String> for InstrumentType {
     "liquidation_price": {
       "title": "liquidation_price",
       "description": "Index price at which position will be liquidated",
-      "default": null,
       "type": [
         "string",
         "null"

@@ -319,7 +319,6 @@ impl From<&OptionPricingSchema> for OptionPricingSchema {
     "settlement_price": {
       "title": "settlement_price",
       "description": "Settlement price of the option",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -989,7 +988,6 @@ impl From<i64> for PublicGetTickerResponseSchemaId {
     "mark_price_fee_rate_cap": {
       "title": "mark_price_fee_rate_cap",
       "description": "Percent of option price fee cap, e.g. 12.5%, null if not applicable",
-      "default": null,
       "type": [
         "string",
         "null"

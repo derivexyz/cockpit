@@ -34,7 +34,6 @@ use uuid;
     "error_log": {
       "title": "error_log",
       "description": "If failed, error log for reason",
-      "default": null,
       "type": [
         "object",
         "null"

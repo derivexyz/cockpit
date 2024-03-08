@@ -92,7 +92,6 @@ impl From<&UnsubscribeJsonrpcSchema> for UnsubscribeJsonrpcSchema {
     "channels": {
       "title": "channels",
       "description": "A list of channels names to unsubscribe from.<br />If not provided, unsubscribe from all channels.",
-      "default": null,
       "type": [
         "array",
         "null"

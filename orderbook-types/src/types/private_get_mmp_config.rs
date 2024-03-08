@@ -171,7 +171,6 @@ impl From<&PrivateGetMmpConfigJsonrpcSchema> for PrivateGetMmpConfigJsonrpcSchem
     "currency": {
       "title": "currency",
       "description": "Currency to get the config for. If not provided, returns all configs for the subaccount",
-      "default": null,
       "type": [
         "string",
         "null"

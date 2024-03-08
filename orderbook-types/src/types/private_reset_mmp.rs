@@ -95,7 +95,6 @@ impl From<&PrivateResetMmpJsonrpcSchema> for PrivateResetMmpJsonrpcSchema {
     "currency": {
       "title": "currency",
       "description": "Currency to reset the mmp for. If not provided, resets all configs for the subaccount",
-      "default": null,
       "type": [
         "string",
         "null"

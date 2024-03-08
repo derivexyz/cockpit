@@ -201,7 +201,6 @@ impl std::convert::TryFrom<String> for Direction {
 /**{
   "title": "invalid_reason",
   "description": "Reason for the RFQ being invalid, if any.",
-  "default": null,
   "type": "string",
   "enum": [
     "Account is currently under maintenance margin requirements, trading is frozen.",
@@ -655,7 +654,6 @@ impl From<&PrivateRfqGetBestQuoteJsonrpcSchema> for PrivateRfqGetBestQuoteJsonrp
     "max_total_cost": {
       "title": "max_total_cost",
       "description": "An optional max total cost for the RFQ. Only used when the RFQ sender executes as buyer. Polling endpoints and channels will ignore quotes where the total cost across all legs is above this value. Positive values mean the RFQ sender expects to pay $, negative mean the RFQ sender expects to receive $.This field is not disclosed to the market makers.",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -665,7 +663,6 @@ impl From<&PrivateRfqGetBestQuoteJsonrpcSchema> for PrivateRfqGetBestQuoteJsonrp
     "min_total_cost": {
       "title": "min_total_cost",
       "description": "An optional min total cost for the RFQ. Only used when the RFQ sender executes as seller. Polling endpoints and channels will ignore quotes where the total cost across all legs is below this value. Positive values mean the RFQ sender expects to receive $, negative mean the RFQ sender expects to pay $.This field is not disclosed to the market makers.",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -675,7 +672,6 @@ impl From<&PrivateRfqGetBestQuoteJsonrpcSchema> for PrivateRfqGetBestQuoteJsonrp
     "rfq_id": {
       "title": "rfq_id",
       "description": "RFQ ID to get best quote for. If not provided, will return estimates based on mark prices",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -1028,7 +1024,6 @@ impl From<i64> for PrivateRfqGetBestQuoteResponseSchemaId {
     "invalid_reason": {
       "title": "invalid_reason",
       "description": "Reason for the RFQ being invalid, if any.",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -1057,7 +1052,6 @@ impl From<i64> for PrivateRfqGetBestQuoteResponseSchemaId {
     "post_liquidation_price": {
       "title": "post_liquidation_price",
       "description": "Liquidation price if the trade were to be filled. If both upside and downside liquidation prices exist, returns the closest one to the current index price.",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -1224,7 +1218,6 @@ impl From<&PrivateRfqGetBestQuoteResultSchema> for PrivateRfqGetBestQuoteResultS
     "tx_hash": {
       "title": "tx_hash",
       "description": "Blockchain transaction hash (only for executed quotes)",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -1233,7 +1226,6 @@ impl From<&PrivateRfqGetBestQuoteResultSchema> for PrivateRfqGetBestQuoteResultS
     "tx_status": {
       "title": "tx_status",
       "description": "Blockchain transaction status (only for executed quotes)",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -1379,7 +1371,6 @@ impl std::convert::TryFrom<String> for Status {
 /**{
   "title": "tx_status",
   "description": "Blockchain transaction status (only for executed quotes)",
-  "default": null,
   "type": "string",
   "enum": [
     "requested",

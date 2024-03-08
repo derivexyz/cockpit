@@ -355,7 +355,6 @@ impl From<&PrivateSendRfqJsonrpcSchema> for PrivateSendRfqJsonrpcSchema {
     "max_total_cost": {
       "title": "max_total_cost",
       "description": "An optional max total cost for the RFQ. Only used when the RFQ sender executes as buyer. Polling endpoints and channels will ignore quotes where the total cost across all legs is above this value. Positive values mean the RFQ sender expects to pay $, negative mean the RFQ sender expects to receive $.This field is not disclosed to the market makers.",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -365,7 +364,6 @@ impl From<&PrivateSendRfqJsonrpcSchema> for PrivateSendRfqJsonrpcSchema {
     "min_total_cost": {
       "title": "min_total_cost",
       "description": "An optional min total cost for the RFQ. Only used when the RFQ sender executes as seller. Polling endpoints and channels will ignore quotes where the total cost across all legs is below this value. Positive values mean the RFQ sender expects to receive $, negative mean the RFQ sender expects to pay $.This field is not disclosed to the market makers.",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -715,7 +713,6 @@ impl From<i64> for PrivateSendRfqResponseSchemaId {
     "max_total_cost": {
       "title": "max_total_cost",
       "description": "Max total cost for the RFQ",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -725,7 +722,6 @@ impl From<i64> for PrivateSendRfqResponseSchemaId {
     "min_total_cost": {
       "title": "min_total_cost",
       "description": "Min total cost for the RFQ",
-      "default": null,
       "type": [
         "string",
         "null"

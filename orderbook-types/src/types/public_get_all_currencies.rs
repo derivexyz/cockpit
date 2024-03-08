@@ -29,7 +29,6 @@ use uuid;
     "spot_price_24h": {
       "title": "spot_price_24h",
       "description": "Spot price of the currency 24 hours ago",
-      "default": null,
       "type": [
         "string",
         "null"

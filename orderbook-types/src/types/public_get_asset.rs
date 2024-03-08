@@ -170,7 +170,6 @@ impl From<&Erc20PublicDetailsSchema> for Erc20PublicDetailsSchema {
     "settlement_price": {
       "title": "settlement_price",
       "description": "Settlement price of the option",
-      "default": null,
       "type": [
         "string",
         "null"

@@ -440,7 +440,6 @@ for SubaccountIdTradesTxStatusPubSubSchema {
     "quote_id": {
       "title": "quote_id",
       "description": "Quote ID if the trade was executed via RFQ",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -489,7 +488,6 @@ for SubaccountIdTradesTxStatusPubSubSchema {
     "tx_hash": {
       "title": "tx_hash",
       "description": "Blockchain transaction hash",
-      "default": null,
       "type": [
         "string",
         "null"

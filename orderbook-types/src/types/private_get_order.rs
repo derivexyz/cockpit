@@ -881,7 +881,6 @@ impl From<i64> for PrivateGetOrderResponseSchemaId {
     "quote_id": {
       "title": "quote_id",
       "description": "Quote ID if the trade was executed via RFQ",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -891,7 +890,6 @@ impl From<i64> for PrivateGetOrderResponseSchemaId {
     "replaced_order_id": {
       "title": "replaced_order_id",
       "description": "If replaced, ID of the order that was replaced",
-      "default": null,
       "type": [
         "string",
         "null"

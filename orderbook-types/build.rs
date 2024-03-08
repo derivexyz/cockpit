@@ -48,7 +48,9 @@ fn main() {
         // want to replace it with "const": "ok"
         let re = Regex::new(r#""enum"\s*:\s*\[\s*"ok"\s*\]"#).expect("Invalid regex");
         let content = re.replace_all(&content, r#""const": "ok""#);
-
+        // replace ' "default": null, ' strings with empty string - not supported by typify
+        let re = Regex::new(r#""default":\s*null,"#).expect("Invalid regex");
+        let content = re.replace_all(&content, r#""#);
         let schema = serde_json::from_str::<schemars::schema::RootSchema>(&content)
             .expect("serde_json::from_str");
 

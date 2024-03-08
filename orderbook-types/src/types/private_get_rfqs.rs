@@ -396,7 +396,6 @@ impl From<&PrivateGetRfqsJsonrpcSchema> for PrivateGetRfqsJsonrpcSchema {
     "rfq_id": {
       "title": "rfq_id",
       "description": "RFQ ID filter, if applicable",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -406,7 +405,6 @@ impl From<&PrivateGetRfqsJsonrpcSchema> for PrivateGetRfqsJsonrpcSchema {
     "status": {
       "title": "status",
       "description": "RFQ status filter, if applicable",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -820,7 +818,6 @@ impl From<&PrivateGetRfqsResultSchema> for PrivateGetRfqsResultSchema {
     "max_total_cost": {
       "title": "max_total_cost",
       "description": "Max total cost for the RFQ",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -830,7 +827,6 @@ impl From<&PrivateGetRfqsResultSchema> for PrivateGetRfqsResultSchema {
     "min_total_cost": {
       "title": "min_total_cost",
       "description": "Min total cost for the RFQ",
-      "default": null,
       "type": [
         "string",
         "null"
@@ -908,7 +904,6 @@ impl From<&RfqResultSchema> for RfqResultSchema {
 /**{
   "title": "status",
   "description": "RFQ status filter, if applicable",
-  "default": null,
   "type": "string",
   "enum": [
     "open",
