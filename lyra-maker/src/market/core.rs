@@ -9,9 +9,9 @@ use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
-use orderbook_types::types::channel_orderbook_instrument_name_group_depth::OrderbookInstrumentNameGroupDepthPublisherDataSchema;
-use orderbook_types::types::channel_ticker_instrument_name_interval::InstrumentTickerSchema;
-use orderbook_types::types::channel_subaccount_id_orders::{OrderResponseSchema, OrderStatus, Direction};
+use orderbook_types::generated::channel_orderbook_instrument_name_group_depth::OrderbookInstrumentNameGroupDepthPublisherDataSchema;
+use orderbook_types::generated::channel_ticker_instrument_name_interval::InstrumentTickerSchema;
+use lyra_client::orders::{OrderResponse, OrderStatus, Direction};
 
 pub type OrderbookData = OrderbookInstrumentNameGroupDepthPublisherDataSchema;
 pub type TickerData = InstrumentTickerSchema;
@@ -29,7 +29,7 @@ pub struct MarketData {
     tickers: HashMap<String, TickerData>,
     orderbooks: HashMap<String, OrderbookData>,
     positions: HashMap<String, Balance>,
-    orders: HashMap<String, HashMap<String, OrderResponseSchema>>,
+    orders: HashMap<String, HashMap<String, OrderResponse>>,
 }
 
 impl MarketData {
@@ -68,10 +68,10 @@ impl MarketData {
     pub fn iter_positions(&self) -> impl Iterator<Item = &Balance> {
         self.positions.values()
     }
-    pub fn get_orders(&self, instrument_name: &str) -> Option<&HashMap<String, OrderResponseSchema>> {
+    pub fn get_orders(&self, instrument_name: &str) -> Option<&HashMap<String, OrderResponse>> {
         self.orders.get(instrument_name)
     }
-    pub fn insert_order(&mut self, order: OrderResponseSchema) {
+    pub fn insert_order(&mut self, order: OrderResponse) {
         let orders = self.orders.entry(order.instrument_name.clone()).or_default();
         let order_id = order.order_id.clone();
         let existing = orders.remove(&order_id);
@@ -89,7 +89,7 @@ impl MarketData {
             orders.insert(order_id, order);
         }
     }
-    pub fn iter_orders(&self) -> impl Iterator<Item = &HashMap<String, OrderResponseSchema>> {
+    pub fn iter_orders(&self) -> impl Iterator<Item = &HashMap<String, OrderResponse>> {
         self.orders.values()
     }
     pub fn get_orderbook_exclude_my_orders(&self, instrument_name: &str) -> Option<OrderbookData> {

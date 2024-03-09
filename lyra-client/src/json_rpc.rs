@@ -18,25 +18,25 @@ use tokio::time::Instant;
 use std::future::Future;
 use uuid::Uuid;
 
-use orderbook_types::types::errors::RpcError;
-use orderbook_types::types::public_login::PublicLoginResponseSchema;
-use orderbook_types::types::subscribe::{SubscribeParamsSchema, SubscribeResponseSchema};
-use orderbook_types::types::private_order::{PrivateOrderResponseSchema};
-use orderbook_types::types::private_replace::{PrivateReplaceResponseSchema};
-use orderbook_types::types::private_cancel::{PrivateCancelParamsSchema, PrivateCancelResponseSchema};
-use orderbook_types::types::private_cancel_all::{PrivateCancelAll, PrivateCancelAllParamsSchema, PrivateCancelAllResponseSchema};
-use orderbook_types::types::private_set_cancel_on_disconnect::{PrivateSetCancelOnDisconnectParamsSchema, PrivateSetCancelOnDisconnectResponseSchema};
+use orderbook_types::types::RPCErrorResponse;
+use orderbook_types::generated::public_login::PublicLoginResponseSchema;
+use orderbook_types::generated::subscribe::{SubscribeParamsSchema, SubscribeResponseSchema};
+use orderbook_types::types::orders::{OrderResponse, ReplaceResponse};
+use orderbook_types::generated::private_cancel::{PrivateCancelParamsSchema, PrivateCancelResponseSchema};
+use orderbook_types::generated::private_cancel_all::{PrivateCancelAll, PrivateCancelAllParamsSchema, PrivateCancelAllResponseSchema};
+use orderbook_types::generated::private_set_cancel_on_disconnect::{PrivateSetCancelOnDisconnectParamsSchema, PrivateSetCancelOnDisconnectResponseSchema};
 
 use crate::auth::{load_signer, sign_auth_msg};
 use crate::orders::{OrderTicker, OrderArgs, OrderParams, ReplaceParams, new_order_params, new_replace_params};
 
 type SocketError = tungstenite::error::Error;
 
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
 pub enum Response<T> {
     Success(T),
-    Error(RpcError),
+    Error(RPCErrorResponse),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -76,8 +76,8 @@ pub trait WsClientExt
             R: for<'de> Deserialize<'de> + Debug + Serialize + Clone;
     async fn login(&self) -> Result<Response<PublicLoginResponseSchema>>;
     async fn enable_cancel_on_disconnect(&self) -> Result<Response<PrivateSetCancelOnDisconnectResponseSchema>>;
-    async fn send_order(&self, ticker: impl OrderTicker, subaccount_id: i64, args: OrderArgs) -> Result<Response<PrivateOrderResponseSchema>>;
-    async fn send_replace(&self, ticker: impl OrderTicker, subaccount_id: i64, to_cancel: Uuid, args: OrderArgs) -> Result<Response<PrivateReplaceResponseSchema>>;
+    async fn send_order(&self, ticker: impl OrderTicker, subaccount_id: i64, args: OrderArgs) -> Result<Response<OrderResponse>>;
+    async fn send_replace(&self, ticker: impl OrderTicker, subaccount_id: i64, to_cancel: Uuid, args: OrderArgs) -> Result<Response<ReplaceResponse>>;
     async fn cancel_all(&self, subaccount_id: i64) -> Result<Response<PrivateCancelAllResponseSchema>>;
     async fn subscribe<Fut, Data>(&self, channels: Vec<String>, handler: impl FnMut(Data) -> Fut) -> Result<()>
         where
@@ -115,12 +115,12 @@ impl WsClientExt for WsClient {
     async fn enable_cancel_on_disconnect(&self) -> Result<Response<PrivateSetCancelOnDisconnectResponseSchema>> {
         self.send_rpc("private/set_cancel_on_disconnect", PrivateSetCancelOnDisconnectParamsSchema { enabled: true, wallet: self.get_owner().await }).await
     }
-    async fn send_order(&self, ticker: impl OrderTicker, subaccount_id: i64, args: OrderArgs) -> Result<Response<PrivateOrderResponseSchema>>
+    async fn send_order(&self, ticker: impl OrderTicker, subaccount_id: i64, args: OrderArgs) -> Result<Response<OrderResponse>>
     {
         let order_params = WsClientState::new_signed_order(self, ticker, subaccount_id, args).await?;
         self.send_rpc("private/order", order_params).await
     }
-    async fn send_replace(&self, ticker: impl OrderTicker, subaccount_id: i64, to_cancel: Uuid, args: OrderArgs) -> Result<Response<PrivateReplaceResponseSchema>>
+    async fn send_replace(&self, ticker: impl OrderTicker, subaccount_id: i64, to_cancel: Uuid, args: OrderArgs) -> Result<Response<ReplaceResponse>>
     {
         let replace_params = WsClientState::new_signed_replace(self, ticker, subaccount_id, to_cancel, args).await?;
         self.send_rpc("private/replace", replace_params).await

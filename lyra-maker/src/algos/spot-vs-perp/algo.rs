@@ -2,10 +2,10 @@ use std::str::FromStr;
 use bigdecimal::BigDecimal;
 use anyhow::{Error, Result};
 use lyra_client::json_rpc::{http_rpc, Response, WsClient, WsClientExt};
-use lyra_client::orders::{OrderType, OrderArgs, Direction, TimeInForce, opposite, as_rpc_direction, OrderTicker, LiquidityRole};
+use lyra_client::orders::{OrderType, OrderArgs, Direction, TimeInForce, opposite, OrderTicker, LiquidityRole};
 use log::{info, warn, error, debug};
 use uuid::Uuid;
-use orderbook_types::types::channel_subaccount_id_orders;
+use orderbook_types::generated::channel_subaccount_id_orders;
 use crate::market::core::{MarketState, OrderbookData, TickerData};
 
 /// Performs market making on the spot market and hedges via perps
@@ -110,7 +110,7 @@ impl MakerAlgo {
         let reader = state.read().await;
         let orders = reader.get_orders(&self.spot_name);
         if let Some(orders) = orders {
-            open_ids = orders.values().filter(|o| as_rpc_direction(o.direction) == direction).map(|o| (o.order_id.clone(), o.limit_price.clone(), o.amount.clone())).collect();
+            open_ids = orders.values().filter(|o| o.direction == direction).map(|o| (o.order_id.clone(), o.limit_price.clone(), o.amount.clone())).collect();
         } else {
             open_ids = Vec::new();
         }

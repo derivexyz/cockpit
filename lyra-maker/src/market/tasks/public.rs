@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use anyhow::{Result, Error};
 
 use lyra_client::json_rpc::{Notification, Response, WsClient, WsClientExt};
-use orderbook_types::types::channel_ticker_instrument_name_interval::{
+use orderbook_types::generated::channel_ticker_instrument_name_interval::{
     InstrumentTickerSchema, TickerInstrumentNameIntervalPublisherDataSchema,
 };
 use crate::market::core::{MarketState, OrderbookData};

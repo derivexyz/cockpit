@@ -3,7 +3,7 @@ use ethers::utils::hex;
 use reqwest::header::HeaderMap;
 use serde_json::{json, Value};
 
-use orderbook_types::types::public_login::PublicLoginParamsSchema;
+use orderbook_types::generated::public_login::PublicLoginParamsSchema;
 
 pub fn load_signer() -> LocalWallet {
     // TODO session key instead

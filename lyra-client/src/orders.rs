@@ -4,18 +4,13 @@ use anyhow::{Result};
 use ethers::abi::AbiEncode;
 use ethers::utils::hex;
 use uuid::Uuid;
-use orderbook_types::types::private_order::{PrivateOrderParamsSchema, OrderResponseSchema};
-pub use orderbook_types::types::private_order::{OrderType, OrderStatus, TimeInForce, Direction, LiquidityRole};
+pub use orderbook_types::types::orders::{OrderParams, OrderResponse, ReplaceParams, OrderType, OrderStatus, TimeInForce, Direction, LiquidityRole};
 
-use orderbook_types::types::private_replace;
 use std::str::FromStr;
-use orderbook_types::types::channel_ticker_instrument_name_interval::InstrumentTickerSchema;
-use orderbook_types::types::public_get_ticker::PublicGetTickerResultSchema;
-use orderbook_types::types::channel_subaccount_id_orders;
+use orderbook_types::generated::channel_ticker_instrument_name_interval::InstrumentTickerSchema;
+use orderbook_types::generated::public_get_ticker::PublicGetTickerResultSchema;
+use orderbook_types::generated::channel_subaccount_id_orders;
 use crate::utils::{decimal_to_u256, decimal_to_i256};
-
-pub type OrderParams = PrivateOrderParamsSchema;
-pub type ReplaceParams = private_replace::PrivateReplaceParamsSchema;
 
 /// Subset of ticker info required for order signing.
 pub trait OrderTicker {
@@ -53,13 +48,6 @@ pub fn opposite(direction: Direction) -> Direction {
     match direction {
         Direction::Buy => Direction::Sell,
         Direction::Sell => Direction::Buy
-    }
-}
-
-pub fn as_rpc_direction(direction: channel_subaccount_id_orders::Direction) -> Direction {
-    match direction {
-        channel_subaccount_id_orders::Direction::Buy => Direction::Buy,
-        channel_subaccount_id_orders::Direction::Sell => Direction::Sell
     }
 }
 
@@ -204,10 +192,9 @@ pub fn new_replace_params(
         subaccount_id,
         amount: args.amount,
         limit_price: args.limit_price,
-        // unfortunately the same enums are defined in different modules so we have to convert them
-        direction: private_replace::Direction::from_str(&args.direction.to_string()).unwrap(),
-        time_in_force: private_replace::TimeInForce::from_str(&args.time_in_force.to_string()).unwrap(),
-        order_type: private_replace::OrderType::from_str(&args.order_type.to_string()).unwrap(),
+        direction: args.direction,
+        time_in_force: args.time_in_force,
+        order_type: args.order_type,
         mmp: args.mmp,
         max_fee,
         label: args.label,
@@ -229,7 +216,7 @@ pub fn new_replace_params(
         params.signature_expiry_sec,
         params.limit_price.clone(),
         params.amount.clone(),
-        params.direction == private_replace::Direction::Buy,
+        params.direction == Direction::Buy,
         params.max_fee.clone(),
         signer,
         ticker,

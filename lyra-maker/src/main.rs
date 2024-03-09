@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use env_logger::Env;
 use bigdecimal::BigDecimal;
 use lyra_client::orders::{OrderTicker, OrderArgs};
-use orderbook_types::types::private_order::{Direction, LiquidityRole, OrderStatus, OrderType, PrivateOrderParamsSchema, PrivateOrderResponseSchema, TimeInForce};
+use lyra_client::orders::{Direction, LiquidityRole, OrderStatus, OrderType, OrderParams, OrderResponse, TimeInForce};
 use anyhow::{Result, Error};
 use lyra_client::auth::{load_signer, sign_auth_header, sign_auth_msg};
 use futures_util::{SinkExt, StreamExt};
@@ -30,15 +30,15 @@ use ethers::utils::hex;
 use tokio_tungstenite::tungstenite::client;
 use market::core::{MarketState, new_market_state};
 
-use orderbook_types::types::public_get_ticker::{
+use orderbook_types::generated::public_get_ticker::{
     PublicGetTickerParamsSchema, PublicGetTickerResultSchema,
 };
-use orderbook_types::types::private_order_debug::{PrivateOrderDebugParamsSchema, PrivateOrderDebugResultSchema};
-use orderbook_types::types::public_login::{PublicLoginParamsSchema, PublicLoginResponseSchema};
-use orderbook_types::types::private_get_subaccount::{PrivateGetSubaccountParamsSchema, PrivateGetSubaccountResponseSchema};
-use orderbook_types::types::private_get_positions::{PrivateGetPositionsParamsSchema, PrivateGetPositionsResponseSchema};
-use orderbook_types::types::private_get_orders::{PrivateGetOrdersParamsSchema, PrivateGetOrdersResponseSchema};
-use orderbook_types::types::private_get_collaterals::{PrivateGetCollateralsParamsSchema, PrivateGetCollateralsResponseSchema};
+use orderbook_types::generated::private_order_debug::{PrivateOrderDebugParamsSchema, PrivateOrderDebugResultSchema};
+use orderbook_types::generated::public_login::{PublicLoginParamsSchema, PublicLoginResponseSchema};
+use orderbook_types::generated::private_get_subaccount::{PrivateGetSubaccountParamsSchema, PrivateGetSubaccountResponseSchema};
+use orderbook_types::generated::private_get_positions::{PrivateGetPositionsParamsSchema, PrivateGetPositionsResponseSchema};
+use orderbook_types::generated::private_get_orders::{PrivateGetOrdersParamsSchema, PrivateGetOrdersResponseSchema};
+use orderbook_types::generated::private_get_collaterals::{PrivateGetCollateralsParamsSchema, PrivateGetCollateralsResponseSchema};
 
 use crate::market::tasks::public::MarketSubscriberData;
 

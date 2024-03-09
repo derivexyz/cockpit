@@ -232,7 +232,7 @@ for PrivateGetNotificationsJsonrpcSchema {
         "trade",
         "settlement",
         "liquidation",
-        "custom"
+        "types"
       ]
     }
   },
@@ -653,7 +653,7 @@ impl std::convert::TryFrom<String> for Status {
     "trade",
     "settlement",
     "liquidation",
-    "custom"
+    "types"
   ]
 }*/
 /// ```
@@ -683,7 +683,7 @@ pub enum Type {
     Settlement,
     #[serde(rename = "liquidation")]
     Liquidation,
-    #[serde(rename = "custom")]
+    #[serde(rename = "types")]
     Custom,
 }
 impl From<&Type> for Type {
@@ -700,7 +700,7 @@ impl ToString for Type {
             Self::Trade => "trade".to_string(),
             Self::Settlement => "settlement".to_string(),
             Self::Liquidation => "liquidation".to_string(),
-            Self::Custom => "custom".to_string(),
+            Self::Custom => "types".to_string(),
         }
     }
 }
@@ -714,7 +714,7 @@ impl std::str::FromStr for Type {
             "trade" => Ok(Self::Trade),
             "settlement" => Ok(Self::Settlement),
             "liquidation" => Ok(Self::Liquidation),
-            "custom" => Ok(Self::Custom),
+            "types" => Ok(Self::Custom),
             _ => Err("invalid value"),
         }
     }
