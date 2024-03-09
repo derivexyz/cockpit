@@ -7,7 +7,7 @@ use orderbook_types::generated::public_login::PublicLoginParamsSchema;
 
 pub fn load_signer() -> LocalWallet {
     // TODO session key instead
-    let pk_str = std::env::var("OWNER_PRIVATE_KEY").expect("OWNER_PRIVATE_KEY must be set");
+    let pk_str = std::env::var("SESSION_PRIVATE_KEY").expect("SESSION_PRIVATE_KEY must be set");
     let wallet = pk_str.parse::<LocalWallet>().unwrap();
     wallet
 }
@@ -16,7 +16,7 @@ async fn sign_auth_params(wallet: &LocalWallet) -> (String, String, String) {
     let timestamp = chrono::Utc::now().timestamp_millis().to_string();
     let signature = wallet.sign_message(&timestamp).await.unwrap();
     (
-        hex::encode_prefixed(wallet.address()),
+        std::env::var("OWNER_PUBLIC_KEY").expect("OWNER_PUBLIC_KEY must be set"),
         timestamp,
         signature.to_string(),
     )

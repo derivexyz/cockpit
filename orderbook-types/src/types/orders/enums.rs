@@ -152,6 +152,14 @@ pub enum Direction {
     #[serde(rename = "sell")]
     Sell,
 }
+impl Direction {
+    pub const fn opposite(&self) -> Self {
+        match self {
+            Self::Buy => Self::Sell,
+            Self::Sell => Self::Buy,
+        }
+    }
+}
 impl From<&Direction> for Direction {
     fn from(value: &Direction) -> Self {
         value.clone()

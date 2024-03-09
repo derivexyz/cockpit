@@ -2,7 +2,7 @@ use std::str::FromStr;
 use bigdecimal::BigDecimal;
 use anyhow::{Error, Result};
 use lyra_client::json_rpc::{http_rpc, Response, WsClient, WsClientExt};
-use lyra_client::orders::{OrderType, OrderArgs, Direction, TimeInForce, opposite, OrderTicker, LiquidityRole};
+use lyra_client::orders::{OrderType, OrderArgs, Direction, TimeInForce, OrderTicker, LiquidityRole};
 use log::{info, warn, error, debug};
 use uuid::Uuid;
 use orderbook_types::generated::channel_subaccount_id_orders;
@@ -54,12 +54,6 @@ pub struct MakerAlgo {
     /// attempt to execute the hedge over twap_ms milliseconds
     pub twap_ms: u64
     // todo asymmetric params (allow more bid size or different spread to bid or ask)
-}
-
-enum MakerAction {
-    SendOrder,
-    ReplaceOrder,
-    CancelAll
 }
 
 impl MakerAlgo {

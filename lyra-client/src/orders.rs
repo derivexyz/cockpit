@@ -42,15 +42,6 @@ impl OrderTicker for &InstrumentTickerSchema {
     }
 }
 
-// todo can impl for the other ticker structs like get_ticker endpoint result
-
-pub fn opposite(direction: Direction) -> Direction {
-    match direction {
-        Direction::Buy => Direction::Sell,
-        Direction::Sell => Direction::Buy
-    }
-}
-
 pub struct OrderArgs {
     pub amount: BigDecimal,
     pub limit_price: BigDecimal,
@@ -105,6 +96,7 @@ fn get_order_signature(
     let encoded_data = trade_data.encode();
     let hashed_data = ethers::utils::keccak256(&encoded_data);
     // env var
+    let owner = std::env::var("OWNER_PUBLIC_KEY").expect("OWNER_PUBLIC_KEY must be set");
     let action_typehash = std::env::var("ACTION_TYPEHASH").expect("ACTION_TYPEHASH must be set");
     let action_typehash = hex::const_decode_to_array::<32>(action_typehash.as_bytes())?;
     let domain_sep = std::env::var("DOMAIN_SEPARATOR").expect("DOMAIN_SEPARATOR must be set");
@@ -118,7 +110,7 @@ fn get_order_signature(
         module: trade_module.parse()?,
         data: hashed_data,
         expiry: signature_expiry_sec.into(),
-        owner: signer.address(),
+        owner: owner.parse()?,
         signer: signer.address(),
     };
     let action_hash = ethers::utils::keccak256(&action_data.encode());

@@ -46,7 +46,7 @@ async fn test_http_client() -> Result<()> {
     let url = "https://api-demo.lyra.finance/private/get_subaccount";
     let client = Client::new();
 
-    let payload = json!({ "subaccount_id": 8 });
+    let payload = json!({ "subaccount_id": 6581 });
     let headers = sign_auth_header(&load_signer()).await;
     let response = client
         .post(url)
@@ -124,7 +124,7 @@ async fn test_orders(state: MarketState, client_ref: WsClient, num: i8, subaccou
 async fn main() -> Result<()> {
     dotenv::from_filename(".env-staging").expect("Failed to load .env file");
     env_logger::builder().format_timestamp_millis().init();
-    let subaccount_id: i64 = 8;
+    let subaccount_id: i64 = 6581;
     let state_ptr = new_market_state();
     let eth_task = tokio::spawn(start_market(
         state_ptr.clone(),
