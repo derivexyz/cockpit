@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use env_logger::Env;
 use bigdecimal::BigDecimal;
-use lyra_client::orders::{Order, OrderTicker, OrderArgs};
+use lyra_client::orders::{OrderTicker, OrderArgs};
 use orderbook_types::types::private_order::{Direction, LiquidityRole, OrderStatus, OrderType, PrivateOrderParamsSchema, PrivateOrderResponseSchema, TimeInForce};
 use anyhow::{Result, Error};
 use lyra_client::auth::{load_signer, sign_auth_header, sign_auth_msg};
@@ -15,6 +15,7 @@ use futures_util::{SinkExt, StreamExt};
 use lyra_client::json_rpc::{http_rpc, Response, WsClient, WsClientExt};
 use market::tasks::public::start_market;
 use market::tasks::private::start_subaccount;
+use algos::MakerAlgo;
 use reqwest::{Client, header::HeaderMap, header::HeaderValue};
 use serde_json::json;
 use std::str::FromStr;
@@ -121,7 +122,7 @@ async fn test_orders(state: MarketState, client_ref: WsClient, num: i8, subaccou
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> Result<()> {
-    dotenv().expect("Failed to load .env file");
+    dotenv::from_filename(".env-staging").expect("Failed to load .env file");
     env_logger::builder().format_timestamp_millis().init();
     let subaccount_id: i64 = 8;
     let state_ptr = new_market_state();
@@ -130,11 +131,27 @@ async fn main() -> Result<()> {
         vec!["ETH-PERP".to_string()],
     ));
     let subacc_task = tokio::spawn(start_subaccount(state_ptr.clone(), subaccount_id));
-    tokio::spawn(printer_task(state_ptr.clone()));
+    // tokio::spawn(printer_task(state_ptr.clone()));
     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
     let client = WsClient::new_client().await?;
     client.login().await?;
-    test_orders(state_ptr.clone(), client.clone(), 3, subaccount_id).await?;
+
+    let algo = MakerAlgo {
+        subaccount_id,
+        perp_name: "ETH-PERP".to_string(),
+        spot_name: "ETH-PERP".to_string(),
+        hedge_spread: BigDecimal::from_str("0.00025")?,
+        size: BigDecimal::from_str("0.5")?,
+        min_index_spread: BigDecimal::from_str("0.00025")?,
+        max_index_spread: BigDecimal::from_str("0.02")?,
+        target_delta: BigDecimal::from_str("0")?,
+        twap_ms: 10000,
+    };
+    let algo_task = tokio::spawn(async move {
+        let _ = algo.start_maker(state_ptr.clone()).await;
+    });
+
+    // test_orders(state_ptr.clone(), client.clone(), 3, subaccount_id).await?;
     tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
     Ok(())
 }

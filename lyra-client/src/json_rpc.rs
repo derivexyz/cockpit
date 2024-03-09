@@ -22,9 +22,13 @@ use orderbook_types::types::errors::RpcError;
 use orderbook_types::types::public_login::PublicLoginResponseSchema;
 use orderbook_types::types::subscribe::{SubscribeParamsSchema, SubscribeResponseSchema};
 use orderbook_types::types::private_order::{PrivateOrderResponseSchema};
+use orderbook_types::types::private_replace::{PrivateReplaceResponseSchema};
+use orderbook_types::types::private_cancel::{PrivateCancelParamsSchema, PrivateCancelResponseSchema};
+use orderbook_types::types::private_cancel_all::{PrivateCancelAll, PrivateCancelAllParamsSchema, PrivateCancelAllResponseSchema};
+use orderbook_types::types::private_set_cancel_on_disconnect::{PrivateSetCancelOnDisconnectParamsSchema, PrivateSetCancelOnDisconnectResponseSchema};
 
 use crate::auth::{load_signer, sign_auth_msg};
-use crate::orders::{OrderTicker, Order, OrderArgs, OrderParams};
+use crate::orders::{OrderTicker, OrderArgs, OrderParams, ReplaceParams, new_order_params, new_replace_params};
 
 type SocketError = tungstenite::error::Error;
 
@@ -52,6 +56,7 @@ pub struct WsClientState {
     socket: WebSocketStream<MaybeTlsStream<TcpStream>>,
     messages: HashMap<Uuid, Value>,
     notifications: Vec<Value>,
+    pub owner: String,
     signer: Option<LocalWallet>,
 }
 
@@ -64,12 +69,16 @@ pub trait WsClientExt
     where Self: Sized
 {
     async fn new_client() -> Result<Self>;
+    async fn get_owner(&self) -> String;
     async fn send_rpc<P, R>(&self, method: &str, params: P) -> Result<Response<R>>
         where
-            P: Serialize,
-            R: for<'de> Deserialize<'de>;
+            P: Serialize + Debug + Clone,
+            R: for<'de> Deserialize<'de> + Debug + Serialize + Clone;
     async fn login(&self) -> Result<Response<PublicLoginResponseSchema>>;
+    async fn enable_cancel_on_disconnect(&self) -> Result<Response<PrivateSetCancelOnDisconnectResponseSchema>>;
     async fn send_order(&self, ticker: impl OrderTicker, subaccount_id: i64, args: OrderArgs) -> Result<Response<PrivateOrderResponseSchema>>;
+    async fn send_replace(&self, ticker: impl OrderTicker, subaccount_id: i64, to_cancel: Uuid, args: OrderArgs) -> Result<Response<PrivateReplaceResponseSchema>>;
+    async fn cancel_all(&self, subaccount_id: i64) -> Result<Response<PrivateCancelAllResponseSchema>>;
     async fn subscribe<Fut, Data>(&self, channels: Vec<String>, handler: impl FnMut(Data) -> Fut) -> Result<()>
         where
             Fut: Future<Output=Result<()>>,
@@ -81,15 +90,20 @@ impl WsClientExt for WsClient {
         let client = WsClientState::new().await?;
         Ok(Arc::new(Mutex::new(client)))
     }
+    async fn get_owner(&self) -> String {
+        self.lock().await.owner.clone()
+    }
     async fn send_rpc<P, R>(&self, method: &str, params: P) -> Result<Response<R>>
         where
-            P: Serialize,
-            R: for<'de> Deserialize<'de>
+            P: Serialize + Debug + Clone,
+            R: for<'de> Deserialize<'de> + Debug + Serialize + Clone
     {
+        info!("Sending: {}, params: {}", method, serde_json::to_string_pretty(&params).unwrap_or("could not serialize".into()));
         let this_id = WsClientState::send_to_socket(&self, method, params).await?;
-        info!("Send: {method}, id: {this_id}");
         let res = WsClientState::listen_and_wait_for::<R>(&self, this_id).await;
-        info!("Response: {method}, id: {this_id}");
+        if let Ok(res) = &res {
+            info!("Received response: {}", serde_json::to_string_pretty(&res).unwrap_or("could not serialize".into()));
+        }
         res
     }
     async fn login(&self) -> Result<Response<PublicLoginResponseSchema>> {
@@ -98,10 +112,22 @@ impl WsClientExt for WsClient {
         WsClientState::set_signer(self, wallet).await;
         self.send_rpc("public/login", login_params).await
     }
+    async fn enable_cancel_on_disconnect(&self) -> Result<Response<PrivateSetCancelOnDisconnectResponseSchema>> {
+        self.send_rpc("private/set_cancel_on_disconnect", PrivateSetCancelOnDisconnectParamsSchema { enabled: true, wallet: self.get_owner().await }).await
+    }
     async fn send_order(&self, ticker: impl OrderTicker, subaccount_id: i64, args: OrderArgs) -> Result<Response<PrivateOrderResponseSchema>>
     {
         let order_params = WsClientState::new_signed_order(self, ticker, subaccount_id, args).await?;
         self.send_rpc("private/order", order_params).await
+    }
+    async fn send_replace(&self, ticker: impl OrderTicker, subaccount_id: i64, to_cancel: Uuid, args: OrderArgs) -> Result<Response<PrivateReplaceResponseSchema>>
+    {
+        let replace_params = WsClientState::new_signed_replace(self, ticker, subaccount_id, to_cancel, args).await?;
+        self.send_rpc("private/replace", replace_params).await
+    }
+    async fn cancel_all(&self, subaccount_id: i64) -> Result<Response<PrivateCancelAllResponseSchema>> {
+        let cancel_params = PrivateCancelAllParamsSchema { subaccount_id };
+        self.send_rpc("private/cancel_all", cancel_params).await
     }
     async fn subscribe<Fut, Data>(&self, channels: Vec<String>, handler: impl FnMut(Data) -> Fut) -> Result<()>
         where
@@ -133,7 +159,8 @@ impl WsClientState {
         let url = std::env::var("WEBSOCKET_ADDRESS").expect("WEBSOCKET_ADDRESS must be set");
         let (socket, _) = connect_async(&url).await?;
         info!("Connected to {}", &url);
-        Ok(WsClientState { socket, messages: HashMap::new(), notifications: Vec::new(), signer: None })
+        let owner = std::env::var("OWNER_PUBLIC_KEY").expect("OWNER_PUBLIC_KEY must be set");
+        Ok(WsClientState { socket, messages: HashMap::new(), notifications: Vec::new(), owner, signer: None})
     }
 
     async fn set_signer(client: &WsClient, signer: LocalWallet) {
@@ -144,7 +171,16 @@ impl WsClientState {
     async fn new_signed_order(client: &WsClient, ticker: impl OrderTicker, subaccount_id: i64, args: OrderArgs) -> Result<OrderParams> {
         let client_guard = client.lock().await;
         if let Some(signer) = &client_guard.signer {
-            Ok(OrderParams::new_params(signer, ticker, subaccount_id, args)?)
+            Ok(new_order_params(signer, ticker, subaccount_id, args)?)
+        } else {
+            Err(Error::msg("Not logged in or signer not set"))
+        }
+    }
+
+    async fn new_signed_replace(client: &WsClient, ticker: impl OrderTicker, subaccount_id: i64, to_cancel: Uuid, args: OrderArgs) -> Result<ReplaceParams> {
+        let client_guard = client.lock().await;
+        if let Some(signer) = &client_guard.signer {
+            Ok(new_replace_params(signer, ticker, subaccount_id, to_cancel, args)?)
         } else {
             Err(Error::msg("Not logged in or signer not set"))
         }

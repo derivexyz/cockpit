@@ -8,6 +8,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
+
 use orderbook_types::types::channel_orderbook_instrument_name_group_depth::OrderbookInstrumentNameGroupDepthPublisherDataSchema;
 use orderbook_types::types::channel_ticker_instrument_name_interval::InstrumentTickerSchema;
 use orderbook_types::types::channel_subaccount_id_orders::{OrderResponseSchema, OrderStatus, Direction};
@@ -76,8 +77,11 @@ impl MarketData {
         let existing = orders.remove(&order_id);
         if let Some(existing) = existing {
             // insert if new is newer and status is open
-            if (order.order_status == OrderStatus::Open) && (existing.last_update_timestamp < order.last_update_timestamp) {
+            let is_newer = existing.last_update_timestamp < order.last_update_timestamp;
+            if (order.order_status == OrderStatus::Open) && is_newer {
                 orders.insert(order_id, order);
+            } else if is_newer {
+                return; // received filled or expired - so keep the order removed
             } else {
                 orders.insert(order_id, existing);
             }

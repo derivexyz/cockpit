@@ -46,7 +46,7 @@ pub async fn start_subaccount(state: MarketState, subaccount_id: i64) -> Result<
             });
         }
         for order in subacc.result.open_orders {
-            // TODO horribly inefficient but only done once
+            // TODO horribly inefficient to do casting this way but only done once
             let v = serde_json::to_value(&order).unwrap();
             let order = serde_json::from_value(v).unwrap();
             writer.insert_order(order);
