@@ -3,19 +3,12 @@ use ethers::utils::hex;
 use log::info;
 use reqwest::header::HeaderMap;
 use serde_json::{json, Value};
-use crate::aws::get_session_key;
-
 use orderbook_types::generated::public_login::PublicLoginParamsSchema;
 
 pub async fn load_signer() -> LocalWallet {
     info!("Loading signer from env");
-    let mut pk_str = std::env::var("SESSION_PRIVATE_KEY");
-    if pk_str.is_err() {
-        info!("No signer in env, loading signer from AWS");
-        let env = std::env::var("ENV").expect("ENV must be set");
-        pk_str = Ok(get_session_key(&env).await);
-    }
-    let wallet = pk_str.expect("Session Key").parse::<LocalWallet>().unwrap();
+    let mut pk_str = std::env::var("SESSION_PRIVATE_KEY").expect("Session Key");
+    let wallet = pk_str.parse::<LocalWallet>().unwrap();
     wallet
 }
 

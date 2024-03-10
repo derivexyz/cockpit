@@ -1,16 +1,17 @@
 mod market;
 mod algos;
+mod setup;
+mod aws;
 
-use log::{info, warn, error, debug};
-use dotenv::dotenv;
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value};
+use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use env_logger::Env;
 use bigdecimal::BigDecimal;
-use lyra_client::orders::{OrderTicker, OrderArgs, get_order_signature};
-use lyra_client::orders::{Direction, LiquidityRole, OrderStatus, OrderType, OrderParams, OrderResponse, TimeInForce};
-use anyhow::{Result, Error};
+use lyra_client::orders::{get_order_signature, OrderArgs, OrderTicker};
+use lyra_client::orders::{Direction, LiquidityRole, OrderParams, OrderResponse, OrderStatus, OrderType, TimeInForce};
+use anyhow::{Error, Result};
 use lyra_client::auth::{load_signer, sign_auth_header, sign_auth_msg};
 use futures_util::{SinkExt, StreamExt};
 use lyra_client::json_rpc::{http_rpc, Response, WsClient, WsClientExt};
@@ -45,6 +46,7 @@ use orderbook_types::generated::private_get_orders::{PrivateGetOrdersParamsSchem
 use orderbook_types::generated::private_get_collaterals::{PrivateGetCollateralsParamsSchema, PrivateGetCollateralsResponseSchema};
 
 use crate::market::tasks::public::MarketSubscriberData;
+use crate::setup::setup_env;
 
 async fn printer_task(state: MarketState) -> Result<()> {
     loop {
@@ -73,16 +75,7 @@ async fn printer_task(state: MarketState) -> Result<()> {
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> Result<()> {
 
-    println!("Starting maker bot from {}", std::env::current_dir().unwrap().display());
-    let args: Vec<String> = std::env::args().collect();
-    let env_name = args.get(1);
-    if let Some(env_name) = env_name {
-        println!("Reading .env.{}", env_name);
-        dotenv::from_filename(format!(".env.{env_name}")).expect("Failed to load .env file");
-    } else {
-        dotenv::from_filename(".env.local").expect("Failed to load .env file");
-    }
-    env_logger::builder().format_timestamp_millis().init();
+    setup_env().await;
 
     let subaccount_id: i64 = 6581;
     let state_ptr = new_market_state();

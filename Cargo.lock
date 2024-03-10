@@ -2351,7 +2351,6 @@ name = "lyra-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "aws-secrets",
  "bigdecimal",
  "chrono",
  "dotenv",
@@ -2373,6 +2372,7 @@ name = "lyra-maker"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aws-secrets",
  "bigdecimal",
  "chrono",
  "dotenv",

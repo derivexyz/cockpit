@@ -20,13 +20,6 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 RUN cargo build --release --target aarch64-unknown-linux-gnu
 
-# RUN apt-get update && apt-get install musl-tools -y && apt-get install musl-dev -y
-
-# WORKDIR /app
-# COPY ./ .
-#
-# RUN cargo build --target aarch64-unknown-linux-gnu --release
-
 ####################################################################################################
 ## Final image
 ####################################################################################################
