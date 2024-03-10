@@ -4,7 +4,7 @@ use anyhow::{Result, Error};
 use lyra_client::json_rpc::{Notification, Response, WsClient, WsClientExt};
 use orderbook_types::generated::private_get_subaccount::{PrivateGetSubaccountParamsSchema, PrivateGetSubaccountResponseSchema};
 use orderbook_types::generated::channel_subaccount_id_balances::BalanceUpdateSchema;
-use lyra_client::orders::OrderResponse;
+use orderbook_types::types::orders::{OrderResponse, OrderNotificationData};
 use chrono::Utc;
 use log::{info, warn, error, debug};
 
@@ -14,7 +14,7 @@ use crate::market::core::{MarketState, Balance};
 #[serde(untagged)]
 pub enum SubaccountSubscriberData {
     BalancesMsg(Notification<Vec<BalanceUpdateSchema>>),
-    OrdersMsg(Notification<Vec<OrderResponse>>),
+    OrdersMsg(Notification<OrderNotificationData>),
 }
 
 pub async fn start_subaccount(state: MarketState, subaccount_id: i64) -> Result<()> {

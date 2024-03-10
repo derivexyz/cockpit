@@ -4,10 +4,11 @@ mod algos;
 use log::{info, warn, error, debug};
 use dotenv::dotenv;
 use serde::{Deserialize, Serialize};
+use serde_json::{Value};
 use std::sync::{Arc, Mutex};
 use env_logger::Env;
 use bigdecimal::BigDecimal;
-use lyra_client::orders::{OrderTicker, OrderArgs};
+use lyra_client::orders::{OrderTicker, OrderArgs, get_order_signature};
 use lyra_client::orders::{Direction, LiquidityRole, OrderStatus, OrderType, OrderParams, OrderResponse, TimeInForce};
 use anyhow::{Result, Error};
 use lyra_client::auth::{load_signer, sign_auth_header, sign_auth_msg};
@@ -20,6 +21,8 @@ use reqwest::{Client, header::HeaderMap, header::HeaderValue};
 use serde_json::json;
 use std::str::FromStr;
 use std::time::Instant;
+use ethers::prelude::{LocalWallet, Signer};
+use ethers::types::spoof::state;
 use tokio::sync::mpsc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::join;
@@ -29,6 +32,7 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use ethers::utils::hex;
 use tokio_tungstenite::tungstenite::client;
 use market::core::{MarketState, new_market_state};
+use orderbook_types::generated::channel_ticker_instrument_name_interval::InstrumentTickerSchema;
 
 use orderbook_types::generated::public_get_ticker::{
     PublicGetTickerParamsSchema, PublicGetTickerResultSchema,
@@ -41,26 +45,6 @@ use orderbook_types::generated::private_get_orders::{PrivateGetOrdersParamsSchem
 use orderbook_types::generated::private_get_collaterals::{PrivateGetCollateralsParamsSchema, PrivateGetCollateralsResponseSchema};
 
 use crate::market::tasks::public::MarketSubscriberData;
-
-async fn test_http_client() -> Result<()> {
-    let url = "https://api-demo.lyra.finance/private/get_subaccount";
-    let client = Client::new();
-
-    let payload = json!({ "subaccount_id": 6581 });
-    let headers = sign_auth_header(&load_signer()).await;
-    let response = client
-        .post(url)
-        .json(&payload)
-        .headers(headers)
-        .send()
-        .await?;
-
-    let response_text = response.text().await?;
-    println!("Response: {}", response_text);
-
-    Ok(())
-}
-
 
 async fn printer_task(state: MarketState) -> Result<()> {
     loop {
@@ -86,44 +70,20 @@ async fn printer_task(state: MarketState) -> Result<()> {
     }
 }
 
-async fn test_orders(state: MarketState, client_ref: WsClient, num: i8, subaccount_id: i64) -> Result<()> {
-    let data = state.read().await;
-    let ticker = data.get_ticker("ETH-PERP").ok_or(Error::msg("Ticker not found"))?.clone();
-    drop(data);
-    let mut futures = Vec::new();
-    for i in 0..num {
-        let f = client_ref.send_order(
-            &ticker,
-            subaccount_id,
-            OrderArgs {
-                amount: BigDecimal::from_str("0.2")?,
-                limit_price: ticker.best_bid_price.clone(),
-                direction: Direction::Buy,
-                time_in_force: TimeInForce::Gtc,
-                order_type: OrderType::Limit,
-                label: format!("test_order_{}", i),
-                mmp: false,
-            }
-        );
-        futures.push(f);
-    }
-
-    // measure time to execute the whole batch
-    let start = Instant::now();
-    let results = futures::future::join_all(futures).await;
-    let duration = start.elapsed();
-    info!("Time to execute {} orders: {}", num, duration.as_millis());
-    for result in results {
-        info!("Order Response: {:?}", result);
-    }
-
-    Ok(())
-}
-
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> Result<()> {
-    dotenv::from_filename(".env-staging").expect("Failed to load .env file");
+
+    println!("Starting maker bot from {}", std::env::current_dir().unwrap().display());
+    let args: Vec<String> = std::env::args().collect();
+    let env_name = args.get(1);
+    if let Some(env_name) = env_name {
+        println!("Reading .env.{}", env_name);
+        dotenv::from_filename(format!(".env.{env_name}")).expect("Failed to load .env file");
+    } else {
+        dotenv::from_filename(".env.local").expect("Failed to load .env file");
+    }
     env_logger::builder().format_timestamp_millis().init();
+
     let subaccount_id: i64 = 6581;
     let state_ptr = new_market_state();
     let eth_task = tokio::spawn(start_market(
@@ -151,7 +111,6 @@ async fn main() -> Result<()> {
         let _ = algo.start_maker(state_ptr.clone()).await;
     });
 
-    // test_orders(state_ptr.clone(), client.clone(), 3, subaccount_id).await?;
     tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
     Ok(())
 }

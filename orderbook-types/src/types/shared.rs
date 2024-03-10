@@ -64,10 +64,17 @@ pub struct RPCError
     message: String,
 }
 
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RPCErrorResponse
 {
     id: RPCId,
     error: RPCError,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PaginationInfoSchema {
+    ///Total number of items, across all pages
+    pub count: i64,
+    ///Number of pages
+    pub num_pages: i64,
 }

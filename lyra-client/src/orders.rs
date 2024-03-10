@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub use orderbook_types::types::orders::{OrderParams, OrderResponse, ReplaceParams, OrderType, OrderStatus, TimeInForce, Direction, LiquidityRole};
 
 use std::str::FromStr;
+use log::info;
 use orderbook_types::generated::channel_ticker_instrument_name_interval::InstrumentTickerSchema;
 use orderbook_types::generated::public_get_ticker::PublicGetTickerResultSchema;
 use orderbook_types::generated::channel_subaccount_id_orders;
@@ -75,14 +76,16 @@ struct ActionData {
     signer: Address,
 }
 
-fn get_order_signature(
+pub fn get_order_signature(
     subaccount_id: i64,
     nonce: i64,
     signature_expiry_sec: i64,
     limit_price: BigDecimal,
     amount: BigDecimal,
     is_bid: bool,
-    max_fee: BigDecimal, signer: &LocalWallet, ticker: impl OrderTicker) -> Result<Signature>
+    max_fee: BigDecimal,
+    signer: &LocalWallet,
+    ticker: impl OrderTicker) -> Result<Signature>
 {
     let trade_data = TradeData {
         address: ticker.get_address()?,
@@ -94,7 +97,9 @@ fn get_order_signature(
         is_bid
     };
     let encoded_data = trade_data.encode();
+    info!("encoded_data: {:?}", hex::encode(&encoded_data));
     let hashed_data = ethers::utils::keccak256(&encoded_data);
+    info!("encoded_data_hashed: {:?}", hex::encode(&hashed_data));
     // env var
     let owner = std::env::var("OWNER_PUBLIC_KEY").expect("OWNER_PUBLIC_KEY must be set");
     let action_typehash = std::env::var("ACTION_TYPEHASH").expect("ACTION_TYPEHASH must be set");
@@ -113,10 +118,21 @@ fn get_order_signature(
         owner: owner.parse()?,
         signer: signer.address(),
     };
+    info!("action_data: {:?}", &action_data);
     let action_hash = ethers::utils::keccak256(&action_data.encode());
+    info!("action_hash: {:?}", hex::encode(&action_hash));
     let typed_data_hash = ethers::utils::keccak256(&[prefix, domain_sep, action_hash.into()].concat());
+    info!("typed_data_hash: {:?}", hex::encode(&typed_data_hash));
     let signature = signer.sign_hash(typed_data_hash.into())?;
     Ok(signature)
+}
+
+fn get_timestamps() -> (i64, i64, i64) {
+    let now = chrono::Utc::now();
+    let nonce = now.timestamp_micros();
+    let reject_timestamp = (now + chrono::Duration::seconds(5)).timestamp_millis();
+    let signature_expiry_sec = (now + chrono::Duration::seconds(600)).timestamp();
+    (nonce, reject_timestamp, signature_expiry_sec)
 }
 
 pub fn new_order_params(
@@ -127,10 +143,7 @@ pub fn new_order_params(
 ) -> Result<OrderParams>
 {
     let max_fee = ticker.get_max_fee();
-    let now = chrono::Utc::now();
-    let nonce = now.timestamp_nanos_opt().unwrap();
-    let reject_timestamp = (now + chrono::Duration::seconds(5)).timestamp_millis();
-    let signature_expiry_sec = (now + chrono::Duration::seconds(345)).timestamp();
+    let (nonce, reject_timestamp, signature_expiry_sec) = get_timestamps();
     let mut params = OrderParams {
         instrument_name: ticker.get_name(),
         subaccount_id,
@@ -175,10 +188,7 @@ pub fn new_replace_params(
 ) -> Result<ReplaceParams>
 {
     let max_fee = ticker.get_max_fee();
-    let now = chrono::Utc::now();
-    let nonce = now.timestamp_nanos_opt().unwrap();
-    let reject_timestamp = (now + chrono::Duration::seconds(5)).timestamp_millis();
-    let signature_expiry_sec = (now + chrono::Duration::seconds(345)).timestamp();
+    let (nonce, reject_timestamp, signature_expiry_sec) = get_timestamps();
     let mut params = ReplaceParams {
         instrument_name: ticker.get_name(),
         subaccount_id,
@@ -216,3 +226,4 @@ pub fn new_replace_params(
     params.signature = signature?.to_string();
     Ok(params)
 }
+

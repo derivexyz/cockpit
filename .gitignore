@@ -1,5 +1,5 @@
 /target
 *.idea
 
-# keep your local .env-* files out of the repository (they may contain pks)
-*.env-*
+# keep your local .env.* files out of the repository (they may contain pks)
+*.env.*

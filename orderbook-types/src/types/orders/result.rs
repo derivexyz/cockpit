@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use crate::types::orders::enums::{CancelReason, Direction, OrderStatus, OrderType, TimeInForce, TxStatus, LiquidityRole};
 use crate::types::shared::{RPCId, RPCError};
 use uuid;
@@ -56,6 +57,11 @@ pub struct OrderResponse {
     pub subaccount_id: i64,
     ///Time in force
     pub time_in_force: TimeInForce,
+
+    pub trigger_type: Option<Value>, // todo actual enum
+    pub trigger_price_type: Option<Value>, // todo actual enum
+    pub trigger_price: Option<bigdecimal::BigDecimal>,
+    pub trigger_reject_message: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -131,8 +137,4 @@ pub struct ReplaceResponse {
     pub result: ReplaceResult,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct OrderNotification {
-    pub channel: String,
-    pub data: Vec<OrderResponse>,
-}
+pub type OrderNotificationData = Vec<OrderResponse>;

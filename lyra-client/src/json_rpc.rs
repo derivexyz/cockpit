@@ -21,7 +21,7 @@ use uuid::Uuid;
 use orderbook_types::types::RPCErrorResponse;
 use orderbook_types::generated::public_login::PublicLoginResponseSchema;
 use orderbook_types::generated::subscribe::{SubscribeParamsSchema, SubscribeResponseSchema};
-use orderbook_types::types::orders::{OrderResponse, ReplaceResponse};
+use orderbook_types::types::orders::{ReplaceResponse, SendOrderResponse};
 use orderbook_types::generated::private_cancel::{PrivateCancelParamsSchema, PrivateCancelResponseSchema};
 use orderbook_types::generated::private_cancel_all::{PrivateCancelAll, PrivateCancelAllParamsSchema, PrivateCancelAllResponseSchema};
 use orderbook_types::generated::private_set_cancel_on_disconnect::{PrivateSetCancelOnDisconnectParamsSchema, PrivateSetCancelOnDisconnectResponseSchema};
@@ -40,16 +40,16 @@ pub enum Response<T> {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Notification<T> {
+pub struct Notification<D> {
     // method is always "subscription"
     pub method: String,
-    pub params: NotificationParams<T>,
+    pub params: NotificationParams<D>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct NotificationParams<T> {
+pub struct NotificationParams<D> {
     pub channel: String,
-    pub data: T,
+    pub data: D,
 }
 
 pub struct WsClientState {
@@ -76,7 +76,7 @@ pub trait WsClientExt
             R: for<'de> Deserialize<'de> + Debug + Serialize + Clone;
     async fn login(&self) -> Result<Response<PublicLoginResponseSchema>>;
     async fn enable_cancel_on_disconnect(&self) -> Result<Response<PrivateSetCancelOnDisconnectResponseSchema>>;
-    async fn send_order(&self, ticker: impl OrderTicker, subaccount_id: i64, args: OrderArgs) -> Result<Response<OrderResponse>>;
+    async fn send_order(&self, ticker: impl OrderTicker, subaccount_id: i64, args: OrderArgs) -> Result<Response<SendOrderResponse>>;
     async fn send_replace(&self, ticker: impl OrderTicker, subaccount_id: i64, to_cancel: Uuid, args: OrderArgs) -> Result<Response<ReplaceResponse>>;
     async fn cancel_all(&self, subaccount_id: i64) -> Result<Response<PrivateCancelAllResponseSchema>>;
     async fn subscribe<Fut, Data>(&self, channels: Vec<String>, handler: impl FnMut(Data) -> Fut) -> Result<()>
@@ -102,12 +102,18 @@ impl WsClientExt for WsClient {
         let this_id = WsClientState::send_to_socket(&self, method, params).await?;
         let res = WsClientState::listen_and_wait_for::<R>(&self, this_id).await;
         if let Ok(res) = &res {
-            info!("Received response: {}", serde_json::to_string_pretty(&res).unwrap_or("could not serialize".into()));
+            match res {
+                Response::Success(s) => info!("Received success"),
+                Response::Error(e) => error!("Received error: {:?}", e),
+            }
+        }
+        else {
+            error!("Error decoding response");
         }
         res
     }
     async fn login(&self) -> Result<Response<PublicLoginResponseSchema>> {
-        let wallet = load_signer();
+        let wallet = load_signer().await;
         let login_params = sign_auth_msg(&wallet).await;
         WsClientState::set_signer(self, wallet).await;
         self.send_rpc("public/login", login_params).await
@@ -115,7 +121,7 @@ impl WsClientExt for WsClient {
     async fn enable_cancel_on_disconnect(&self) -> Result<Response<PrivateSetCancelOnDisconnectResponseSchema>> {
         self.send_rpc("private/set_cancel_on_disconnect", PrivateSetCancelOnDisconnectParamsSchema { enabled: true, wallet: self.get_owner().await }).await
     }
-    async fn send_order(&self, ticker: impl OrderTicker, subaccount_id: i64, args: OrderArgs) -> Result<Response<OrderResponse>>
+    async fn send_order(&self, ticker: impl OrderTicker, subaccount_id: i64, args: OrderArgs) -> Result<Response<SendOrderResponse>>
     {
         let order_params = WsClientState::new_signed_order(self, ticker, subaccount_id, args).await?;
         self.send_rpc("private/order", order_params).await
@@ -210,6 +216,7 @@ impl WsClientState {
         tokio::select! {
             val = wait_handle => {
                 let val = val?;
+                info!("Received: {}", serde_json::to_string_pretty(&val).unwrap_or("could not serialize".into()));
                 Ok(serde_json::from_value::<Response<R>>(val)?)
             }
             _ = listen_handle => {
