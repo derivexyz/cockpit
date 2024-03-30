@@ -31,11 +31,11 @@ pub async fn start_market(state: MarketState, instrument_names: Vec<String>) -> 
     let client = WsClient::new_client().await?;
     client.subscribe(channels, |d: MarketSubscriberData| async {
         match d {
-            MarketSubscriberData::OrderbookMsg(notification) => {
-                state.write().await.insert_orderbook(notification.params.data);
+            MarketSubscriberData::OrderbookMsg(msg) => {
+                state.write().await.insert_orderbook(msg.params.data);
             }
-            MarketSubscriberData::TickerMsg(notification) => {
-                state.write().await.insert_ticker(notification.params.data.instrument_ticker);
+            MarketSubscriberData::TickerMsg(msg) => {
+                state.write().await.insert_ticker(msg.params.data.instrument_ticker);
             }
         }
         Ok(())

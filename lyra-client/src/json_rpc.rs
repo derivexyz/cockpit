@@ -103,7 +103,7 @@ impl WsClientExt for WsClient {
         let res = WsClientState::listen_and_wait_for::<R>(&self, this_id).await;
         if let Ok(res) = &res {
             match res {
-                Response::Success(s) => info!("Received success"),
+                Response::Success(s) => info!("Received RPC result"),
                 Response::Error(e) => error!("Received error: {:?}", e),
             }
         }
@@ -166,7 +166,7 @@ impl WsClientState {
         let (socket, _) = connect_async(&url).await?;
         info!("Connected to {}", &url);
         let owner = std::env::var("OWNER_PUBLIC_KEY").expect("OWNER_PUBLIC_KEY must be set");
-        Ok(WsClientState { socket, messages: HashMap::new(), notifications: Vec::new(), owner, signer: None})
+        Ok(WsClientState { socket, messages: HashMap::new(), notifications: Vec::new(), owner, signer: None })
     }
 
     async fn set_signer(client: &WsClient, signer: LocalWallet) {
@@ -298,6 +298,23 @@ impl WsClientState {
     }
 
     fn decode_and_insert(msg: Result<Message, SocketError>, state: &mut WsClientState) -> Result<()> {
+        let msg = msg?;
+        match msg {
+            Message::Ping(_) => {
+                info!("Received: PING");
+                return Ok(());
+            }
+            Message::Pong(_) => {
+                info!("Received: PONG");
+                return Ok(());
+            }
+            Message::Close(_) => {
+                warn!("Received: CLOSE");
+                return Ok(());
+            }
+            Message::Text(_) => {}
+            Message::Binary(_) => {}
+        }
         let json = WsClientState::decode_to_value(msg)?;
         let id_value = json.get("id");
         // TODO max size for # of messages and notifications
@@ -305,19 +322,26 @@ impl WsClientState {
             let id = Uuid::deserialize(id_value)?;
             state.messages.insert(id, json);
         } else {
-            state.notifications.push(json);
+            let channel = &json["params"]["channel"];
+            let channel = channel.as_str();
+            if let Some(channel) = channel {
+                info!("Received: {}", channel);
+                state.notifications.push(json);
+            }
+            else { warn!("Received unrecognized message format: {:?}", json); }
         }
         Ok(())
     }
 
-    fn decode_to_value(msg: Result<Message, SocketError>) -> Result<Value> {
-        let msg = msg?;
+    fn decode_to_value(msg: Message) -> Result<Value> {
         let msg_text = msg.to_text()?;
-        let json = serde_json::from_str::<Value>(msg_text)?;
-        Ok(json)
+        let json = serde_json::from_str::<Value>(msg_text);
+        match json {
+            Ok(json) => Ok(json),
+            Err(e) => Err(Error::msg(format!("Error in serde_json::from_str::<Value>: {:?}", e)))
+        }
     }
 }
-
 
 // TODO a bit ugly to pass two types here, can use one trait but the stub generator needs to be updated
 pub async fn http_rpc<P, R>(method: &str, params: P, headers: Option<HeaderMap>) -> Result<Response<R>>

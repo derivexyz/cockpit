@@ -6,7 +6,7 @@ use lyra_client::orders::{OrderType, OrderArgs, Direction, TimeInForce, OrderTic
 use log::{info, warn, error, debug};
 use uuid::Uuid;
 use orderbook_types::generated::channel_subaccount_id_orders;
-use crate::market::core::{MarketState, OrderbookData, TickerData};
+use crate::market::core::{Balance, MarketState, OrderbookData, TickerData};
 
 /// Performs market making on the spot market and hedges via perps
 /// The basic logic involves:
@@ -46,18 +46,23 @@ pub struct MakerAlgo {
     pub max_index_spread: BigDecimal,
     /// spread to apply to perp prices (after fees) to account for slippage, risk and profit 
     pub hedge_spread: BigDecimal,
+    /// when sending hedge ioc orders, set limit price to mark +/- this much
+    pub ioc_mark_spread: BigDecimal,
     /// try to quote this much size on both bid and ask (subject to hedge liquidity)
     /// in calculating perp bid / ask, will "walk the book" and compute avg fill based on this size
     pub size: BigDecimal,
     /// target delta to maintain (e.g. if ETH is borrowed, can set this to debt amount)
     pub target_delta: BigDecimal,
     /// attempt to execute the hedge over twap_ms milliseconds
-    pub twap_ms: u64
+    pub twap_ms: u64,
+    /// time between hedge orders when executing twap
+    pub twap_ms_dt: u64,
+    /// minimum size to trade on twap
+    pub twap_min_size: BigDecimal,
     // todo asymmetric params (allow more bid size or different spread to bid or ask)
 }
 
 impl MakerAlgo {
-
     /// Returns (price, max size) for the hedge, incl. hedge spread and fees
     fn get_hedge(&self, orderbook: &OrderbookData, ticker: &TickerData, hedge_direction: Direction) -> (BigDecimal, BigDecimal) {
         let ticks = match hedge_direction {
@@ -82,18 +87,18 @@ impl MakerAlgo {
         let total_fee = ticker.get_unit_fee(LiquidityRole::Taker) * &total_size;
         let dollar_spread = &ticker.index_price * &self.hedge_spread * &total_size;
         match hedge_direction {
-            Direction::Buy => {total_cost += total_fee + dollar_spread},
-            Direction::Sell => {total_cost -= total_fee + dollar_spread}
+            Direction::Buy => { total_cost += total_fee + dollar_spread }
+            Direction::Sell => { total_cost -= total_fee + dollar_spread }
         }
-        let price = &total_cost/&total_size;
+        let price = &total_cost / &total_size;
         let price = match hedge_direction {
             Direction::Buy => {
                 let price_ceil = &ticker.index_price * (BigDecimal::from(1) + &self.min_index_spread);
-                if price < price_ceil {price_ceil} else {price}
-            },
+                if price < price_ceil { price_ceil } else { price }
+            }
             Direction::Sell => {
                 let price_floor = &ticker.index_price * (BigDecimal::from(1) - &self.min_index_spread);
-                if price > price_floor {price_floor} else {price}
+                if price > price_floor { price_floor } else { price }
             }
         };
         (price.round(ticker.tick_size.digits() as i64), total_size)
@@ -122,7 +127,7 @@ impl MakerAlgo {
             time_in_force: TimeInForce::Gtc,
             order_type: OrderType::Limit,
             label: "spot-maker".to_string(),
-            mmp: false
+            mmp: false,
         };
         let open_ids = self.get_open_ids(state.clone(), direction).await;
         let data = state.read().await;
@@ -131,18 +136,60 @@ impl MakerAlgo {
         match open_ids.len() {
             0 => {
                 let _ = client.send_order(&ticker, self.subaccount_id, order_args).await?;
-            },
+            }
             1 => {
                 if open_ids[0].1 == limit_price && open_ids[0].2 == amount {
                     return Ok(());
                 }
                 let to_cancel = Uuid::from_str(&open_ids[0].0)?;
                 let _ = client.send_replace(&ticker, self.subaccount_id, to_cancel, order_args).await?;
-            },
+            }
             _ => {
                 let _ = client.cancel_all(self.subaccount_id).await?;
                 info!("Open orders: {:?}", open_ids);
             }
+        }
+        Ok(())
+    }
+
+    async fn hedger_action(&self, state: MarketState, client: &WsClient, net_delta: BigDecimal) -> Result<()> {
+        if (&net_delta == &self.target_delta) {
+            return Ok(());
+        }
+
+        let (mut amount, direction);
+        if &net_delta > &self.target_delta {
+            amount = &net_delta - &self.target_delta;
+            direction = Direction::Sell;
+        } else {
+            amount = &self.target_delta - &net_delta;
+            direction = Direction::Buy;
+        }
+
+        amount *= BigDecimal::from(&self.twap_ms_dt) / BigDecimal::from(&self.twap_ms);
+        amount = if &amount < &self.twap_min_size { self.twap_min_size.clone() } else { amount };
+
+        let data = state.read().await;
+        let ticker = data.get_ticker(&self.perp_name).ok_or(Error::msg("Ticker not found"))?.clone();
+        drop(data);
+
+        let price = match direction {
+            Direction::Buy => &ticker.mark_price * (BigDecimal::from(1) + &self.ioc_mark_spread),
+            Direction::Sell => &ticker.mark_price * (BigDecimal::from(1) - &self.ioc_mark_spread),
+        };
+        let order_args = OrderArgs {
+            amount: amount.clone(),
+            limit_price: price.round(ticker.tick_size.digits() as i64),
+            direction,
+            time_in_force: TimeInForce::Ioc,
+            order_type: OrderType::Limit,
+            label: "perp-hedger".to_string(),
+            mmp: false,
+        };
+        info!("Hedger action: {} {} {}", direction, price, amount);
+        let order_res = client.send_order(&ticker, self.subaccount_id, order_args).await?;
+        if let Response::Success(ref order_res) = order_res {
+            tokio::time::sleep(tokio::time::Duration::from_millis(self.twap_ms_dt)).await;
         }
         Ok(())
     }
@@ -163,20 +210,34 @@ impl MakerAlgo {
             info!("Hedge bid: {} @ {}", hedge_bid_size, hedge_bid);
             info!("Hedge ask: {} @ {}", hedge_ask_size, hedge_ask);
 
+            // todo read spot orderbook and dime it
+
             let bid_action = self.maker_action(state.clone(), &client, hedge_bid, hedge_bid_size, Direction::Buy);
             let ask_action = self.maker_action(state.clone(), &client, hedge_ask, hedge_ask_size, Direction::Sell);
             tokio::join!(bid_action, ask_action);
 
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
         Ok(())
     }
 
     pub async fn start_hedger(&self, state: MarketState) -> Result<()> {
         let client = WsClient::new_client().await?;
-        let perp_ticker = state.read().await.get_ticker(&self.perp_name).expect("Perp ticker not found");
-
+        client.login().await?;
+        client.enable_cancel_on_disconnect().await?;
+        loop {
+            // calculate portfolio delta
+            let reader = state.read().await;
+            let zero = BigDecimal::from(0);
+            let spot_balance = reader.get_position(&self.spot_name);
+            let spot_delta = if let Some(b) = spot_balance { &b.amount } else { &zero };
+            let perp_balance = reader.get_position(&self.perp_name);
+            let perp_delta = if let Some(b) = perp_balance { &b.amount } else { &zero };
+            let net_delta = spot_delta + perp_delta;
+            drop(reader);
+            info!("Net delta: {}", net_delta);
+            let _ = self.hedger_action(state.clone(), &client, net_delta).await?;
+        }
         Ok(())
     }
-
 }

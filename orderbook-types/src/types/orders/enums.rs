@@ -165,14 +165,6 @@ impl From<&Direction> for Direction {
         value.clone()
     }
 }
-impl ToString for Direction {
-    fn to_string(&self) -> String {
-        match *self {
-            Self::Buy => "buy".to_string(),
-            Self::Sell => "sell".to_string(),
-        }
-    }
-}
 impl std::str::FromStr for Direction {
     type Err = &'static str;
     fn from_str(value: &str) -> Result<Self, &'static str> {
@@ -199,6 +191,14 @@ impl std::convert::TryFrom<String> for Direction {
     type Error = &'static str;
     fn try_from(value: String) -> Result<Self, &'static str> {
         value.parse()
+    }
+}
+impl std::fmt::Display for Direction {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match &self {
+            Self::Buy => write!(f, "buy"),
+            Self::Sell => write!(f, "sell"),
+        }
     }
 }
 ///Role of the user in the trade

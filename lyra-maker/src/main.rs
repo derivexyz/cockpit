@@ -83,11 +83,11 @@ async fn main() -> Result<()> {
         state_ptr.clone(),
         vec!["ETH-PERP".to_string()],
     ));
-    let subacc_task = tokio::spawn(start_subaccount(state_ptr.clone(), subaccount_id));
+    // let subacc_task = tokio::spawn(start_subaccount(state_ptr.clone(), subaccount_id));
     // tokio::spawn(printer_task(state_ptr.clone()));
     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-    let client = WsClient::new_client().await?;
-    client.login().await?;
+    // let client = WsClient::new_client().await?;
+    // client.login().await?;
 
     let algo = MakerAlgo {
         subaccount_id,
@@ -97,13 +97,17 @@ async fn main() -> Result<()> {
         size: BigDecimal::from_str("0.5")?,
         min_index_spread: BigDecimal::from_str("0.00025")?,
         max_index_spread: BigDecimal::from_str("0.02")?,
-        target_delta: BigDecimal::from_str("0")?,
-        twap_ms: 10000,
+        ioc_mark_spread: BigDecimal::from_str("0.01")?,
+        target_delta: BigDecimal::from_str("1.5")?,
+        twap_ms: 5000,
+        twap_ms_dt: 1000,
+        twap_min_size: BigDecimal::from_str("1")?,
     };
     let algo_task = tokio::spawn(async move {
         let _ = algo.start_maker(state_ptr.clone()).await;
+        let _ = algo.start_hedger(state_ptr.clone()).await;
     });
 
-    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(60 * 60 * 24)).await;
     Ok(())
 }

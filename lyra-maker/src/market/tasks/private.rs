@@ -58,9 +58,9 @@ pub async fn start_subaccount(state: MarketState, subaccount_id: i64) -> Result<
     // TODO can regularly re-check the balances and orders via RPC as a validation
     client.subscribe(channels, |d: SubaccountSubscriberData| async {
         match d {
-            SubaccountSubscriberData::BalancesMsg(notification) => {
+            SubaccountSubscriberData::BalancesMsg(msg) => {
                 let mut writer = state.write().await;
-                for balance in notification.params.data {
+                for balance in msg.params.data {
                     writer.insert_position(Balance {
                         instrument_name: balance.name.clone(),
                         amount: balance.new_balance.clone(),
@@ -68,9 +68,9 @@ pub async fn start_subaccount(state: MarketState, subaccount_id: i64) -> Result<
                     });
                 }
             }
-            SubaccountSubscriberData::OrdersMsg(notification) => {
+            SubaccountSubscriberData::OrdersMsg(msg) => {
                 let mut writer = state.write().await;
-                for order in notification.params.data {
+                for order in msg.params.data {
                     writer.insert_order(order);
                 }
             }
