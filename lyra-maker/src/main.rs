@@ -1,113 +1,121 @@
-mod market;
 mod algos;
-mod setup;
 mod aws;
+mod market;
+mod setup;
 
-use log::{debug, error, info, warn};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::sync::{Arc, Mutex};
-use env_logger::Env;
-use bigdecimal::BigDecimal;
-use lyra_client::orders::{get_order_signature, OrderArgs, OrderTicker};
-use lyra_client::orders::{Direction, LiquidityRole, OrderParams, OrderResponse, OrderStatus, OrderType, TimeInForce};
-use anyhow::{Error, Result};
-use lyra_client::auth::{load_signer, sign_auth_header, sign_auth_msg};
-use futures_util::{SinkExt, StreamExt};
-use lyra_client::json_rpc::{http_rpc, Response, WsClient, WsClientExt};
-use market::tasks::public::start_market;
-use market::tasks::private::start_subaccount;
+use algos::GammaDDHAlgo;
 use algos::MakerAlgo;
-use reqwest::{Client, header::HeaderMap, header::HeaderValue};
-use serde_json::json;
-use std::str::FromStr;
-use std::time::Instant;
+use anyhow::{Error, Result};
+use bigdecimal::BigDecimal;
+use env_logger::Env;
 use ethers::prelude::{LocalWallet, Signer};
 use ethers::types::spoof::state;
-use tokio::sync::mpsc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::join;
 use futures::future::join_all;
+use futures_util::{SinkExt, StreamExt};
+use log::{debug, error, info, warn};
+use lyra_client::auth::{load_signer, sign_auth_header, sign_auth_msg};
+use lyra_client::json_rpc::{http_rpc, Response, WsClient, WsClientExt};
+use lyra_client::orders::{get_order_signature, OrderArgs, OrderTicker};
+use lyra_client::orders::{
+    Direction, LiquidityRole, OrderParams, OrderResponse, OrderStatus, OrderType, TimeInForce,
+};
+use market::tasks::private::start_subaccount;
+use market::tasks::public::{start_market, start_option_tickers};
+use reqwest::{header::HeaderMap, header::HeaderValue, Client};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use serde_json::Value;
+use std::str::FromStr;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::mpsc;
+use tokio::{join, select};
 
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use ethers::utils::hex;
-use tokio_tungstenite::tungstenite::client;
-use market::core::{MarketState, new_market_state};
+use market::core::{new_market_state, MarketState};
 use orderbook_types::generated::channel_ticker_instrument_name_interval::InstrumentTickerSchema;
+use tokio_tungstenite::tungstenite::client;
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
+use orderbook_types::generated::private_get_collaterals::{
+    PrivateGetCollateralsParamsSchema, PrivateGetCollateralsResponseSchema,
+};
+use orderbook_types::generated::private_get_orders::{
+    PrivateGetOrdersParamsSchema, PrivateGetOrdersResponseSchema,
+};
+use orderbook_types::generated::private_get_positions::{
+    PrivateGetPositionsParamsSchema, PrivateGetPositionsResponseSchema,
+};
+use orderbook_types::generated::private_get_subaccount::{
+    PrivateGetSubaccountParamsSchema, PrivateGetSubaccountResponseSchema,
+};
+use orderbook_types::generated::private_order_debug::{
+    PrivateOrderDebugParamsSchema, PrivateOrderDebugResultSchema,
+};
 use orderbook_types::generated::public_get_ticker::{
     PublicGetTickerParamsSchema, PublicGetTickerResultSchema,
 };
-use orderbook_types::generated::private_order_debug::{PrivateOrderDebugParamsSchema, PrivateOrderDebugResultSchema};
-use orderbook_types::generated::public_login::{PublicLoginParamsSchema, PublicLoginResponseSchema};
-use orderbook_types::generated::private_get_subaccount::{PrivateGetSubaccountParamsSchema, PrivateGetSubaccountResponseSchema};
-use orderbook_types::generated::private_get_positions::{PrivateGetPositionsParamsSchema, PrivateGetPositionsResponseSchema};
-use orderbook_types::generated::private_get_orders::{PrivateGetOrdersParamsSchema, PrivateGetOrdersResponseSchema};
-use orderbook_types::generated::private_get_collaterals::{PrivateGetCollateralsParamsSchema, PrivateGetCollateralsResponseSchema};
+use orderbook_types::generated::public_login::{
+    PublicLoginParamsSchema, PublicLoginResponseSchema,
+};
 
 use crate::market::tasks::public::MarketSubscriberData;
 use crate::setup::setup_env;
 
-async fn printer_task(state: MarketState) -> Result<()> {
-    loop {
-        let data = state.read().await;
-        for ob in data.iter_orderbooks() {
-            info!("Orderbook: {}", ob.instrument_name);
-            info!("Full orderbook: {}", serde_json::to_string_pretty(&data.get_orderbook(&ob.instrument_name).unwrap())?);
-            info!("Orderbook w/o my orders: {}", serde_json::to_string_pretty(&data.get_orderbook_exclude_my_orders(&ob.instrument_name).unwrap())?);
-        }
-        for ticker in data.iter_tickers() {
-            info!("Ticker: {}", ticker.instrument_name);
-        }
-        for position in data.iter_positions() {
-            info!("Position: {}, {}", position.instrument_name, position.amount);
-        }
-        for orders in data.iter_orders() {
-            for (id, order) in orders.iter() {
-                info!("Order: {}, {}, {}, {}", order.instrument_name, id, order.amount, order.filled_amount);
-            }
-        }
-        drop(data);
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-    }
+pub async fn setup_ip_whitelist() -> Result<()> {
+    let client = WsClient::new_client().await?;
+    client.login().await?.into_result()?;
+    let res = client
+        .send_rpc::<Value, Value>(
+            "private/edit_session_key",
+            json!({
+                "public_session_key": client.get_signer().await,
+                "wallet": client.get_owner().await,
+                "ip_whitelist": []
+            }),
+        )
+        .await?
+        .into_result()?;
+    info!("Edit session key: {:?}", res);
+    Ok(())
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> Result<()> {
-
     setup_env().await;
 
-    let subaccount_id: i64 = 6581;
-    let state_ptr = new_market_state();
-    let eth_task = tokio::spawn(start_market(
-        state_ptr.clone(),
-        vec!["ETH-PERP".to_string()],
-    ));
-    // let subacc_task = tokio::spawn(start_subaccount(state_ptr.clone(), subaccount_id));
-    // tokio::spawn(printer_task(state_ptr.clone()));
-    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-    // let client = WsClient::new_client().await?;
-    // client.login().await?;
+    let subaccount_id: i64 = std::env::var("SUBACCOUNT_ID")?.parse()?;
+    let currency = "ETH".to_string();
 
-    let algo = MakerAlgo {
+    let market_ptr = new_market_state();
+    let perp_task =
+        tokio::spawn(start_market(market_ptr.clone(), vec![format!("{currency}-PERP")]));
+    let option_task = tokio::spawn(start_option_tickers(market_ptr.clone(), currency.clone()));
+    let subacc_task = tokio::spawn(start_subaccount(market_ptr.clone(), subaccount_id));
+
+    // setup_ip_whitelist().await?;
+    // tokio::spawn(printer_task(market_ptr.clone()));
+    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+    let algo = GammaDDHAlgo {
         subaccount_id,
         perp_name: "ETH-PERP".to_string(),
-        spot_name: "ETH-PERP".to_string(),
-        hedge_spread: BigDecimal::from_str("0.00025")?,
-        size: BigDecimal::from_str("0.5")?,
-        min_index_spread: BigDecimal::from_str("0.00025")?,
-        max_index_spread: BigDecimal::from_str("0.02")?,
-        ioc_mark_spread: BigDecimal::from_str("0.01")?,
-        target_delta: BigDecimal::from_str("1.5")?,
-        twap_ms: 5000,
-        twap_ms_dt: 1000,
-        twap_min_size: BigDecimal::from_str("1")?,
+        max_abs_delta: BigDecimal::from_str("0.1")?,
+        action_wait_ms: 2000,
+        price_tol: BigDecimal::from_str("1.5")?,
+        amount_tol: BigDecimal::from_str("0.02")?,
+        mid_price_tol: BigDecimal::from_str("20")?,
     };
-    let algo_task = tokio::spawn(async move {
-        let _ = algo.start_maker(state_ptr.clone()).await;
-        let _ = algo.start_hedger(state_ptr.clone()).await;
-    });
 
-    tokio::time::sleep(tokio::time::Duration::from_secs(60 * 60 * 24)).await;
+    let algo_task = tokio::spawn(async move {
+        let hedger_task = algo.start_hedger(market_ptr.clone());
+        // let hedger_task = algo.start_maker(market_ptr.clone());
+        select! {
+            // _ = maker_task => (),
+            _ = hedger_task => (),
+        }
+    });
+    tokio::time::sleep(tokio::time::Duration::from_secs(60 * 60 * 24 * 365)).await;
     Ok(())
 }

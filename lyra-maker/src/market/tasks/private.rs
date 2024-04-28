@@ -23,7 +23,7 @@ pub async fn start_subaccount(state: MarketState, subaccount_id: i64) -> Result<
         format!("{}.orders", subaccount_id),
     ];
     let client = WsClient::new_client().await?;
-    let login = client.login().await?;
+    let login = client.login().await?.into_result()?;
     info!("Login: {:?}", login);
     let subacc = client.send_rpc::<_, PrivateGetSubaccountResponseSchema>("private/get_subaccount", PrivateGetSubaccountParamsSchema { subaccount_id }).await;
     info!("Subaccount state refreshed");

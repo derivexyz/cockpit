@@ -1,21 +1,19 @@
+use crate::aws::get_secret;
 use dotenv::dotenv;
 use env_logger;
 use log::info;
-use crate::aws::get_secret;
 
 pub async fn ensure_env() {
     let args: Vec<String> = std::env::args().collect();
     let env_name = args.get(1);
     match env_name {
         None => std::env::set_var("ENV", "local"),
-        Some(env_name) => {
-            match env_name.as_str() {
-                "local" => std::env::set_var("ENV", "local"),
-                "staging" => std::env::set_var("ENV", "staging"),
-                "prod" => std::env::set_var("ENV", "prod"),
-                _ => panic!("Invalid env name"),
-            }
-        }
+        Some(env_name) => match env_name.as_str() {
+            "local" => std::env::set_var("ENV", "local"),
+            "staging" => std::env::set_var("ENV", "staging"),
+            "prod" => std::env::set_var("ENV", "prod"),
+            _ => panic!("Invalid env name"),
+        },
     }
 }
 
@@ -39,6 +37,16 @@ pub async fn ensure_owner() {
     }
 }
 
+pub async fn ensure_subaccount() {
+    let mut subaccount_str = std::env::var("SUBACCOUNT_ID");
+    if subaccount_str.is_err() {
+        info!("No subaccount in env, loading owner from AWS");
+        let env = std::env::var("ENV").expect("ENV must be set");
+        let name = format!("/subaccounts/{env}");
+        std::env::set_var("SUBACCOUNT_ID", get_secret(&name, None).await);
+    }
+}
+
 pub async fn setup_env() {
     ensure_env().await;
     let env_name = std::env::var("ENV").unwrap();
@@ -46,4 +54,5 @@ pub async fn setup_env() {
     env_logger::builder().format_timestamp_millis().init();
     ensure_session_key().await;
     ensure_owner().await;
+    ensure_subaccount().await;
 }

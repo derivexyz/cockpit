@@ -2,16 +2,16 @@
 Defines core shared state of the market.
 Public and private modules define logic for ws subscriptions that update the shared state.
 */
-use std::collections::HashMap;
 use bigdecimal::{BigDecimal, Zero};
-use std::sync::Arc;
-use uuid::Uuid;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
+use lyra_client::orders::{Direction, OrderResponse, OrderStatus};
 use orderbook_types::generated::channel_orderbook_instrument_name_group_depth::OrderbookInstrumentNameGroupDepthPublisherDataSchema;
 use orderbook_types::generated::channel_ticker_instrument_name_interval::InstrumentTickerSchema;
-use lyra_client::orders::{OrderResponse, OrderStatus, Direction};
 
 pub type OrderbookData = OrderbookInstrumentNameGroupDepthPublisherDataSchema;
 pub type TickerData = InstrumentTickerSchema;
@@ -102,8 +102,8 @@ impl MarketData {
         let orders = orders.unwrap();
         for order in orders.values() {
             let bids_or_asks = match order.direction {
-                Direction::Buy => &mut ob.bids, 
-                Direction::Sell => &mut ob.asks 
+                Direction::Buy => &mut ob.bids,
+                Direction::Sell => &mut ob.asks,
             };
             for level in bids_or_asks.iter_mut() {
                 if level[0] != order.limit_price {
@@ -123,4 +123,23 @@ impl MarketData {
 
 pub fn new_market_state() -> MarketState {
     Arc::new(RwLock::new(MarketData::new()))
+}
+
+pub fn filter_open_ids(
+    orders: Option<&HashMap<String, OrderResponse>>,
+    direction: Direction,
+) -> Vec<(String, BigDecimal, BigDecimal)> {
+    let open_ids;
+    if let Some(orders) = orders {
+        open_ids = orders
+            .values()
+            .filter(|o| o.direction == direction)
+            .map(|o| {
+                (o.order_id.clone(), o.limit_price.clone(), o.amount.clone() - &o.filled_amount)
+            })
+            .collect();
+    } else {
+        open_ids = Vec::new();
+    }
+    open_ids
 }

@@ -1,3 +1,4 @@
+use std::fmt;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -70,6 +71,14 @@ pub struct RPCErrorResponse
     id: RPCId,
     error: RPCError,
 }
+
+impl fmt::Display for RPCErrorResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "RPCError\n{:?}", self)
+    }
+}
+
+impl std::error::Error for RPCErrorResponse {}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PaginationInfoSchema {

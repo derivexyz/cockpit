@@ -152,22 +152,24 @@ impl MakerAlgo {
         Ok(())
     }
 
-    async fn hedger_action(&self, state: MarketState, client: &WsClient, net_delta: BigDecimal) -> Result<()> {
-        if (&net_delta == &self.target_delta) {
+    async fn hedger_action(&self, state: MarketState, client: &WsClient, net_delta: &BigDecimal) -> Result<()> {
+        if (net_delta == &self.target_delta) {
             return Ok(());
         }
 
         let (mut amount, direction);
-        if &net_delta > &self.target_delta {
-            amount = &net_delta - &self.target_delta;
+        if net_delta > &self.target_delta {
+            amount = net_delta - &self.target_delta;
             direction = Direction::Sell;
         } else {
-            amount = &self.target_delta - &net_delta;
+            amount = &self.target_delta - net_delta;
             direction = Direction::Buy;
         }
 
-        amount *= BigDecimal::from(&self.twap_ms_dt) / BigDecimal::from(&self.twap_ms);
-        amount = if &amount < &self.twap_min_size { self.twap_min_size.clone() } else { amount };
+        if &amount > &self.twap_min_size {
+            amount *= BigDecimal::from(&self.twap_ms_dt) / BigDecimal::from(&self.twap_ms);
+            amount = if &amount < &self.twap_min_size { self.twap_min_size.clone() } else { amount };
+        }
 
         let data = state.read().await;
         let ticker = data.get_ticker(&self.perp_name).ok_or(Error::msg("Ticker not found"))?.clone();
@@ -188,16 +190,24 @@ impl MakerAlgo {
         };
         info!("Hedger action: {} {} {}", direction, price, amount);
         let order_res = client.send_order(&ticker, self.subaccount_id, order_args).await?;
-        if let Response::Success(ref order_res) = order_res {
-            tokio::time::sleep(tokio::time::Duration::from_millis(self.twap_ms_dt)).await;
+        match order_res {
+            Response::Success(order_res) => {
+                tokio::time::sleep(tokio::time::Duration::from_millis(self.twap_ms_dt)).await;
+            }
+            Response::Error(err) => {
+                error!("Hedger action failed: {:?}", err);
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            }
         }
         Ok(())
     }
 
     pub async fn start_maker(&self, state: MarketState) -> Result<()> {
+        info!("Starting maker task");
         let client = WsClient::new_client().await?;
-        client.login().await?;
-        client.enable_cancel_on_disconnect().await?;
+        client.login().await?.into_result()?;
+        client.enable_cancel_on_disconnect().await?.into_result()?;
+        // TODO pings every x sec
         loop {
             let (hedge_bid, hedge_bid_size);
             let (hedge_ask, hedge_ask_size);
@@ -214,7 +224,13 @@ impl MakerAlgo {
 
             let bid_action = self.maker_action(state.clone(), &client, hedge_bid, hedge_bid_size, Direction::Buy);
             let ask_action = self.maker_action(state.clone(), &client, hedge_ask, hedge_ask_size, Direction::Sell);
-            tokio::join!(bid_action, ask_action);
+            let results = tokio::join!(bid_action, ask_action);
+            if let Err(e) = results.0 {
+                error!("Maker bid failed: {:?}", e);
+            }
+            if let Err(e) = results.1 {
+                error!("Maker ask failed: {:?}", e);
+            }
 
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
@@ -222,21 +238,28 @@ impl MakerAlgo {
     }
 
     pub async fn start_hedger(&self, state: MarketState) -> Result<()> {
+        info!("Starting hedger task");
         let client = WsClient::new_client().await?;
-        client.login().await?;
-        client.enable_cancel_on_disconnect().await?;
+        client.login().await?.into_result()?;
+        let mut net_delta = BigDecimal::from(0);
+        let mut prev_net_delta = BigDecimal::from(0);
         loop {
-            // calculate portfolio delta
+            // TODO both hedger and maker tasks currently gets dc'd due to missed pings
+            // seems socket needs to be actively read from to avoid this
+
             let reader = state.read().await;
             let zero = BigDecimal::from(0);
             let spot_balance = reader.get_position(&self.spot_name);
             let spot_delta = if let Some(b) = spot_balance { &b.amount } else { &zero };
             let perp_balance = reader.get_position(&self.perp_name);
             let perp_delta = if let Some(b) = perp_balance { &b.amount } else { &zero };
-            let net_delta = spot_delta + perp_delta;
+            net_delta = spot_delta + perp_delta;
+            if prev_net_delta != net_delta {
+                prev_net_delta = net_delta.clone();
+                info!("Net delta: {}", prev_net_delta);
+            }
             drop(reader);
-            info!("Net delta: {}", net_delta);
-            let _ = self.hedger_action(state.clone(), &client, net_delta).await?;
+            let _ = self.hedger_action(state.clone(), &client, &net_delta).await?;
         }
         Ok(())
     }

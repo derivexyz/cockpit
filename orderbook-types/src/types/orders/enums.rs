@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 use serde::{Deserialize, Serialize};
 use bigdecimal;
+use bigdecimal::BigDecimal;
 use uuid;
 ///If cancelled, reason behind order cancellation
 ///
@@ -152,11 +153,18 @@ pub enum Direction {
     #[serde(rename = "sell")]
     Sell,
 }
+
 impl Direction {
     pub const fn opposite(&self) -> Self {
         match self {
             Self::Buy => Self::Sell,
             Self::Sell => Self::Buy,
+        }
+    }
+    pub fn sign(&self) -> BigDecimal {
+        match self {
+            Self::Buy => BigDecimal::from(1),
+            Self::Sell => BigDecimal::from(-1),
         }
     }
 }
