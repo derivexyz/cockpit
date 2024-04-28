@@ -104,9 +104,10 @@ impl GammaDDHAlgo {
             Direction::Buy => &state.bid_ids,
             Direction::Sell => &state.ask_ids,
         };
+
         let order_args = OrderArgs {
-            amount: amount.clone().round(ticker.amount_step.digits() as i64),
-            limit_price: limit_price.clone().round(ticker.tick_size.digits() as i64),
+            amount: amount.clone().round(ticker.amount_step.fractional_digit_count()),
+            limit_price: limit_price.clone().round(ticker.tick_size.fractional_digit_count()),
             direction,
             time_in_force: TimeInForce::PostOnly,
             order_type: OrderType::Limit,
