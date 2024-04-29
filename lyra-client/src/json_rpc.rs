@@ -73,7 +73,7 @@ pub struct WsClientState {
     socket: WebSocketStream<MaybeTlsStream<TcpStream>>,
     messages: HashMap<Uuid, Value>,
     notifications: Vec<Value>,
-    pub owner: String,
+    owner: String,
     signer: Option<LocalWallet>,
 }
 

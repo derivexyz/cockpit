@@ -81,7 +81,7 @@ impl MarketData {
             if (order.order_status == OrderStatus::Open) && is_newer {
                 orders.insert(order_id, order);
             } else if is_newer {
-                return; // received filled or expired - so keep the order removed
+                return; // received filled, expired or cancelled - so keep the order removed
             } else {
                 orders.insert(order_id, existing);
             }
@@ -109,8 +109,9 @@ impl MarketData {
                 if level[0] != order.limit_price {
                     continue;
                 }
-                if level[1] > order.amount {
-                    level[1] -= &order.amount;
+                let remain_amount = &order.amount - &order.filled_amount;
+                if level[1] > remain_amount {
+                    level[1] -= &remain_amount;
                 } else {
                     level[1] = BigDecimal::zero();
                 }

@@ -30,7 +30,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
-use tokio::{join, select};
+use tokio::{join, select, try_join};
+use tokio_util::sync::CancellationToken;
 
 use ethers::utils::hex;
 use market::core::{new_market_state, MarketState};
@@ -81,41 +82,59 @@ pub async fn setup_ip_whitelist() -> Result<()> {
     Ok(())
 }
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
-async fn main() -> Result<()> {
-    setup_env().await;
-
+async fn run_ddh() -> Result<()> {
     let subaccount_id: i64 = std::env::var("SUBACCOUNT_ID")?.parse()?;
     let currency = "ETH".to_string();
-
     let market_ptr = new_market_state();
     let perp_task =
         tokio::spawn(start_market(market_ptr.clone(), vec![format!("{currency}-PERP")]));
     let option_task = tokio::spawn(start_option_tickers(market_ptr.clone(), currency.clone()));
     let subacc_task = tokio::spawn(start_subaccount(market_ptr.clone(), subaccount_id));
-
-    // setup_ip_whitelist().await?;
-    // tokio::spawn(printer_task(market_ptr.clone()));
     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-
     let algo = GammaDDHAlgo {
         subaccount_id,
         perp_name: "ETH-PERP".to_string(),
-        max_abs_delta: BigDecimal::from_str("0.1")?,
+        max_abs_delta: BigDecimal::from_str("0.15")?,
         action_wait_ms: 2000,
         price_tol: BigDecimal::from_str("1.5")?,
         amount_tol: BigDecimal::from_str("0.02")?,
         mid_price_tol: BigDecimal::from_str("20")?,
     };
 
+    let token = CancellationToken::new();
+    let algo_cancel_token = token.clone();
+
     let algo_task = tokio::spawn(async move {
         let hedger_task = algo.start_hedger(market_ptr.clone());
         // let hedger_task = algo.start_maker(market_ptr.clone());
         select! {
             // _ = maker_task => (),
-            _ = hedger_task => (),
+            res = hedger_task => res,
+            _ = algo_cancel_token.cancelled() => Ok(())
         }
     });
-    tokio::time::sleep(tokio::time::Duration::from_secs(60 * 60 * 24 * 365)).await;
-    Ok(())
+
+    let exit_result = select! {
+        res = perp_task => res,
+        res = option_task => res,
+        res = subacc_task => res,
+        res = algo_task => res,
+    };
+    token.cancel();
+
+    match exit_result {
+        Err(e) => Err(Error::new(e)),
+        Ok(res) => res,
+    }
+}
+
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
+async fn main() -> Result<()> {
+    setup_env().await;
+    loop {
+        let res = run_ddh().await;
+        error!("Error in run_ddh(): {:?}", res);
+        warn!("Restarting in 10s");
+        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+    }
 }

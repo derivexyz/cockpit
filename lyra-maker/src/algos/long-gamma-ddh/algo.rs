@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use uuid::Uuid;
 
-/// this algo dynamically delta hedges a long gamma portfolio using post only limit orders
+/// This algo dynamically delta hedges a long gamma portfolio using post only limit orders.
 pub struct GammaDDHAlgo {
     pub subaccount_id: i64,
     pub perp_name: String,
@@ -27,7 +27,7 @@ pub struct GammaDDHAlgo {
 }
 
 #[derive(Debug)]
-pub struct GammaDDHState {
+struct GammaDDHState {
     pub perp_ticker: TickerData,
     pub perp_best_bid: Option<BigDecimal>,
     pub perp_best_ask: Option<BigDecimal>,
@@ -55,6 +55,7 @@ impl GammaDDHState {
             ((target_delta.clone() - &self.net_delta) / &self.net_gamma, target_delta)
         }
     }
+    /// Returns the "smooth" mid-price, i.e. mid if the spread is tight or mark if it is wide
     pub fn get_smooth_mid(&self, mid_price_tol: &BigDecimal) -> BigDecimal {
         match (&self.perp_best_bid, &self.perp_best_ask) {
             (Some(bid), Some(ask)) => {
@@ -93,7 +94,7 @@ impl GammaDDHAlgo {
             (Direction::Sell, Some(bid), _) => limit_price.max(bid + &ticker.tick_size),
             _ => limit_price,
         };
-        // if limit price is too aggro (more aggro than mid) -> clip to mid (if mid is trustworthy)
+        // if limit price is too aggro (more aggro than mid) -> clip to "smooth" mid
         let mid_price = state.get_smooth_mid(&self.mid_price_tol);
         let limit_price = match direction {
             Direction::Buy => limit_price.min(mid_price),
@@ -147,7 +148,7 @@ impl GammaDDHAlgo {
         let mut algo_state = GammaDDHState {
             perp_ticker: perp_ticker.clone(),
             perp_best_bid: perp_orderbook.bids.first().map(|x| x[0].clone()),
-            perp_best_ask: perp_orderbook.asks.clone().first().map(|x| x[0].clone()),
+            perp_best_ask: perp_orderbook.asks.first().map(|x| x[0].clone()),
             net_delta: BigDecimal::from(0),
             net_gamma: BigDecimal::from(0),
             bid_ids: filter_open_ids(orders, Direction::Buy),
@@ -169,21 +170,20 @@ impl GammaDDHAlgo {
     }
 
     pub async fn start_hedger(&self, state: MarketState) -> Result<()> {
-        info!("Starting maker task");
+        info!("Starting hedger task");
         let client = WsClient::new_client().await?;
         client.login().await?.into_result()?;
         client.enable_cancel_on_disconnect().await?.into_result()?;
-        // TODO pings every x sec
         loop {
             let algo_state = self.get_algo_state(state.clone()).await?;
             let bid_action = self.hedger_action(&algo_state, &client, Direction::Buy);
             let ask_action = self.hedger_action(&algo_state, &client, Direction::Sell);
             let results = tokio::join!(bid_action, ask_action);
             if let Err(e) = results.0 {
-                error!("Maker bid failed: {:?}", e);
+                error!("Hedge bid failed: {:?}", e);
             }
             if let Err(e) = results.1 {
-                error!("Maker ask failed: {:?}", e);
+                error!("Hedge ask failed: {:?}", e);
             }
             tokio::time::sleep(tokio::time::Duration::from_millis(self.action_wait_ms)).await;
         }

@@ -60,7 +60,7 @@ pub async fn fetch_live_options(currency: String) -> Result<Vec<String>> {
 
 async fn fetch_until_different(currency: String, instruments: Vec<String>) -> Result<Vec<String>> {
     loop {
-        let mut current_instruments = fetch_live_options(currency.clone()).await.unwrap();
+        let mut current_instruments = fetch_live_options(currency.clone()).await?;
         if current_instruments != instruments {
             return Ok(current_instruments);
         }
