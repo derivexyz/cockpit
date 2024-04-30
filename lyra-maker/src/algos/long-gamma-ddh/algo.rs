@@ -1,6 +1,6 @@
 use crate::market::core::{filter_open_ids, Balance, MarketState, OrderbookData, TickerData};
 use anyhow::{Error, Result};
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, FromPrimitive};
 use log::{debug, error, info, warn};
 use lyra_client::json_rpc::{http_rpc, Response, WsClient, WsClientExt};
 use lyra_client::orders::{
@@ -8,6 +8,7 @@ use lyra_client::orders::{
 };
 use orderbook_types::generated::channel_subaccount_id_orders;
 use orderbook_types::types::orders::OrderResponse;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::str::FromStr;
 use uuid::Uuid;
@@ -82,11 +83,6 @@ impl GammaDDHAlgo {
         let target_delta = -self.max_abs_delta.clone() * direction.sign();
         let (d_index, delta) = state.get_index_change_to_target_delta(target_delta);
         let amount = -delta * direction.sign();
-        if amount < ticker.minimum_amount {
-            warn!("Amount calculated too small: {}", amount);
-            return Ok(());
-        }
-
         let limit_price = d_index + &ticker.mark_price;
         // prevent post only cross errors by clipping limit price to inside BBO
         let limit_price = match (direction, &state.perp_best_bid, &state.perp_best_ask) {
@@ -101,10 +97,27 @@ impl GammaDDHAlgo {
             Direction::Sell => limit_price.max(mid_price),
         };
 
+        let label = format!("gamma-ddh-{}", direction);
         let open_ids = match direction {
             Direction::Buy => &state.bid_ids,
             Direction::Sell => &state.ask_ids,
         };
+        if amount < ticker.minimum_amount {
+            warn!("Amount calculated too small: {}", amount);
+            if (open_ids.len() >= 1) {
+                client
+                    .send_rpc::<Value, Value>(
+                        "private/cancel_by_label",
+                        json!({
+                            "subaccount_id": self.subaccount_id,
+                            "label": label.clone(),
+                        }),
+                    )
+                    .await?;
+            }
+
+            return Ok(());
+        }
 
         let order_args = OrderArgs {
             amount: amount.clone().round(ticker.amount_step.fractional_digit_count()),
@@ -112,9 +125,10 @@ impl GammaDDHAlgo {
             direction,
             time_in_force: TimeInForce::PostOnly,
             order_type: OrderType::Limit,
-            label: "long-gamma-ddh".to_string(),
+            label,
             mmp: false,
         };
+        // todo really need a way to re-sync the orders if something happens to ws sub
         match open_ids.len() {
             0 => {
                 let _ = client.send_order(ticker, self.subaccount_id, order_args).await?;
@@ -126,9 +140,8 @@ impl GammaDDHAlgo {
                     client.ping().await?;
                     return Ok(());
                 }
-                let to_cancel = Uuid::from_str(&open_ids[0].0)?;
-                let _ =
-                    client.send_replace(ticker, self.subaccount_id, to_cancel, order_args).await?;
+                let cancel_id = Uuid::from_str(&open_ids[0].0)?;
+                client.send_replace(ticker, self.subaccount_id, cancel_id, order_args).await?;
             }
             _ => {
                 let _ = client.cancel_all(self.subaccount_id).await?;
@@ -158,8 +171,18 @@ impl GammaDDHAlgo {
             let ticker = data.get_ticker(&position.instrument_name);
             if let Some(ticker) = ticker {
                 if let Some(pricing) = &ticker.option_pricing {
-                    algo_state.net_gamma += &position.amount * &pricing.gamma;
-                    algo_state.net_delta += &position.amount * &pricing.delta;
+                    // into 30min twap settlement, greeks should decay roughly linearly
+                    let expiry_sec = &ticker.option_details.as_ref().unwrap().expiry;
+                    let sec_to_expiry = (expiry_sec - chrono::Utc::now().timestamp()) as f64;
+                    const THIRTY_MIN_SEC: f64 = 1800.0;
+                    let pct_var;
+                    if sec_to_expiry < THIRTY_MIN_SEC {
+                        pct_var = BigDecimal::from_f64(sec_to_expiry / THIRTY_MIN_SEC).unwrap();
+                    } else {
+                        pct_var = BigDecimal::from_i8(1).unwrap();
+                    };
+                    algo_state.net_gamma += &position.amount * &pricing.gamma * &pct_var;
+                    algo_state.net_delta += &position.amount * &pricing.delta * &pct_var;
                 } else if &ticker.instrument_name == &self.perp_name {
                     algo_state.net_delta += &position.amount;
                 }
