@@ -69,6 +69,7 @@ async fn fetch_until_different(currency: String, instruments: Vec<String>) -> Re
 }
 
 pub async fn start_option_tickers(state: MarketState, currency: String) -> Result<()> {
+    info!("Starting option tickers task");
     let mut instruments = fetch_live_options(currency.clone()).await?;
     loop {
         if instruments.is_empty() {
@@ -111,6 +112,7 @@ pub async fn subscribe_tickers(state: MarketState, instrument_names: Vec<String>
 }
 
 pub async fn start_market(state: MarketState, instrument_names: Vec<String>) -> Result<()> {
+    info!("Starting market task");
     let channels: Vec<String> = instrument_names
         .iter()
         .flat_map(|instrument_name| {

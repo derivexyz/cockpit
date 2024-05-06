@@ -32,6 +32,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 use tokio::{join, select, try_join};
 use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use ethers::utils::hex;
 use market::core::{new_market_state, MarketState};
@@ -85,35 +86,59 @@ pub async fn setup_ip_whitelist() -> Result<()> {
 async fn run_ddh() -> Result<()> {
     let subaccount_id: i64 = std::env::var("SUBACCOUNT_ID")?.parse()?;
     let currency = "ETH".to_string();
+    let perps = vec![format!("{currency}-PERP")];
+    let token = CancellationToken::new();
+    let tracker = TaskTracker::new();
     let market_ptr = new_market_state();
-    let perp_task =
-        tokio::spawn(start_market(market_ptr.clone(), vec![format!("{currency}-PERP")]));
-    let option_task = tokio::spawn(start_option_tickers(market_ptr.clone(), currency.clone()));
-    let subacc_task = tokio::spawn(start_subaccount(market_ptr.clone(), subaccount_id));
+
+    let perp_token = token.clone();
+    let perp_market_ptr = market_ptr.clone();
+    let perp_task = tracker.spawn(async move {
+        select! {
+        res = start_market(perp_market_ptr, perps) => res,
+        _ = perp_token.cancelled() => Ok(())}
+    });
+
+    let option_token = token.clone();
+    let option_market_ptr = market_ptr.clone();
+    let option_task = tracker.spawn(async move {
+        select! {
+        res = start_option_tickers(option_market_ptr, currency.clone()) => res,
+        _ = option_token.cancelled() => Ok(())}
+    });
+
+    let subacc_token = token.clone();
+    let subacc_market_ptr = market_ptr.clone();
+    let subacc_task = tracker.spawn(async move {
+        select! {
+        res = start_subaccount(subacc_market_ptr, subaccount_id) => res,
+        _ = subacc_token.cancelled() => Ok(())}
+    });
+
     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
     let algo = GammaDDHAlgo {
         subaccount_id,
         perp_name: "ETH-PERP".to_string(),
-        max_abs_delta: BigDecimal::from_str("0.15")?,
-        action_wait_ms: 2000,
+        max_abs_delta: BigDecimal::from_str("0.3")?,
+        max_abs_spread: BigDecimal::from_str("40")?,
+        action_wait_ms: 3000,
         price_tol: BigDecimal::from_str("1.5")?,
         amount_tol: BigDecimal::from_str("0.02")?,
         mid_price_tol: BigDecimal::from_str("20")?,
     };
 
-    let token = CancellationToken::new();
-    let algo_cancel_token = token.clone();
-
+    let algo_token = token.clone();
     let algo_task = tokio::spawn(async move {
         let hedger_task = algo.start_hedger(market_ptr.clone());
-        // let hedger_task = algo.start_maker(market_ptr.clone());
+        // let maker_task = algo.start_maker(market_ptr.clone());
         select! {
             // _ = maker_task => (),
             res = hedger_task => res,
-            _ = algo_cancel_token.cancelled() => Ok(())
+            _ = algo_token.cancelled() => Ok(())
         }
     });
 
+    tracker.close();
     let exit_result = select! {
         res = perp_task => res,
         res = option_task => res,
@@ -121,6 +146,7 @@ async fn run_ddh() -> Result<()> {
         res = algo_task => res,
     };
     token.cancel();
+    tracker.wait().await;
 
     match exit_result {
         Err(e) => Err(Error::new(e)),
@@ -133,7 +159,7 @@ async fn main() -> Result<()> {
     setup_env().await;
     loop {
         let res = run_ddh().await;
-        error!("Error in run_ddh(): {:?}", res);
+        error!("Unexpected exit in run_ddh(): {:?}", res);
         warn!("Restarting in 10s");
         tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
     }

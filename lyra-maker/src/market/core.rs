@@ -130,17 +130,15 @@ pub fn filter_open_ids(
     orders: Option<&HashMap<String, OrderResponse>>,
     direction: Direction,
 ) -> Vec<(String, BigDecimal, BigDecimal)> {
-    let open_ids;
     if let Some(orders) = orders {
-        open_ids = orders
+        orders
             .values()
             .filter(|o| o.direction == direction)
             .map(|o| {
                 (o.order_id.clone(), o.limit_price.clone(), o.amount.clone() - &o.filled_amount)
             })
-            .collect();
+            .collect()
     } else {
-        open_ids = Vec::new();
+        Vec::new()
     }
-    open_ids
 }

@@ -1,6 +1,6 @@
 use crate::market::core::{filter_open_ids, Balance, MarketState, OrderbookData, TickerData};
 use anyhow::{Error, Result};
-use bigdecimal::{BigDecimal, FromPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive, One, Signed, Zero};
 use log::{debug, error, info, warn};
 use lyra_client::json_rpc::{http_rpc, Response, WsClient, WsClientExt};
 use lyra_client::orders::{
@@ -18,7 +18,8 @@ pub struct GammaDDHAlgo {
     pub subaccount_id: i64,
     pub perp_name: String,
     pub max_abs_delta: BigDecimal,
-
+    /// max spread from mark to bid/ask to place orders, will reduce amount if spread is too wide
+    pub max_abs_spread: BigDecimal,
     pub action_wait_ms: u64,
     /// tolerance for replacing orders
     pub price_tol: BigDecimal,
@@ -44,6 +45,7 @@ impl GammaDDHState {
     pub fn get_index_change_to_target_delta(
         &self,
         target_delta: BigDecimal,
+        max_abs_spread: BigDecimal,
     ) -> (BigDecimal, BigDecimal) {
         let zero = BigDecimal::from(0);
         if target_delta > zero && self.net_delta > target_delta {
@@ -53,7 +55,14 @@ impl GammaDDHState {
         } else if self.net_gamma <= zero {
             (zero, self.net_delta.clone())
         } else {
-            ((target_delta.clone() - &self.net_delta) / &self.net_gamma, target_delta)
+            let d_index = (target_delta.clone() - &self.net_delta) / &self.net_gamma;
+            if d_index.abs() < max_abs_spread {
+                (d_index, target_delta)
+            } else {
+                let d_index = max_abs_spread * d_index.signum();
+                let target_delta = &self.net_delta + &self.net_gamma * &d_index;
+                (d_index, target_delta)
+            }
         }
     }
     /// Returns the "smooth" mid-price, i.e. mid if the spread is tight or mark if it is wide
@@ -81,7 +90,8 @@ impl GammaDDHAlgo {
     ) -> Result<()> {
         let ticker = &state.perp_ticker;
         let target_delta = -self.max_abs_delta.clone() * direction.sign();
-        let (d_index, delta) = state.get_index_change_to_target_delta(target_delta);
+        let (d_index, delta) =
+            state.get_index_change_to_target_delta(target_delta, self.max_abs_spread.clone());
         let amount = -delta * direction.sign();
         let limit_price = d_index + &ticker.mark_price;
         // prevent post only cross errors by clipping limit price to inside BBO
@@ -131,7 +141,10 @@ impl GammaDDHAlgo {
         // todo really need a way to re-sync the orders if something happens to ws sub
         match open_ids.len() {
             0 => {
-                let _ = client.send_order(ticker, self.subaccount_id, order_args).await?;
+                let _ = client
+                    .send_order(ticker, self.subaccount_id, order_args)
+                    .await?
+                    .into_result()?;
             }
             1 => {
                 let is_price_new = (&open_ids[0].1 - &limit_price).abs() > self.price_tol;
@@ -141,15 +154,29 @@ impl GammaDDHAlgo {
                     return Ok(());
                 }
                 let cancel_id = Uuid::from_str(&open_ids[0].0)?;
-                client.send_replace(ticker, self.subaccount_id, cancel_id, order_args).await?;
+                client
+                    .send_replace(ticker, self.subaccount_id, cancel_id, order_args)
+                    .await?
+                    .into_result()?;
             }
             _ => {
-                let _ = client.cancel_all(self.subaccount_id).await?;
+                let _ = client.cancel_all(self.subaccount_id).await?.into_result()?;
                 info!("Open orders: {:?}", open_ids);
             }
         }
         Ok(())
     }
+
+    fn get_variable_pct(&self, expiry: i64) -> BigDecimal {
+        let sec_to_expiry = (expiry - chrono::Utc::now().timestamp()) as f64;
+        const FEED_TWAP_SEC: f64 = 1800.0;
+        if sec_to_expiry < FEED_TWAP_SEC {
+            BigDecimal::zero().max(BigDecimal::from_f64(sec_to_expiry / FEED_TWAP_SEC).unwrap())
+        } else {
+            BigDecimal::one()
+        }
+    }
+
     async fn get_algo_state(&self, market: MarketState) -> Result<GammaDDHState> {
         let data = market.read().await;
         let perp_ticker =
@@ -168,19 +195,12 @@ impl GammaDDHAlgo {
             ask_ids: filter_open_ids(orders, Direction::Sell),
         };
         for position in data.iter_positions() {
+            info!("Position: {}, {}", &position.instrument_name, &position.amount);
             let ticker = data.get_ticker(&position.instrument_name);
             if let Some(ticker) = ticker {
                 if let Some(pricing) = &ticker.option_pricing {
-                    // into 30min twap settlement, greeks should decay roughly linearly
-                    let expiry_sec = &ticker.option_details.as_ref().unwrap().expiry;
-                    let sec_to_expiry = (expiry_sec - chrono::Utc::now().timestamp()) as f64;
-                    const THIRTY_MIN_SEC: f64 = 1800.0;
-                    let pct_var;
-                    if sec_to_expiry < THIRTY_MIN_SEC {
-                        pct_var = BigDecimal::from_f64(sec_to_expiry / THIRTY_MIN_SEC).unwrap();
-                    } else {
-                        pct_var = BigDecimal::from_i8(1).unwrap();
-                    };
+                    let expiry_sec = ticker.option_details.as_ref().unwrap().expiry;
+                    let pct_var = self.get_variable_pct(expiry_sec);
                     algo_state.net_gamma += &position.amount * &pricing.gamma * &pct_var;
                     algo_state.net_delta += &position.amount * &pricing.delta * &pct_var;
                 } else if &ticker.instrument_name == &self.perp_name {
@@ -203,10 +223,10 @@ impl GammaDDHAlgo {
             let ask_action = self.hedger_action(&algo_state, &client, Direction::Sell);
             let results = tokio::join!(bid_action, ask_action);
             if let Err(e) = results.0 {
-                error!("Hedge bid failed: {:?}", e);
+                return Err(e);
             }
             if let Err(e) = results.1 {
-                error!("Hedge ask failed: {:?}", e);
+                return Err(e);
             }
             tokio::time::sleep(tokio::time::Duration::from_millis(self.action_wait_ms)).await;
         }

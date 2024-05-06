@@ -1,17 +1,22 @@
-use ethers::prelude::{LocalWallet, Signer, EthAbiCodec, Address, U256, I256, EthAbiType, Signature};
+use anyhow::Result;
 use bigdecimal::BigDecimal;
-use anyhow::{Result};
 use ethers::abi::AbiEncode;
+use ethers::prelude::{
+    Address, EthAbiCodec, EthAbiType, LocalWallet, Signature, Signer, I256, U256,
+};
 use ethers::utils::hex;
+pub use orderbook_types::types::orders::{
+    Direction, LiquidityRole, OrderParams, OrderResponse, OrderStatus, OrderType, ReplaceParams,
+    TimeInForce,
+};
 use uuid::Uuid;
-pub use orderbook_types::types::orders::{OrderParams, OrderResponse, ReplaceParams, OrderType, OrderStatus, TimeInForce, Direction, LiquidityRole};
 
-use std::str::FromStr;
-use log::info;
+use crate::utils::{decimal_to_i256, decimal_to_u256};
+use log::debug;
+use orderbook_types::generated::channel_subaccount_id_orders;
 use orderbook_types::generated::channel_ticker_instrument_name_interval::InstrumentTickerSchema;
 use orderbook_types::generated::public_get_ticker::PublicGetTickerResultSchema;
-use orderbook_types::generated::channel_subaccount_id_orders;
-use crate::utils::{decimal_to_u256, decimal_to_i256};
+use std::str::FromStr;
 
 /// Subset of ticker info required for order signing.
 pub trait OrderTicker {
@@ -85,8 +90,8 @@ pub fn get_order_signature(
     is_bid: bool,
     max_fee: BigDecimal,
     signer: &LocalWallet,
-    ticker: impl OrderTicker) -> Result<Signature>
-{
+    ticker: impl OrderTicker,
+) -> Result<Signature> {
     let trade_data = TradeData {
         address: ticker.get_address()?,
         sub_id: ticker.get_sub_id()?,
@@ -94,12 +99,12 @@ pub fn get_order_signature(
         amount: decimal_to_i256(amount)?,
         max_fee: decimal_to_u256(max_fee)?,
         subaccount_id: subaccount_id.into(),
-        is_bid
+        is_bid,
     };
     let encoded_data = trade_data.encode();
-    info!("encoded_data: {:?}", hex::encode(&encoded_data));
+    debug!("encoded_data: {:?}", hex::encode(&encoded_data));
     let hashed_data = ethers::utils::keccak256(&encoded_data);
-    info!("encoded_data_hashed: {:?}", hex::encode(&hashed_data));
+    debug!("encoded_data_hashed: {:?}", hex::encode(&hashed_data));
     // env var
     let owner = std::env::var("OWNER_PUBLIC_KEY").expect("OWNER_PUBLIC_KEY must be set");
     let action_typehash = std::env::var("ACTION_TYPEHASH").expect("ACTION_TYPEHASH must be set");
@@ -118,11 +123,12 @@ pub fn get_order_signature(
         owner: owner.parse()?,
         signer: signer.address(),
     };
-    info!("action_data: {:?}", &action_data);
+    debug!("action_data: {:?}", &action_data);
     let action_hash = ethers::utils::keccak256(&action_data.encode());
-    info!("action_hash: {:?}", hex::encode(&action_hash));
-    let typed_data_hash = ethers::utils::keccak256(&[prefix, domain_sep, action_hash.into()].concat());
-    info!("typed_data_hash: {:?}", hex::encode(&typed_data_hash));
+    debug!("action_hash: {:?}", hex::encode(&action_hash));
+    let typed_data_hash =
+        ethers::utils::keccak256(&[prefix, domain_sep, action_hash.into()].concat());
+    debug!("typed_data_hash: {:?}", hex::encode(&typed_data_hash));
     let signature = signer.sign_hash(typed_data_hash.into())?;
     Ok(signature)
 }
@@ -140,8 +146,7 @@ pub fn new_order_params(
     ticker: impl OrderTicker,
     subaccount_id: i64,
     args: OrderArgs,
-) -> Result<OrderParams>
-{
+) -> Result<OrderParams> {
     let max_fee = ticker.get_max_fee();
     let (nonce, reject_timestamp, signature_expiry_sec) = get_timestamps();
     let mut params = OrderParams {
@@ -185,8 +190,7 @@ pub fn new_replace_params(
     subaccount_id: i64,
     order_id_to_cancel: Uuid,
     args: OrderArgs,
-) -> Result<ReplaceParams>
-{
+) -> Result<ReplaceParams> {
     let max_fee = ticker.get_max_fee();
     let (nonce, reject_timestamp, signature_expiry_sec) = get_timestamps();
     let mut params = ReplaceParams {
@@ -226,4 +230,3 @@ pub fn new_replace_params(
     params.signature = signature?.to_string();
     Ok(params)
 }
-
