@@ -346,6 +346,13 @@ impl WsClientState {
         }
     }
 
+    async fn ping_interval(client: WsClient, interval_sec: u64) -> Result<()> {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(interval_sec)).await;
+            WsClientState::ping(&client).await?
+        }
+    }
+
     async fn wait_for(client: WsClient, id: Uuid) -> Result<Value> {
         let start = Instant::now();
         loop {
@@ -373,9 +380,11 @@ impl WsClientState {
     {
         let listen_handle = WsClientState::listen(client.clone());
         let notification_handle = WsClientState::handle_notifications(client.clone(), handler);
+        let ping_handle = WsClientState::ping_interval(client.clone(), 15);
         tokio::select! {
             _ = listen_handle => { Err(Error::msg("listen() exited")) }
             _ = notification_handle => { Err(Error::msg("handle_notifications() exited")) }
+            _ = ping_handle => { Err(Error::msg("ping_interval() exited")) }
         }
     }
 
