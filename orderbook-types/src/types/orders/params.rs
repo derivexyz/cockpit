@@ -1,10 +1,12 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
-use serde::{Deserialize, Serialize};
-use bigdecimal;
-use uuid;
+use crate::types::orders::enums::{
+    CancelReason, Direction, LiquidityRole, OrderStatus, OrderType, TimeInForce,
+};
 use crate::types::shared::RPCId;
-use crate::types::orders::enums::{CancelReason, Direction, LiquidityRole, OrderStatus, OrderType, TimeInForce};
+use bigdecimal;
+use serde::{Deserialize, Serialize};
+use uuid;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OrderParams {
     ///Order amount in units of the base
@@ -125,11 +127,39 @@ pub struct ReplaceRequest {
     pub params: ReplaceParams,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct GetTradesParams {
+    #[serde(default)]
+    pub subaccount_id: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quote_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instrument_name: Option<String>,
+    #[serde(default = "defaults::default_u64::<i64, 0>")]
+    pub from_timestamp: i64,
+    #[serde(default = "defaults::default_u64::<i64, 9223372036854775807>")]
+    pub to_timestamp: i64,
+    #[serde(default = "defaults::default_u64::<i64, 1>")]
+    pub page: i64,
+    #[serde(default = "defaults::default_u64::<i64, 100>")]
+    pub page_size: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct GetTradesRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<RPCId>,
+    pub method: String,
+    pub params: GetTradesParams,
+}
+
 pub mod defaults {
     pub(super) fn default_u64<T, const V: u64>() -> T
-        where
-            T: std::convert::TryFrom<u64>,
-            <T as std::convert::TryFrom<u64>>::Error: std::fmt::Debug,
+    where
+        T: std::convert::TryFrom<u64>,
+        <T as std::convert::TryFrom<u64>>::Error: std::fmt::Debug,
     {
         T::try_from(V).unwrap()
     }

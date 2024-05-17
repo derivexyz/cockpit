@@ -5,12 +5,10 @@ use crate::market::core::{MarketState, OrderbookData};
 use log::{debug, error, info, warn};
 use lyra_client::auth::{load_signer, sign_auth_header};
 use lyra_client::json_rpc::{http_rpc, Notification, Response, WsClient, WsClientExt};
-use orderbook_types::generated::channel_ticker_instrument_name_interval::{
-    InstrumentTickerSchema, TickerInstrumentNameIntervalPublisherDataSchema,
-};
 use orderbook_types::generated::public_get_instruments::{
     InstrumentType, PublicGetInstrumentsParamsSchema, PublicGetInstrumentsResponseSchema,
 };
+use orderbook_types::types::tickers::result::{InstrumentTicker, TickerNotificationData};
 use serde_json::{json, Value};
 use tokio::select;
 
@@ -18,7 +16,7 @@ use tokio::select;
 #[serde(untagged)]
 pub enum MarketSubscriberData {
     OrderbookMsg(Notification<OrderbookData>),
-    TickerMsg(Notification<TickerInstrumentNameIntervalPublisherDataSchema>),
+    TickerMsg(Notification<TickerNotificationData>),
 }
 
 pub async fn fetch_live_options(currency: String) -> Result<Vec<String>> {

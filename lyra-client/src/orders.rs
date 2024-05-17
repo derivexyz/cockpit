@@ -14,39 +14,8 @@ use uuid::Uuid;
 use crate::utils::{decimal_to_i256, decimal_to_u256};
 use log::debug;
 use orderbook_types::generated::channel_subaccount_id_orders;
-use orderbook_types::generated::channel_ticker_instrument_name_interval::InstrumentTickerSchema;
-use orderbook_types::generated::public_get_ticker::PublicGetTickerResultSchema;
+use orderbook_types::types::tickers::InstrumentTicker;
 use std::str::FromStr;
-
-/// Subset of ticker info required for order signing.
-pub trait OrderTicker {
-    fn get_name(&self) -> String;
-    fn get_max_fee(&self) -> BigDecimal;
-    fn get_sub_id(&self) -> Result<U256>;
-    fn get_address(&self) -> Result<Address>;
-    fn get_unit_fee(&self, role: LiquidityRole) -> BigDecimal;
-}
-
-impl OrderTicker for &InstrumentTickerSchema {
-    fn get_name(&self) -> String {
-        self.instrument_name.clone()
-    }
-    fn get_max_fee(&self) -> BigDecimal {
-        BigDecimal::from(3) * &self.taker_fee_rate * &self.index_price
-    }
-    fn get_sub_id(&self) -> Result<U256> {
-        Ok(self.base_asset_sub_id.parse::<u128>()?.into())
-    }
-    fn get_address(&self) -> Result<Address> {
-        Ok(self.base_asset_address.parse()?)
-    }
-    fn get_unit_fee(&self, role: LiquidityRole) -> BigDecimal {
-        match role {
-            LiquidityRole::Maker => self.maker_fee_rate.clone() * &self.index_price,
-            LiquidityRole::Taker => self.taker_fee_rate.clone() * &self.index_price,
-        }
-    }
-}
 
 pub struct OrderArgs {
     pub amount: BigDecimal,
@@ -90,11 +59,11 @@ pub fn get_order_signature(
     is_bid: bool,
     max_fee: BigDecimal,
     signer: &LocalWallet,
-    ticker: impl OrderTicker,
+    ticker: &InstrumentTicker,
 ) -> Result<Signature> {
     let trade_data = TradeData {
-        address: ticker.get_address()?,
-        sub_id: ticker.get_sub_id()?,
+        address: ticker.base_asset_address.parse()?,
+        sub_id: ticker.base_asset_sub_id.parse::<u128>()?.into(),
         limit_price: decimal_to_i256(limit_price)?,
         amount: decimal_to_i256(amount)?,
         max_fee: decimal_to_u256(max_fee)?,
@@ -143,14 +112,14 @@ fn get_timestamps() -> (i64, i64, i64) {
 
 pub fn new_order_params(
     signer: &LocalWallet,
-    ticker: impl OrderTicker,
+    ticker: &InstrumentTicker,
     subaccount_id: i64,
     args: OrderArgs,
 ) -> Result<OrderParams> {
     let max_fee = ticker.get_max_fee();
     let (nonce, reject_timestamp, signature_expiry_sec) = get_timestamps();
     let mut params = OrderParams {
-        instrument_name: ticker.get_name(),
+        instrument_name: ticker.instrument_name.clone(),
         subaccount_id,
         amount: args.amount,
         limit_price: args.limit_price,
@@ -186,7 +155,7 @@ pub fn new_order_params(
 
 pub fn new_replace_params(
     signer: &LocalWallet,
-    ticker: impl OrderTicker,
+    ticker: &InstrumentTicker,
     subaccount_id: i64,
     order_id_to_cancel: Uuid,
     args: OrderArgs,
@@ -194,7 +163,7 @@ pub fn new_replace_params(
     let max_fee = ticker.get_max_fee();
     let (nonce, reject_timestamp, signature_expiry_sec) = get_timestamps();
     let mut params = ReplaceParams {
-        instrument_name: ticker.get_name(),
+        instrument_name: ticker.instrument_name.clone(),
         subaccount_id,
         amount: args.amount,
         limit_price: args.limit_price,

@@ -3,6 +3,7 @@ Defines core shared state of the market.
 Public and private modules define logic for ws subscriptions that update the shared state.
 */
 use bigdecimal::{BigDecimal, Zero};
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -11,10 +12,10 @@ use uuid::Uuid;
 
 use lyra_client::orders::{Direction, OrderResponse, OrderStatus};
 use orderbook_types::generated::channel_orderbook_instrument_name_group_depth::OrderbookInstrumentNameGroupDepthPublisherDataSchema;
+use orderbook_types::types::orders::{TradeResponse, TxStatus};
 use orderbook_types::types::tickers::result::InstrumentTicker;
 
 pub type OrderbookData = OrderbookInstrumentNameGroupDepthPublisherDataSchema;
-pub type TickerData = InstrumentTicker;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Balance {
@@ -26,10 +27,11 @@ pub struct Balance {
 pub type MarketState = Arc<RwLock<MarketData>>;
 
 pub struct MarketData {
-    tickers: HashMap<String, TickerData>,
+    tickers: HashMap<String, InstrumentTicker>,
     orderbooks: HashMap<String, OrderbookData>,
     positions: HashMap<String, Balance>,
     orders: HashMap<String, HashMap<String, OrderResponse>>,
+    trades: HashMap<String, HashMap<String, TradeResponse>>,
 }
 
 const STALENESS_MS: i64 = 2_000; // todo ideally want to log the staleness
@@ -41,6 +43,7 @@ impl MarketData {
             orderbooks: HashMap::new(),
             positions: HashMap::new(),
             orders: HashMap::new(),
+            trades: HashMap::new(),
         }
     }
     pub fn get_orderbook(&self, instrument_name: &str) -> Option<&OrderbookData> {
@@ -58,7 +61,7 @@ impl MarketData {
     pub fn iter_orderbooks(&self) -> impl Iterator<Item = &OrderbookData> {
         self.orderbooks.values()
     }
-    pub fn get_ticker(&self, instrument_name: &str) -> Option<&TickerData> {
+    pub fn get_ticker(&self, instrument_name: &str) -> Option<&InstrumentTicker> {
         let ticker = self.tickers.get(instrument_name);
         let is_stale = ticker
             .map_or(true, |t| chrono::Utc::now().timestamp_millis() - t.timestamp > STALENESS_MS);
@@ -67,10 +70,10 @@ impl MarketData {
             false => ticker,
         }
     }
-    pub fn insert_ticker(&mut self, ticker: TickerData) {
+    pub fn insert_ticker(&mut self, ticker: InstrumentTicker) {
         self.tickers.insert(ticker.instrument_name.clone(), ticker);
     }
-    pub fn iter_tickers(&self) -> impl Iterator<Item = &TickerData> {
+    pub fn iter_tickers(&self) -> impl Iterator<Item = &InstrumentTicker> {
         self.tickers.values()
     }
     pub fn get_position(&self, instrument_name: &str) -> Option<&Balance> {
@@ -134,25 +137,68 @@ impl MarketData {
         }
         Some(ob)
     }
+    pub fn get_trades(&self, instrument_name: &str) -> Option<&HashMap<String, TradeResponse>> {
+        self.trades.get(instrument_name)
+    }
+    pub fn insert_trade(&mut self, trade: TradeResponse) {
+        let trades = self.trades.entry(trade.instrument_name.clone()).or_default();
+        trades.insert(trade.trade_id.clone(), trade);
+    }
+    pub fn all_trades_confirmed(&self, instrument_name: &str) -> bool {
+        let trades = self.get_trades(instrument_name);
+        match trades {
+            Some(trades) => trades
+                .values()
+                .all(|t| t.tx_status == TxStatus::Settled || t.tx_status == TxStatus::Reverted),
+            None => false,
+        }
+    }
+    pub fn is_balance_synced_to_trades(&self, instrument_name: &str) -> bool {
+        let trades = self.get_trades(instrument_name);
+        let position = self.get_position(instrument_name);
+        match (trades, position) {
+            (Some(trades), Some(position)) => {
+                let total_trade_amount: BigDecimal = trades
+                    .values()
+                    .map(|t| match t.direction {
+                        Direction::Buy => t.trade_amount.clone(),
+                        Direction::Sell => -t.trade_amount.clone(),
+                    })
+                    .sum();
+                total_trade_amount == position.amount
+            }
+            _ => false,
+        }
+    }
+    pub fn log_state(&self) {
+        info!("Market state:");
+        info!("Tickers:");
+        for ticker in self.iter_tickers() {
+            info!("{:?}", ticker);
+        }
+        info!("Orderbooks:");
+        for orderbook in self.iter_orderbooks() {
+            info!("{:?}", orderbook);
+        }
+        info!("Positions:");
+        for position in self.iter_positions() {
+            info!("{:?}", position);
+        }
+        info!("Orders:");
+        for orders in self.iter_orders() {
+            for order in orders.values() {
+                info!("{:?}", order);
+            }
+        }
+        info!("Trades:");
+        for trades in self.trades.values() {
+            for trade in trades.values() {
+                info!("{:?}", trade);
+            }
+        }
+    }
 }
 
 pub fn new_market_state() -> MarketState {
     Arc::new(RwLock::new(MarketData::new()))
-}
-
-pub fn filter_open_ids(
-    orders: Option<&HashMap<String, OrderResponse>>,
-    direction: Direction,
-) -> Vec<(String, BigDecimal, BigDecimal)> {
-    if let Some(orders) = orders {
-        orders
-            .values()
-            .filter(|o| o.direction == direction)
-            .map(|o| {
-                (o.order_id.clone(), o.limit_price.clone(), o.amount.clone() - &o.filled_amount)
-            })
-            .collect()
-    } else {
-        Vec::new()
-    }
 }

@@ -1,7 +1,10 @@
+use crate::types::orders::enums::{
+    CancelReason, Direction, LiquidityRole, OrderStatus, OrderType, TimeInForce, TxStatus,
+};
+use crate::types::shared::{PaginationInfoSchema, RPCError, RPCId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use crate::types::orders::enums::{CancelReason, Direction, OrderStatus, OrderType, TimeInForce, TxStatus, LiquidityRole};
-use crate::types::shared::{RPCId, RPCError};
+use std::ops::Neg;
 use uuid;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -58,7 +61,7 @@ pub struct OrderResponse {
     ///Time in force
     pub time_in_force: TimeInForce,
 
-    pub trigger_type: Option<Value>, // todo actual enum
+    pub trigger_type: Option<Value>,       // todo actual enum
     pub trigger_price_type: Option<Value>, // todo actual enum
     pub trigger_price: Option<bigdecimal::BigDecimal>,
     pub trigger_reject_message: Option<String>,
@@ -137,4 +140,18 @@ pub struct ReplaceResponse {
     pub result: ReplaceResult,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct GetTradesResult {
+    pub subaccount_id: i64,
+    pub trades: Vec<TradeResponse>,
+    pub pagination: PaginationInfoSchema,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct GetTradesResponse {
+    pub id: RPCId,
+    pub result: GetTradesResult,
+}
+
 pub type OrderNotificationData = Vec<OrderResponse>;
+pub type TradeNotificationData = Vec<TradeResponse>;

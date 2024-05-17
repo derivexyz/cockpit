@@ -3,9 +3,7 @@ use anyhow::{Error, Result};
 use bigdecimal::BigDecimal;
 use log::{debug, error, info, warn};
 use lyra_client::json_rpc::{http_rpc, Response, WsClient, WsClientExt};
-use lyra_client::orders::{
-    Direction, LiquidityRole, OrderArgs, OrderTicker, OrderType, TimeInForce,
-};
+use lyra_client::orders::{Direction, LiquidityRole, OrderArgs, OrderType, TimeInForce};
 use orderbook_types::generated::channel_subaccount_id_orders;
 use std::str::FromStr;
 use uuid::Uuid;
@@ -252,8 +250,11 @@ impl MakerAlgo {
             let (hedge_bid, hedge_bid_size);
             let (hedge_ask, hedge_ask_size);
             let reader = state.read().await;
-            let perp_ticker = reader.get_ticker(&self.perp_name).expect("Perp ticker not found");
-            let perp_ob = reader.get_orderbook(&self.perp_name).expect("Perp orderbook not found");
+            let perp_ticker =
+                reader.get_ticker(&self.perp_name).ok_or(Error::msg("Perp ticker not found"))?;
+            let perp_ob = reader
+                .get_orderbook(&self.perp_name)
+                .ok_or(Error::msg("Perp orderbook not found"))?;
             (hedge_bid, hedge_bid_size) = self.get_hedge(&perp_ob, &perp_ticker, Direction::Sell);
             (hedge_ask, hedge_ask_size) = self.get_hedge(&perp_ob, &perp_ticker, Direction::Buy);
             drop(reader);

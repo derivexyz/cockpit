@@ -3,9 +3,7 @@ use anyhow::{Error, Result};
 use bigdecimal::{BigDecimal, FromPrimitive, One, Signed, Zero};
 use log::{debug, error, info, warn};
 use lyra_client::json_rpc::{http_rpc, Response, WsClient, WsClientExt};
-use lyra_client::orders::{
-    Direction, LiquidityRole, OrderArgs, OrderTicker, OrderType, TimeInForce,
-};
+use lyra_client::orders::{Direction, LiquidityRole, OrderArgs, OrderType, TimeInForce};
 use orderbook_types::generated::channel_subaccount_id_orders;
 use orderbook_types::types::orders::OrderResponse;
 use serde_json::{json, Value};

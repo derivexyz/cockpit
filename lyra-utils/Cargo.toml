@@ -1,0 +1,17 @@
+[package]
+name = "lyra-utils"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# internal
+
+bigdecimal = { version = "0.4.2", features = ["serde"] }
+chrono = "0.4.34"
+dotenv = "0.15.0"
+uuid = { version = "1.7.0", features = ["serde", "v4"] }
+anyhow = "1.0"
+log = "0.4.20"
+statrs = "0.16.0"

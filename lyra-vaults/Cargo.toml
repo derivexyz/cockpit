@@ -1,0 +1,34 @@
+[package]
+name = "lyra-vaults"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# internal
+orderbook-types = { version = "0.0.1", path = "../orderbook-types" }
+lyra-client = { version = "0.1.0", path = "../lyra-client" }
+lyra-utils = { version = "0.1.0", path = "../lyra-utils" }
+
+# external
+reqwest = { version = "0.11", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+tokio-tungstenite = { version = "*", features = ["tls"] }
+serde_json = "1.0"
+rust_decimal = "1.33"
+rust_decimal_macros = "1.33"
+bigdecimal = { version = "0.4.2", features = ["serde"] }
+futures-util = "0.3.30"
+ethers = "2.0"
+chrono = "0.4.34"
+dotenv = "0.15.0"
+uuid = { version = "1.7.0", features = ["serde", "v4"] }
+anyhow = "1.0"
+futures = "0.3.30"
+env_logger = "0.11.2"
+log = "0.4.20"
+aws-secrets = { version = "0.1.1", features = ["all"] }
+tokio-util = { version = "0.7.10", features = ["rt"] }
+

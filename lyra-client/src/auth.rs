@@ -28,6 +28,11 @@ pub async fn sign_auth_header(wallet: &LocalWallet) -> HeaderMap {
     headers
 }
 
+pub async fn get_auth_headers() -> HeaderMap {
+    let wallet = load_signer().await;
+    sign_auth_header(&wallet).await
+}
+
 pub async fn sign_auth_msg(wallet: &LocalWallet) -> PublicLoginParamsSchema {
     let (address, timestamp, signature) = sign_auth_params(wallet).await;
     PublicLoginParamsSchema { wallet: address, timestamp, signature }

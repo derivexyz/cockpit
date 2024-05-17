@@ -31,12 +31,11 @@ use orderbook_types::generated::private_set_cancel_on_disconnect::{
 use orderbook_types::generated::public_login::PublicLoginResponseSchema;
 use orderbook_types::generated::subscribe::{SubscribeParamsSchema, SubscribeResponseSchema};
 use orderbook_types::types::orders::{ReplaceResponse, SendOrderResponse};
+use orderbook_types::types::tickers::InstrumentTicker;
 use orderbook_types::types::RPCErrorResponse;
 
 use crate::auth::{load_signer, sign_auth_msg};
-use crate::orders::{
-    new_order_params, new_replace_params, OrderArgs, OrderParams, OrderTicker, ReplaceParams,
-};
+use crate::orders::{new_order_params, new_replace_params, OrderArgs, OrderParams, ReplaceParams};
 
 type SocketError = tungstenite::error::Error;
 
@@ -101,13 +100,13 @@ where
     ) -> Result<Response<PrivateSetCancelOnDisconnectResponseSchema>>;
     async fn send_order(
         &self,
-        ticker: impl OrderTicker,
+        ticker: &InstrumentTicker,
         subaccount_id: i64,
         args: OrderArgs,
     ) -> Result<Response<SendOrderResponse>>;
     async fn send_replace(
         &self,
-        ticker: impl OrderTicker,
+        ticker: &InstrumentTicker,
         subaccount_id: i64,
         to_cancel: Uuid,
         args: OrderArgs,
@@ -168,8 +167,10 @@ impl WsClientExt for WsClient {
     }
     async fn login(&self) -> Result<Response<PublicLoginResponseSchema>> {
         let wallet = load_signer().await;
+        let owner = std::env::var("OWNER_PUBLIC_KEY").expect("OWNER_PUBLIC_KEY must be set");
         let login_params = sign_auth_msg(&wallet).await;
         WsClientState::set_signer(self, wallet).await;
+        WsClientState::set_owner(self, owner).await;
         self.send_rpc("public/login", login_params).await
     }
     async fn enable_cancel_on_disconnect(
@@ -186,7 +187,7 @@ impl WsClientExt for WsClient {
     }
     async fn send_order(
         &self,
-        ticker: impl OrderTicker,
+        ticker: &InstrumentTicker,
         subaccount_id: i64,
         args: OrderArgs,
     ) -> Result<Response<SendOrderResponse>> {
@@ -196,7 +197,7 @@ impl WsClientExt for WsClient {
     }
     async fn send_replace(
         &self,
-        ticker: impl OrderTicker,
+        ticker: &InstrumentTicker,
         subaccount_id: i64,
         to_cancel: Uuid,
         args: OrderArgs,
@@ -246,12 +247,11 @@ impl WsClientState {
         let url = std::env::var("WEBSOCKET_ADDRESS").expect("WEBSOCKET_ADDRESS must be set");
         let (socket, _) = connect_async(&url).await?;
         info!("Connected to {}", &url);
-        let owner = std::env::var("OWNER_PUBLIC_KEY").expect("OWNER_PUBLIC_KEY must be set");
         Ok(WsClientState {
             socket,
             messages: HashMap::new(),
             notifications: Vec::new(),
-            owner,
+            owner: String::new(),
             signer: None,
         })
     }
@@ -261,9 +261,14 @@ impl WsClientState {
         client_guard.signer = Some(signer);
     }
 
+    async fn set_owner(client: &WsClient, owner: String) {
+        let mut client_guard = client.lock().await;
+        client_guard.owner = owner;
+    }
+
     async fn new_signed_order(
         client: &WsClient,
-        ticker: impl OrderTicker,
+        ticker: &InstrumentTicker,
         subaccount_id: i64,
         args: OrderArgs,
     ) -> Result<OrderParams> {
@@ -277,7 +282,7 @@ impl WsClientState {
 
     async fn new_signed_replace(
         client: &WsClient,
-        ticker: impl OrderTicker,
+        ticker: &InstrumentTicker,
         subaccount_id: i64,
         to_cancel: Uuid,
         args: OrderArgs,
