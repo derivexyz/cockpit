@@ -17,6 +17,7 @@ use orderbook_types::generated::channel_subaccount_id_orders;
 use orderbook_types::types::tickers::InstrumentTicker;
 use std::str::FromStr;
 
+#[derive(Debug)]
 pub struct OrderArgs {
     pub amount: BigDecimal,
     pub limit_price: BigDecimal,

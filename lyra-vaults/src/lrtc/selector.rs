@@ -60,19 +60,19 @@ pub async fn select_option(params: &LRTCParams) -> Result<String> {
         _ = tokio::time::sleep(tokio::time::Duration::from_secs(3)) => {},
     };
 
-    let desired_delta = params.delta.to_decimal();
+    let desired_delta = &params.target_delta;
     let reader = market.read().await;
     let selected_option = reader
         .iter_tickers()
         .filter(|&ticker| {
             if let Some(ref pricing) = ticker.option_pricing {
-                pricing.delta < desired_delta
+                &pricing.delta < &params.max_delta
             } else {
                 false
             }
         })
         .min_by_key(|&ticker| {
-            (ticker.option_pricing.as_ref().unwrap().delta.clone() - &desired_delta).abs()
+            (ticker.option_pricing.as_ref().unwrap().delta.clone() - desired_delta).abs()
         });
     match selected_option {
         Some(option) => Ok(option.instrument_name.clone()),

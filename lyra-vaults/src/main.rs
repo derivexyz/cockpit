@@ -6,9 +6,11 @@ mod shared;
 
 use crate::setup::setup_env;
 use anyhow::{Error, Result};
+use bigdecimal::BigDecimal;
 use log::{debug, error, info, warn};
 use lrtc::params::LRTCParams;
 use lrtc::selector::select_option;
+use std::str::FromStr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 use tokio::{join, select, try_join};
@@ -22,18 +24,20 @@ async fn main() -> Result<()> {
         spot_name: "ETH-PERP".to_string(), // testing
         cash_name: "USDC".to_string(),
         expiry: lrtc::params::TargetExpiry::Weekly,
-        delta: lrtc::params::TargetDelta::Ten,
+        target_delta: BigDecimal::from_str("0.1").unwrap(),
+        max_delta: BigDecimal::from_str("0.2").unwrap(),
 
         min_iv: 0.3,
         max_iv_spread: 0.2,
         init_iv_spread: -0.05,
-        iv_spread_per_hour: 0.2,
+        iv_spread_per_min: 0.01,
         option_auction_sec: 60 * 60,
+        option_price_change_tolerance: BigDecimal::from_str("0.2").unwrap(),
     };
 
     let option_executor = lrtc::option_auction::LRTCOptionExecutor::from_params(params).await?;
     let task_handle = tokio::spawn(async move { option_executor.run().await });
-    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+    let _ = task_handle.await?;
 
     Ok(())
 }

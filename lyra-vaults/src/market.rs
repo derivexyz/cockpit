@@ -150,7 +150,7 @@ impl MarketData {
             Some(trades) => trades
                 .values()
                 .all(|t| t.tx_status == TxStatus::Settled || t.tx_status == TxStatus::Reverted),
-            None => false,
+            None => true,
         }
     }
     pub fn is_balance_synced_to_trades(&self, instrument_name: &str) -> bool {

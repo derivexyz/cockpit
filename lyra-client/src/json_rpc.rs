@@ -90,6 +90,7 @@ where
     async fn get_signer(&self) -> String;
     async fn close(&self) -> Result<()>;
     async fn ping(&self) -> Result<()>;
+    async fn ping_interval(&self, interval_sec: u64) -> Result<()>;
     async fn send_rpc<P, R>(&self, method: &str, params: P) -> Result<Response<R>>
     where
         P: Serialize + Debug + Clone,
@@ -142,6 +143,9 @@ impl WsClientExt for WsClient {
     }
     async fn ping(&self) -> Result<()> {
         WsClientState::ping(self).await
+    }
+    async fn ping_interval(&self, interval_sec: u64) -> Result<()> {
+        WsClientState::ping_interval(self.clone(), interval_sec).await
     }
     async fn send_rpc<P, R>(&self, method: &str, params: P) -> Result<Response<R>>
     where
