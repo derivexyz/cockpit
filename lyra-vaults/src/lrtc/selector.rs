@@ -1,7 +1,7 @@
 use crate::lrtc::params::LRTCParams;
 use crate::market::{new_market_state, MarketState};
 use anyhow::{Error, Result};
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, Zero};
 use serde::{Deserialize, Serialize};
 
 use log::{debug, error, info, warn};
@@ -13,10 +13,10 @@ use orderbook_types::types::tickers::result::{
 use serde_json::{json, Value};
 use tokio::select;
 
-use crate::shared::{subscribe_tickers, TickerInterval};
+use crate::shared::{subscribe_tickers, sync_subaccount, TickerInterval};
 
 /// Returns the option name that satisfies the LRT-C params (target expiry and delta)
-pub async fn select_option(params: &LRTCParams) -> Result<String> {
+pub async fn select_new_option(params: &LRTCParams) -> Result<String> {
     let market = new_market_state();
     let client = WsClient::new_client().await?;
     let now = chrono::Utc::now().timestamp();
@@ -77,5 +77,26 @@ pub async fn select_option(params: &LRTCParams) -> Result<String> {
     match selected_option {
         Some(option) => Ok(option.instrument_name.clone()),
         None => Err(err),
+    }
+}
+
+pub async fn maybe_select_from_positions(
+    params: &LRTCParams,
+    market: &MarketState,
+) -> Result<Option<String>> {
+    let reader = market.read().await;
+    let position_names: Vec<String> = reader
+        .iter_positions()
+        .filter(|&p| {
+            p.amount != BigDecimal::zero()
+                && p.instrument_name.starts_with(&params.currency)
+                && (p.instrument_name.ends_with("-C") || p.instrument_name.ends_with("-P"))
+        })
+        .map(|p| p.instrument_name.clone())
+        .collect();
+    match position_names.len() {
+        0 => Ok(None),
+        1 => Ok(Some(position_names[0].clone())),
+        _ => Err(Error::msg("Unexpected multiple open options positions")),
     }
 }

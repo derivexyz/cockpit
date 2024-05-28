@@ -7,7 +7,7 @@ use orderbook_types::generated::private_get_subaccount::{
     PrivateGetSubaccountParamsSchema, PrivateGetSubaccountResponseSchema,
 };
 use orderbook_types::types::tickers::result::{
-    InstrumentTicker, InstrumentsResponse, OptionType, TickerNotificationData,
+    InstrumentsResponse, OptionType, TickerNotificationData, TickerResponse,
 };
 
 use anyhow::{Error, Result};
@@ -50,7 +50,7 @@ pub async fn subscribe_tickers(
 }
 
 pub async fn sync_subaccount(
-    state: MarketState,
+    market: MarketState,
     subaccount_id: i64,
     instrument_names: Vec<String>,
 ) -> Result<()> {
@@ -60,34 +60,39 @@ pub async fn sync_subaccount(
         PrivateGetSubaccountParamsSchema { subaccount_id },
         Some(headers.clone()),
     )
-    .await;
+    .await?;
     info!("Subaccount state fetched");
-    let mut writer = state.write().await;
-    if let Response::Success(subacc) = subacc? {
-        let now = Utc::now().timestamp_millis();
-        for position in subacc.result.positions {
-            writer.insert_position(Balance {
-                instrument_name: position.instrument_name,
-                amount: position.amount,
-                timestamp: now,
-            });
+    let mut writer = market.write().await;
+    match subacc {
+        Response::Error(e) => {
+            error!("Failed to get subaccount with {:?}", e);
+            return Err(Error::msg("Failed to get subaccount"));
         }
-        for collateral in subacc.result.collaterals {
-            writer.insert_position(Balance {
-                instrument_name: collateral.asset_name,
-                amount: collateral.amount,
-                timestamp: now,
-            });
+        Response::Success(subacc) => {
+            let now = Utc::now().timestamp_millis();
+            for position in subacc.result.positions {
+                writer.insert_position(Balance {
+                    instrument_name: position.instrument_name,
+                    amount: position.amount,
+                    timestamp: now,
+                });
+            }
+            for collateral in subacc.result.collaterals {
+                writer.insert_position(Balance {
+                    instrument_name: collateral.asset_name,
+                    amount: collateral.amount,
+                    timestamp: now,
+                });
+            }
+            for order in subacc.result.open_orders {
+                // TODO horribly inefficient to do casting this way but don't want to rewrite schema
+                let v = serde_json::to_value(&order).unwrap();
+                let order = serde_json::from_value(v).unwrap();
+                writer.insert_order(order);
+            }
         }
-        for order in subacc.result.open_orders {
-            // TODO horribly inefficient to do casting this way but don't want to rewrite schema
-            let v = serde_json::to_value(&order).unwrap();
-            let order = serde_json::from_value(v).unwrap();
-            writer.insert_order(order);
-        }
-    } else {
-        return Err(Error::msg("Failed to get subaccount"));
     }
+
     info!("Subaccount state refreshed");
     for instrument_name in instrument_names {
         let trades = http_rpc::<_, GetTradesResponse>(
@@ -115,6 +120,18 @@ pub async fn sync_subaccount(
         }
     }
     info!("Trades state refreshed");
+    Ok(())
+}
+
+pub async fn fetch_ticker(market: MarketState, instrument_name: &str) -> Result<()> {
+    let ticker = http_rpc::<_, TickerResponse>(
+        "public/get_ticker",
+        json!({ "instrument_name": instrument_name }),
+        None,
+    )
+    .await?
+    .into_result()?;
+    market.write().await.insert_ticker(ticker.result);
     Ok(())
 }
 

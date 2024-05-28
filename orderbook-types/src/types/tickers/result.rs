@@ -92,6 +92,9 @@ pub struct InstrumentTicker {
     pub taker_fee_rate: bigdecimal::BigDecimal,
     ///Tick size of the instrument, i.e. minimum price increment
     pub tick_size: bigdecimal::BigDecimal,
+    pub fifo_min_allocation: bigdecimal::BigDecimal,
+    pub pro_rata_amount_step: bigdecimal::BigDecimal,
+    pub pro_rata_fraction: bigdecimal::BigDecimal,
     ///Timestamp of the ticker feed snapshot
     pub timestamp: i64,
 }
@@ -277,6 +280,18 @@ pub struct InstrumentsResponse {
 
 impl From<&InstrumentsResponse> for InstrumentsResponse {
     fn from(value: &InstrumentsResponse) -> Self {
+        value.clone()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TickerResponse {
+    pub id: RPCId,
+    pub result: InstrumentTicker,
+}
+
+impl From<&TickerResponse> for TickerResponse {
+    fn from(value: &TickerResponse) -> Self {
         value.clone()
     }
 }

@@ -31,4 +31,3 @@ env_logger = "0.11.2"
 log = "0.4.20"
 aws-secrets = { version = "0.1.1", features = ["all"] }
 tokio-util = { version = "0.7.10", features = ["rt"] }
-

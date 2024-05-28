@@ -1,0 +1,252 @@
+use crate::lrtc::params::{LRTCParams, OptionAuctionParams};
+use crate::lrtc::selector::select_new_option;
+use crate::lrtc::stages::LRTCStage;
+use crate::market::{new_market_state, MarketState};
+use crate::shared::{subscribe_subaccount, subscribe_tickers, sync_subaccount, TickerInterval};
+use anyhow::{Error, Result};
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
+use core::fmt;
+use log::{info, warn};
+use lyra_client::json_rpc::{WsClient, WsClientExt};
+use lyra_client::orders::{Direction, OrderArgs, OrderType, TimeInForce};
+use lyra_utils::black76::OptionContract;
+use orderbook_types::types::tickers::OptionType;
+use std::fmt::Debug;
+use std::str::FromStr;
+use tokio::select;
+
+pub trait OrderStrategy {
+    async fn get_desired_price(&self, auction: &LimitOrderAuction) -> Result<BigDecimal>;
+    async fn get_desired_amount(
+        &self,
+        auction: &LimitOrderAuction,
+    ) -> Result<(Direction, BigDecimal)>;
+}
+
+/// State struct for a limit order auction.
+pub struct LimitOrderAuction {
+    // State
+    pub subaccount_id: i64,
+    pub market: MarketState,
+    pub client: WsClient,
+    pub start_timestamp_sec: i64,
+
+    // Params
+    pub instrument_name: String,
+    pub auction_sec: i64,
+    pub price_change_tolerance: BigDecimal,
+}
+
+impl LimitOrderAuction {
+    pub async fn new(
+        instrument_name: String,
+        auction_sec: i64,
+        price_change_tolerance: BigDecimal,
+    ) -> Result<Self> {
+        info!("LimitOrderAuction selected option: {}", instrument_name);
+        let subaccount_id = std::env::var("SUBACCOUNT_ID").unwrap().parse().unwrap();
+        let start_timestamp_sec = chrono::Utc::now().timestamp();
+        let market = new_market_state();
+        let client = WsClient::new_client().await?;
+        client.login().await?;
+        client.enable_cancel_on_disconnect().await?;
+
+        Ok(LimitOrderAuction {
+            subaccount_id,
+            market,
+            client,
+            start_timestamp_sec,
+            instrument_name,
+            auction_sec,
+            price_change_tolerance,
+        })
+    }
+    fn remain_sec(&self) -> i64 {
+        self.auction_sec - (chrono::Utc::now().timestamp() - self.start_timestamp_sec)
+    }
+}
+
+impl Debug for LimitOrderAuction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LimitOrderAuction")
+            .field("instrument_name", &self.instrument_name)
+            .field("market", &"MarketState")
+            .field("client", &"WsClient")
+            .field("start_timestamp_sec", &self.start_timestamp_sec)
+            .field("auction_sec", &self.auction_sec)
+            .field("price_change_tolerance", &self.price_change_tolerance)
+            .finish()
+    }
+}
+
+#[derive(Debug)]
+pub struct LimitOrderAuctionExecutor<S: OrderStrategy + Debug> {
+    pub auction: LimitOrderAuction,
+    pub strategy: S,
+}
+
+impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
+    async fn run_market(&self) -> Result<()> {
+        let market = &self.auction.market;
+        let sync_instruments = vec![self.auction.instrument_name.clone()];
+        sync_subaccount(market.clone(), self.auction.subaccount_id, sync_instruments).await?;
+
+        let subacc_sub = subscribe_subaccount(market.clone(), self.auction.subaccount_id);
+        let ticker_sub = subscribe_tickers(
+            market.clone(),
+            vec![self.auction.instrument_name.clone()],
+            TickerInterval::_100Ms,
+        );
+
+        let res = select! {
+            _ = ticker_sub => {Err(Error::msg("Market subscription exited early"))},
+            _ = subacc_sub => {Err(Error::msg("Subaccount subscription exited early"))},
+        };
+
+        warn!("LimitOrderAuction run_market finished with {:?}", res);
+        res
+    }
+
+    async fn wait_for_ticker(&self) {
+        let market = &self.auction.market;
+        loop {
+            let reader = market.read().await;
+            if reader.get_ticker(&self.auction.instrument_name).is_some() {
+                break;
+            }
+            drop(reader);
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+    }
+
+    /// Executes an option auction. Assumes market is already running and has correct state.
+    async fn run_auction(&self) -> Result<()> {
+        self.wait_for_ticker().await;
+        loop {
+            let desired_price = self.strategy.get_desired_price(&self.auction).await?;
+            info!("LimitOrderAuction run_auction desired price: {}", desired_price);
+            if self.needs_update(&desired_price).await? {
+                let amount = self.update_order(&desired_price).await?;
+                if amount.is_zero() {
+                    return Ok(());
+                }
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+    }
+
+    async fn sync(&self) {
+        loop {
+            if self.is_synced().await {
+                break;
+            }
+            warn!("LimitOrderAuction run_auction not synced, waiting for 1 sec");
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        }
+    }
+
+    async fn is_synced(&self) -> bool {
+        let market = &self.auction.market;
+        let reader = market.read().await;
+        reader.all_trades_confirmed(&self.auction.instrument_name)
+    }
+
+    async fn get_open_order_price(&self) -> Result<Option<BigDecimal>> {
+        let market = &self.auction.market;
+        let reader = market.read().await;
+        let orders = reader.get_orders(&self.auction.instrument_name);
+        match orders {
+            None => Ok(None),
+            Some(orders) => {
+                let mut prices = orders.values().map(|o| o.limit_price.clone()).collect::<Vec<_>>();
+                match prices.len() {
+                    0 => Ok(None),
+                    1 => Ok(Some(prices[0].clone())),
+                    _ => {
+                        self.cancel_all().await?;
+                        Ok(None)
+                    }
+                }
+            }
+        }
+    }
+
+    async fn cancel_all(&self) -> Result<()> {
+        self.auction.client.cancel_all(self.auction.subaccount_id).await?.into_result()?;
+        Ok(())
+        // todo on-chain cancel signature
+    }
+
+    async fn needs_update(&self, desired_price: &BigDecimal) -> Result<bool> {
+        let open_price = self.get_open_order_price().await?;
+        info!("LimitOrderAuction run_auction open price: {:?}", open_price);
+        match open_price {
+            None => Ok(true),
+            Some(open_price) => {
+                Ok((&open_price - desired_price).abs() > self.auction.price_change_tolerance)
+            }
+        }
+    }
+
+    async fn update_order(&self, desired_price: &BigDecimal) -> Result<BigDecimal> {
+        self.cancel_all().await?;
+        self.sync().await;
+        let (direction, amount) = self.strategy.get_desired_amount(&self.auction).await?;
+        info!("LimitOrderAuction run_auction {} desired amount: {}", direction.to_string(), amount);
+        if amount.is_zero() {
+            return Ok(amount);
+        }
+
+        let order_args = OrderArgs {
+            amount: amount.clone(),
+            limit_price: desired_price.clone(),
+            direction,
+            time_in_force: TimeInForce::Gtc,
+            order_type: OrderType::Limit,
+            mmp: false,
+            label: "".to_string(),
+        };
+
+        info!("LimitOrderAuction run_auction sending order: {:?}", order_args);
+        let market = &self.auction.market;
+        let reader = market.read().await;
+        let ticker = reader
+            .get_ticker(&self.auction.instrument_name)
+            .ok_or(Error::msg("Ticker not found"))?
+            .clone();
+        drop(reader);
+        self.auction
+            .client
+            .send_order(&ticker, self.auction.subaccount_id, order_args)
+            .await?
+            .into_result()?;
+        Ok(amount)
+    }
+}
+
+impl<S: OrderStrategy + Debug> LRTCStage for LimitOrderAuctionExecutor<S> {
+    async fn run(&self) -> Result<()> {
+        let remain_sec = self.auction.remain_sec();
+        if remain_sec <= 0 {
+            return Ok(());
+        }
+
+        let market_task = self.run_market();
+        let auction_task = self.run_auction();
+        let ping_task = self.auction.client.ping_interval(15);
+        let res = select! {
+            _ = market_task => {Err(Error::msg("Market task exited early"))},
+            _ = ping_task => {Err(Error::msg("Ping task exited early"))},
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(remain_sec as u64)) => {Ok(())},
+            auction_res = auction_task => { auction_res },
+        };
+        res
+    }
+    async fn reconnect(&mut self) -> Result<()> {
+        self.auction.market = new_market_state();
+        self.auction.client = WsClient::new_client().await?;
+        self.auction.client.login().await?;
+        self.auction.client.enable_cancel_on_disconnect().await?;
+        Ok(())
+    }
+}

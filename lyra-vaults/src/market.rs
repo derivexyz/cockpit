@@ -79,6 +79,9 @@ impl MarketData {
     pub fn get_position(&self, instrument_name: &str) -> Option<&Balance> {
         self.positions.get(instrument_name)
     }
+    pub fn get_amount(&self, instrument_name: &str) -> BigDecimal {
+        self.positions.get(instrument_name).map_or(BigDecimal::zero(), |p| p.amount.clone())
+    }
     pub fn insert_position(&mut self, position: Balance) {
         self.positions.insert(position.instrument_name.clone(), position);
     }
