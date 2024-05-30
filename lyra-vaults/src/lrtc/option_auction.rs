@@ -7,7 +7,6 @@ use lyra_client::orders::Direction;
 use lyra_utils::black76::OptionContract;
 use orderbook_types::types::tickers::OptionType;
 
-// todo move to different file
 impl OrderStrategy for OptionAuctionParams {
     async fn get_desired_price(&self, auction: &LimitOrderAuction) -> Result<BigDecimal> {
         let market = &auction.market;
@@ -18,7 +17,7 @@ impl OrderStrategy for OptionAuctionParams {
         let pricing = ticker.option_pricing.as_ref().unwrap();
         let mark_iv: f64 = pricing.iv.to_f64().ok_or(Error::msg("IV cast to f64 failed"))?;
         let spread = self.get_iv_spread(auction.start_timestamp_sec);
-        let iv = (mark_iv - spread).max(self.min_iv);
+        let iv = mark_iv * (1.0 - spread);
 
         let contract = OptionContract {
             strike: details.strike.to_f64().unwrap(),
@@ -41,6 +40,7 @@ impl OrderStrategy for OptionAuctionParams {
     async fn get_desired_amount(
         &self,
         auction: &LimitOrderAuction,
+        price: &BigDecimal,
     ) -> Result<(Direction, BigDecimal)> {
         let market = &auction.market;
         let reader = market.read().await;
@@ -59,6 +59,6 @@ impl OrderStrategy for OptionAuctionParams {
         if amount < ticker.minimum_amount.clone() {
             return Ok((Direction::Sell, BigDecimal::zero()));
         }
-        Ok((Direction::Sell, amount)) // todo assumes the direction is SELL -> generalize for spot
+        Ok((Direction::Sell, amount))
     }
 }

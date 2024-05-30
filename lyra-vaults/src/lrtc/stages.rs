@@ -1,5 +1,5 @@
 use crate::lrtc::auction::LimitOrderAuctionExecutor;
-use crate::lrtc::params::OptionAuctionParams;
+use crate::lrtc::params::{OptionAuctionParams, SpotAuctionParams};
 use log::{error, warn};
 use std::fmt::Debug;
 
@@ -44,7 +44,7 @@ pub enum LRTCExecutorStage {
     SpotOnly(LRTCSpotOnly),
     OptionAuction(LimitOrderAuctionExecutor<OptionAuctionParams>),
     AwaitSettlement(LRTCAwaitSettlement),
-    SpotAuction(LRTCSpotAuction),
+    SpotAuction(LimitOrderAuctionExecutor<SpotAuctionParams>),
 }
 
 pub trait LRTCStage

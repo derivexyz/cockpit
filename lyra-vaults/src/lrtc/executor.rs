@@ -32,8 +32,50 @@ impl LRTCExecutor {
     /// - Spot Auction has no options and USDC < 0 or USDC > threshold
     /// Usually the executor will start in the Spot Only state, the other states are meant for
     /// recovery from hard crashes during e.g. spot or option auction
+    pub async fn new(params: LRTCParams) -> Result<Self> {
+        let market = new_market_state();
+        sync_subaccount(market.clone(), params.subaccount_id, vec![]).await?;
 
-    pub async fn new_option_auction(
+        let option_name = maybe_select_from_positions(&params, &market).await?;
+        info!("Current option position: {:?}", option_name);
+
+        let reader = market.read().await;
+        let cash_bal = reader.get_amount(&params.cash_name);
+        drop(reader);
+
+        let cash_threshold = &params.spot_auction_params.max_cash;
+        let is_cash_within_threshold = cash_bal >= BigDecimal::zero() && &cash_bal < cash_threshold;
+
+        if option_name.is_none() && is_cash_within_threshold {
+            info!("Starting in Spot Only stage");
+            return Ok(Self { params, stage: SpotOnly(LRTCSpotOnly {}) });
+        } else if option_name.is_none() && !is_cash_within_threshold {
+            info!("Starting in Spot Auction stage");
+            let stage = LRTCExecutor::new_spot_stage(params.clone()).await?;
+            return Ok(Self { params, stage });
+        }
+        let option_name = option_name.unwrap();
+
+        fetch_ticker(market.clone(), &option_name).await?;
+        let reader = market.read().await;
+        let option_expiry =
+            reader.get_ticker(&option_name).unwrap().option_details.as_ref().unwrap().expiry;
+
+        let approx_auction_start = option_expiry - params.expiry.to_expiry_sec();
+        let is_still_ongoing = chrono::Utc::now().timestamp() - approx_auction_start
+            < params.option_auction_params.auction_sec * 2;
+
+        return if is_still_ongoing {
+            info!("Starting in Option Auction stage");
+            let stage = LRTCExecutor::new_option_stage(params.clone(), option_name).await?;
+            Ok(Self { params, stage })
+        } else {
+            info!("Starting in Await Settlement stage");
+            Ok(Self { params, stage: AwaitSettlement(LRTCAwaitSettlement {}) })
+        };
+    }
+
+    pub async fn new_option_stage(
         params: LRTCParams,
         option_name: String,
     ) -> Result<LRTCExecutorStage> {
@@ -50,54 +92,28 @@ impl LRTCExecutor {
         Ok(stage)
     }
 
-    pub async fn new(params: LRTCParams) -> Result<Self> {
-        let market = new_market_state();
-        sync_subaccount(market.clone(), params.subaccount_id, vec![]).await?;
-        fetch_ticker(market.clone(), &params.spot_name).await?;
-        let option_name = maybe_select_from_positions(&params, &market).await?;
-        info!("Current option position: {:?}", option_name);
-
-        let reader = market.read().await;
-        let cash_bal = reader.get_amount(&params.cash_name);
-        let spot_mark = reader.get_ticker(&params.spot_name).unwrap().mark_price.clone();
-        drop(reader);
-
-        let cash_threshold = spot_mark * &params.spot_auction_params.max_cash;
-        let is_cash_within_threshold = cash_bal >= BigDecimal::zero() && cash_bal < cash_threshold;
-
-        if option_name.is_none() && is_cash_within_threshold {
-            return Ok(Self { params, stage: SpotOnly(LRTCSpotOnly {}) });
-        } else if option_name.is_none() && !is_cash_within_threshold {
-            // todo the spot auction will have params
-            return Ok(Self { params, stage: SpotAuction(LRTCSpotAuction {}) });
-        }
-        let option_name = option_name.unwrap();
-
-        fetch_ticker(market.clone(), &option_name).await?;
-        let reader = market.read().await;
-        let option_expiry =
-            reader.get_ticker(&option_name).unwrap().option_details.as_ref().unwrap().expiry;
-
-        let approx_auction_start = option_expiry - params.expiry.to_expiry_sec();
-        let is_still_ongoing = chrono::Utc::now().timestamp() - approx_auction_start
-            < params.option_auction_params.auction_sec * 2;
-
-        return if is_still_ongoing {
-            let stage = LRTCExecutor::new_option_auction(params.clone(), option_name).await?;
-            Ok(Self { params, stage })
-        } else {
-            Ok(Self { params, stage: AwaitSettlement(LRTCAwaitSettlement {}) })
-        };
+    pub async fn new_spot_stage(params: LRTCParams) -> Result<LRTCExecutorStage> {
+        let auction = LimitOrderAuction::new(
+            params.spot_name.clone(), // todo this might need to be "{params.spot_name}-SPOT"
+            params.spot_auction_params.auction_sec,
+            params.spot_auction_params.price_change_tolerance.clone(),
+        )
+        .await?;
+        let stage = SpotAuction(LimitOrderAuctionExecutor {
+            auction,
+            strategy: params.spot_auction_params.clone(),
+        });
+        Ok(stage)
     }
 
     pub async fn next(&mut self) -> Result<()> {
         self.stage = match &self.stage {
             SpotOnly(_) => {
                 let option_name = select_new_option(&self.params).await?;
-                LRTCExecutor::new_option_auction(self.params.clone(), option_name).await?
+                LRTCExecutor::new_option_stage(self.params.clone(), option_name).await?
             }
             OptionAuction(_) => AwaitSettlement(LRTCAwaitSettlement {}),
-            AwaitSettlement(_) => SpotAuction(LRTCSpotAuction {}),
+            AwaitSettlement(_) => LRTCExecutor::new_spot_stage(self.params.clone()).await?,
             SpotAuction(_) => SpotOnly(LRTCSpotOnly {}),
         };
         Ok(())

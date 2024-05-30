@@ -20,6 +20,7 @@ pub trait OrderStrategy {
     async fn get_desired_amount(
         &self,
         auction: &LimitOrderAuction,
+        price: &BigDecimal,
     ) -> Result<(Direction, BigDecimal)>;
 }
 
@@ -191,7 +192,8 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
     async fn update_order(&self, desired_price: &BigDecimal) -> Result<BigDecimal> {
         self.cancel_all().await?;
         self.sync().await;
-        let (direction, amount) = self.strategy.get_desired_amount(&self.auction).await?;
+        let (direction, amount) =
+            self.strategy.get_desired_amount(&self.auction, desired_price).await?;
         info!("LimitOrderAuction run_auction {} desired amount: {}", direction.to_string(), amount);
         if amount.is_zero() {
             return Ok(amount);
