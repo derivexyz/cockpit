@@ -71,8 +71,16 @@ impl LRTCExecutor {
             Ok(Self { params, stage })
         } else {
             info!("Starting in Await Settlement stage");
-            Ok(Self { params, stage: AwaitSettlement(LRTCAwaitSettlement {}) })
+            let stage = LRTCExecutor::new_settlement_stage(params.clone(), option_name).await?;
+            Ok(Self { params, stage })
         };
+    }
+
+    pub async fn new_settlement_stage(
+        params: LRTCParams,
+        option_name: String,
+    ) -> Result<LRTCExecutorStage> {
+        Ok(AwaitSettlement(LRTCAwaitSettlement { option_name }))
     }
 
     pub async fn new_option_stage(
@@ -94,7 +102,7 @@ impl LRTCExecutor {
 
     pub async fn new_spot_stage(params: LRTCParams) -> Result<LRTCExecutorStage> {
         let auction = LimitOrderAuction::new(
-            params.spot_name.clone(), // todo this might need to be "{params.spot_name}-SPOT"
+            format!("{}-{}", params.spot_name.clone(), params.cash_name.clone()),
             params.spot_auction_params.auction_sec,
             params.spot_auction_params.price_change_tolerance.clone(),
         )
@@ -112,7 +120,10 @@ impl LRTCExecutor {
                 let option_name = select_new_option(&self.params).await?;
                 LRTCExecutor::new_option_stage(self.params.clone(), option_name).await?
             }
-            OptionAuction(_) => AwaitSettlement(LRTCAwaitSettlement {}),
+            OptionAuction(ref s) => {
+                let option_name = s.auction.instrument_name.clone();
+                LRTCExecutor::new_settlement_stage(self.params.clone(), option_name).await?
+            }
             AwaitSettlement(_) => LRTCExecutor::new_spot_stage(self.params.clone()).await?,
             SpotAuction(_) => SpotOnly(LRTCSpotOnly {}),
         };

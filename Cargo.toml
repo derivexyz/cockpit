@@ -5,7 +5,7 @@ members = [
     "orderbook-types",
     "lyra-client",
     "lyra-vaults",
-    "lyra-utils"
+    "lyra-utils",
 ]
 
 resolver = "2"

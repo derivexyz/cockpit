@@ -1,5 +1,6 @@
 use crate::lrtc::auction::LimitOrderAuctionExecutor;
 use crate::lrtc::params::{OptionAuctionParams, SpotAuctionParams};
+use anyhow::Result;
 use log::{error, warn};
 use std::fmt::Debug;
 
@@ -7,22 +8,24 @@ use std::fmt::Debug;
 pub struct LRTCSpotOnly {}
 
 impl LRTCStage for LRTCSpotOnly {
-    async fn run(&self) -> anyhow::Result<()> {
+    async fn run(&self) -> Result<()> {
         Ok(())
     }
-    async fn reconnect(&mut self) -> anyhow::Result<()> {
+    async fn reconnect(&mut self) -> Result<()> {
         Ok(())
     }
 }
 
 #[derive(Debug)]
-pub struct LRTCAwaitSettlement {}
+pub struct LRTCAwaitSettlement {
+    pub option_name: String,
+}
 
 impl LRTCStage for LRTCAwaitSettlement {
-    async fn run(&self) -> anyhow::Result<()> {
+    async fn run(&self) -> Result<()> {
         Ok(())
     }
-    async fn reconnect(&mut self) -> anyhow::Result<()> {
+    async fn reconnect(&mut self) -> Result<()> {
         Ok(())
     }
 }
@@ -31,10 +34,10 @@ impl LRTCStage for LRTCAwaitSettlement {
 pub struct LRTCSpotAuction {}
 
 impl LRTCStage for LRTCSpotAuction {
-    async fn run(&self) -> anyhow::Result<()> {
+    async fn run(&self) -> Result<()> {
         Ok(())
     }
-    async fn reconnect(&mut self) -> anyhow::Result<()> {
+    async fn reconnect(&mut self) -> Result<()> {
         Ok(())
     }
 }
@@ -51,9 +54,9 @@ pub trait LRTCStage
 where
     Self: Debug,
 {
-    async fn run(&self) -> anyhow::Result<()>;
-    async fn reconnect(&mut self) -> anyhow::Result<()>;
-    async fn reconnect_with_backoff(&mut self) -> anyhow::Result<()> {
+    async fn run(&self) -> Result<()>;
+    async fn reconnect(&mut self) -> Result<()>;
+    async fn reconnect_with_backoff(&mut self) -> Result<()> {
         let mut backoff = 1;
         let max_backoff = 64;
         loop {
@@ -66,7 +69,7 @@ where
             backoff = (backoff * 2).min(max_backoff);
         }
     }
-    async fn run_with_reconnect(&mut self) -> anyhow::Result<()> {
+    async fn run_with_reconnect(&mut self) -> Result<()> {
         loop {
             let res = self.run().await;
             if res.is_ok() {

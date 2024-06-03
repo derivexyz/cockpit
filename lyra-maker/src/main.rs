@@ -1,7 +1,5 @@
 mod algos;
-mod aws;
 mod market;
-mod setup;
 
 use algos::GammaDDHAlgo;
 use algos::MakerAlgo;
@@ -63,7 +61,7 @@ use orderbook_types::generated::public_login::{
 };
 
 use crate::market::tasks::public::MarketSubscriberData;
-use crate::setup::setup_env;
+use lyra_client::setup::setup_env;
 
 pub async fn setup_ip_whitelist() -> Result<()> {
     let client = WsClient::new_client().await?;
