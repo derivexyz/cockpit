@@ -1,9 +1,7 @@
 extern crate core;
 
-mod aws;
 mod lrtc;
 mod market;
-mod setup;
 mod shared;
 
 use crate::lrtc::executor::LRTCExecutor;

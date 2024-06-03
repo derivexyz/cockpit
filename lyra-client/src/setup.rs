@@ -3,20 +3,13 @@ use dotenv::dotenv;
 use env_logger;
 use log::info;
 
-/// These are currently copied from lyra-maker - will need to be changed
-/// for the vaults logic
-
 pub async fn ensure_env() {
-    let args: Vec<String> = std::env::args().collect();
-    let env_name = args.get(1);
-    match env_name {
-        None => std::env::set_var("ENV", "local"),
-        Some(env_name) => match env_name.as_str() {
-            "local" => std::env::set_var("ENV", "local"),
-            "staging" => std::env::set_var("ENV", "staging"),
-            "prod" => std::env::set_var("ENV", "prod"),
-            _ => panic!("Invalid env name"),
-        },
+    let env_name = std::env::var("ENV").expect("ENV must be set");
+    match env_name.as_str() {
+        "local" => std::env::set_var("ENV", "local"),
+        "staging" => std::env::set_var("ENV", "staging"),
+        "prod" => std::env::set_var("ENV", "prod"),
+        _ => panic!("Invalid env name"),
     }
 }
 

@@ -15,9 +15,10 @@ use crate::utils::{decimal_to_i256, decimal_to_u256};
 use log::debug;
 use orderbook_types::generated::channel_subaccount_id_orders;
 use orderbook_types::types::tickers::InstrumentTicker;
+use serde::Deserialize;
 use std::str::FromStr;
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct OrderArgs {
     pub amount: BigDecimal,
     pub limit_price: BigDecimal,

@@ -1,5 +1,6 @@
 pub mod auth;
-mod aws;
+pub mod aws;
+mod cli;
 pub mod json_rpc;
 pub mod orders;
 pub mod setup;
