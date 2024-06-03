@@ -125,7 +125,6 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
         self.wait_for_ticker().await;
         loop {
             let desired_price = self.strategy.get_desired_price(&self.auction).await?;
-            info!("LimitOrderAuction run_auction desired price: {}", desired_price);
             if self.needs_update(&desired_price).await? {
                 let amount = self.update_order(&desired_price).await?;
                 if amount.is_zero() {
@@ -180,7 +179,6 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
 
     async fn needs_update(&self, desired_price: &BigDecimal) -> Result<bool> {
         let open_price = self.get_open_order_price().await?;
-        info!("LimitOrderAuction run_auction open price: {:?}", open_price);
         match open_price {
             None => Ok(true),
             Some(open_price) => {
@@ -194,7 +192,8 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
         self.sync().await;
         let (direction, amount) =
             self.strategy.get_desired_amount(&self.auction, desired_price).await?;
-        info!("LimitOrderAuction run_auction {} desired amount: {}", direction.to_string(), amount);
+        info!("LimitOrderAuction desired price: {}", desired_price);
+        info!("LimitOrderAuction {} desired amount: {}", direction.to_string(), amount);
         if amount.is_zero() {
             return Ok(amount);
         }

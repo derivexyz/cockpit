@@ -8,7 +8,7 @@ pub mod utils;
 
 use crate::cli::CliRpc;
 use clap::Parser;
-use log::info;
+use log::{error, info};
 use lyra_client::json_rpc::{http_rpc, WsClient, WsClientExt};
 use lyra_client::orders::OrderArgs;
 use lyra_client::setup::setup_env;
@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     let resp = CliRpc::call().await;
     match resp {
         Ok(r) => info!("{}", serde_json::to_string_pretty(&r)?),
-        Err(e) => info!("Error: {:?}", e),
+        Err(e) => error!("Error: {:?}", e),
     };
     Ok(())
 }

@@ -13,11 +13,6 @@ use anyhow::Result;
 use bigdecimal::{BigDecimal, Zero};
 use log::info;
 
-// The executor orchestrates the auctions and processes deposits / withdrawals
-// it needs to know how to transition from one state to another
-// it needs to catch errors of any job it runs and be able to continue from where it left off
-// it may need to be able to recover from a hard crash and find out which state it is in
-
 pub struct LRTCExecutor {
     params: LRTCParams,
     stage: LRTCExecutorStage,
@@ -61,7 +56,7 @@ impl LRTCExecutor {
         let option_expiry =
             reader.get_ticker(&option_name).unwrap().option_details.as_ref().unwrap().expiry;
 
-        let approx_auction_start = option_expiry - params.expiry.to_expiry_sec();
+        let approx_auction_start = option_expiry - params.expiry_sec();
         let is_still_ongoing = chrono::Utc::now().timestamp() - approx_auction_start
             < params.option_auction_params.auction_sec * 2;
 

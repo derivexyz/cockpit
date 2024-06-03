@@ -37,7 +37,7 @@ pub async fn select_new_option(params: &LRTCParams) -> Result<String> {
         if let Some(ref details) = r.option_details {
             r.is_active
                 && details.option_type.is_call()
-                && details.expiry < now + params.expiry.to_expiry_sec()
+                && details.expiry < now + params.expiry_sec()
         } else {
             false
         }

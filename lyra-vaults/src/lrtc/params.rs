@@ -1,24 +1,8 @@
 use bigdecimal::BigDecimal;
+use serde::Deserialize;
 use std::str::FromStr;
-/// Expiry selector will iterate from the largest expiry and pick the first one <= target
-#[derive(Debug, Clone)]
-pub enum TargetExpiry {
-    ZeroDTE,
-    OneDTE,
-    Weekly,
-}
 
-impl TargetExpiry {
-    pub fn to_expiry_sec(&self) -> i64 {
-        match self {
-            TargetExpiry::ZeroDTE => 86400,
-            TargetExpiry::OneDTE => 172800,
-            TargetExpiry::Weekly => 604800,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct OptionAuctionParams {
     pub max_iv_spread: f64,
     pub init_iv_spread: f64,
@@ -29,7 +13,7 @@ pub struct OptionAuctionParams {
     pub spot_name: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct SpotAuctionParams {
     pub max_spot_spread: f64,
     pub init_spot_spread: f64,
@@ -42,18 +26,24 @@ pub struct SpotAuctionParams {
     pub max_cash: BigDecimal,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct LRTCParams {
     pub subaccount_id: i64,
     pub currency: String,
     pub spot_name: String,
     pub cash_name: String,
-    pub expiry: TargetExpiry,
+    pub expiry_days: u64,
     pub target_delta: BigDecimal,
     pub max_delta: BigDecimal,
 
     pub option_auction_params: OptionAuctionParams,
     pub spot_auction_params: SpotAuctionParams,
+}
+
+impl LRTCParams {
+    pub fn expiry_sec(&self) -> i64 {
+        self.expiry_days as i64 * 86400
+    }
 }
 
 impl OptionAuctionParams {
