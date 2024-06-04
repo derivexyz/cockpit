@@ -37,5 +37,34 @@ Make sure to never commit the secretes to the repo! The `.env.keys.*` patterns i
 
 The parameters should use a secret string type.
 
+## 3. Build
 
+- `cargo build --release` to build the release binary
+- `cargo build` to build the debug binary
 
+## 4. Run CLI
+
+The CLI is one of the several apps built by the repo. It supports sending API requests to the Lyra Exchange.
+
+### Commands
+
+To run an API RPC request (e.g. sending an order or getting ticker), two approaches are supported:
+
+- Create a JSON file with `rpc_params.json` name and place the request parameters there. For example, to
+  call `public/get_ticker`, the following json will work:
+
+```json
+{
+  "instrument_name": "ETH-PERP"
+}
+```
+
+- Then call the CLI using `target/release/lyra-client rpc -m public/get_ticker -f rpc_params.json`
+- Alternatively the json string can be supplied via `--inline` or `-i`
+  parameter: `target/release/lyra-client rpc -m public/get_ticker -i '{"instrument_name": "ETH-USDC"}'`
+
+The CLI also supports printing orderbook for any instrument (even if not supported by the Lyra UI):
+
+- `target/release/lyra-client orderbook -i ETH-USDC`
+
+For more info: `target/release/lyra-client -h`.

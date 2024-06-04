@@ -107,7 +107,9 @@ impl CliRpc {
     pub async fn call(args: CliRpc) -> Result<()> {
         let params = args.params_to_value().await?;
         let client = WsClient::new_client().await?;
-        client.login().await?;
+        if args.method.starts_with("private") {
+            client.login().await?;
+        }
         let res = match args.method.as_str() {
             "private/order" => {
                 let order_args = serde_json::from_value::<OrderArgs>(params.clone())?;
