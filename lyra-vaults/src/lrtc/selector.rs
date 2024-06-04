@@ -80,16 +80,14 @@ pub async fn select_new_option(params: &LRTCParams) -> Result<String> {
     }
 }
 
-pub async fn maybe_select_from_positions(
-    params: &LRTCParams,
-    market: &MarketState,
-) -> Result<Option<String>> {
+/// Returns the option name from an existing position
+/// Expects the market state to be synced to the subaccount
+pub async fn maybe_select_from_positions(market: &MarketState) -> Result<Option<String>> {
     let reader = market.read().await;
     let position_names: Vec<String> = reader
         .iter_positions()
         .filter(|&p| {
             p.amount != BigDecimal::zero()
-                && p.instrument_name.starts_with(&params.currency)
                 && (p.instrument_name.ends_with("-C") || p.instrument_name.ends_with("-P"))
         })
         .map(|p| p.instrument_name.clone())

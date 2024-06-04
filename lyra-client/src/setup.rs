@@ -6,9 +6,7 @@ use log::info;
 pub async fn ensure_env() {
     let env_name = std::env::var("ENV").expect("ENV must be set");
     match env_name.as_str() {
-        "local" => std::env::set_var("ENV", "local"),
-        "staging" => std::env::set_var("ENV", "staging"),
-        "prod" => std::env::set_var("ENV", "prod"),
+        "staging" | "prod" => (),
         _ => panic!("Invalid env name"),
     }
 }
@@ -33,22 +31,13 @@ pub async fn ensure_owner() {
     }
 }
 
-pub async fn ensure_subaccount() {
-    let mut subaccount_str = std::env::var("SUBACCOUNT_ID");
-    if subaccount_str.is_err() {
-        info!("No subaccount in env, loading owner from AWS");
-        let env = std::env::var("ENV").expect("ENV must be set");
-        let name = format!("/subaccounts/{env}");
-        std::env::set_var("SUBACCOUNT_ID", get_secret(&name, None).await);
-    }
-}
-
 pub async fn setup_env() {
+    dotenv::from_filename(".env").expect("Failed to load .env file");
     ensure_env().await;
     let env_name = std::env::var("ENV").unwrap();
-    dotenv::from_filename(format!(".env.{env_name}")).expect("Failed to load .env file");
+    let env_file = format!(".env.{env_name}");
+    dotenv::from_filename(env_file).expect("Failed to load .env.{prod or staging} file");
     env_logger::builder().format_timestamp_millis().init();
     ensure_session_key().await;
     ensure_owner().await;
-    ensure_subaccount().await;
 }

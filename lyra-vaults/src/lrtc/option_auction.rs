@@ -1,7 +1,7 @@
 use crate::lrtc::auction::{LimitOrderAuction, OrderStrategy};
 use crate::lrtc::params::OptionAuctionParams;
 use anyhow::{Error, Result};
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
+use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive, Zero};
 use log::info;
 use lyra_client::orders::Direction;
 use lyra_utils::black76::OptionContract;
@@ -55,7 +55,8 @@ impl OrderStrategy for OptionAuctionParams {
                 return Err(Error::msg("Zero LRT position during option auction"));
             }
         };
-        let amount = amount.round(ticker.amount_step.fractional_digit_count());
+        let amount = amount
+            .with_scale_round(ticker.amount_step.fractional_digit_count(), RoundingMode::Down);
         if amount < ticker.minimum_amount.clone() {
             return Ok((Direction::Sell, BigDecimal::zero()));
         }

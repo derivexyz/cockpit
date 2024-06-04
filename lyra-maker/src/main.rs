@@ -82,7 +82,12 @@ pub async fn setup_ip_whitelist() -> Result<()> {
 }
 
 async fn run_ddh() -> Result<()> {
-    let subaccount_id: i64 = std::env::var("SUBACCOUNT_ID")?.parse()?;
+    // read subaccount id from os args provided to the run script
+    let subaccount_id: i64 =
+        std::env::args().nth(1).unwrap_or(std::env::var("SUBACCOUNT_ID")?).parse()?;
+    // set SUBACCOUNT_ID env variable
+    std::env::set_var("SUBACCOUNT_ID", subaccount_id.to_string());
+
     let currency = "ETH".to_string();
     let perps = vec![format!("{currency}-PERP")];
     let token = CancellationToken::new();

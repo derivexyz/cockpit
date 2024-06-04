@@ -31,7 +31,7 @@ impl LRTCExecutor {
         let market = new_market_state();
         sync_subaccount(market.clone(), params.subaccount_id, vec![]).await?;
 
-        let option_name = maybe_select_from_positions(&params, &market).await?;
+        let option_name = maybe_select_from_positions(&market).await?;
         info!("Current option position: {:?}", option_name);
 
         let reader = market.read().await;
@@ -39,7 +39,7 @@ impl LRTCExecutor {
         drop(reader);
 
         let cash_threshold = &params.spot_auction_params.max_cash;
-        let is_cash_within_threshold = cash_bal >= BigDecimal::zero() && &cash_bal < cash_threshold;
+        let is_cash_within_threshold = cash_bal >= -cash_threshold && &cash_bal < cash_threshold;
 
         if option_name.is_none() && is_cash_within_threshold {
             info!("Starting in Spot Only stage");
@@ -75,7 +75,7 @@ impl LRTCExecutor {
         params: LRTCParams,
         option_name: String,
     ) -> Result<LRTCExecutorStage> {
-        Ok(AwaitSettlement(LRTCAwaitSettlement { option_name }))
+        Ok(AwaitSettlement(LRTCAwaitSettlement::new(option_name).await?))
     }
 
     pub async fn new_option_stage(

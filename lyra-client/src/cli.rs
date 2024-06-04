@@ -1,14 +1,29 @@
-use crate::json_rpc::{http_rpc, WsClient, WsClientExt};
+use crate::json_rpc::{http_rpc, Notification, WsClient, WsClientExt};
 use crate::orders::OrderArgs;
 use anyhow::Result;
-use clap::Parser;
-use log::info;
+use clap::{Args, Parser, Subcommand};
+use log::{error, info};
+use orderbook_types::generated::channel_orderbook_instrument_name_group_depth::OrderbookInstrumentNameGroupDepthPublisherDataSchema;
 use orderbook_types::types::tickers::TickerResponse;
 use serde_json::{json, Value};
+pub type OrderbookData = OrderbookInstrumentNameGroupDepthPublisherDataSchema;
 
 /// A CLI for interacting with the Lyra API
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    Rpc(CliRpc),
+    Sub(CliSub),
+    Orderbook(CliOrderbook),
+}
+
+#[derive(Args, Debug)]
 pub struct CliRpc {
     /// The RPC method to call
     #[arg(short, long)]
@@ -16,6 +31,46 @@ pub struct CliRpc {
 
     #[clap(flatten)]
     pub params: ParamsOrInline,
+}
+
+#[derive(Args, Debug)]
+pub struct CliSub {}
+
+#[derive(Args, Debug)]
+pub struct CliOrderbook {
+    /// The instrument name to get the orderbook for
+    #[arg(short, long)]
+    pub instrument: String,
+}
+
+impl CliOrderbook {
+    pub async fn subscribe(&self) -> Result<()> {
+        info!("Starting market task");
+        let channels: Vec<String> = vec![format!("orderbook.{}.1.10", self.instrument)];
+        let client = WsClient::new_client().await?;
+        client
+            .subscribe(channels, |mut d: Notification<OrderbookData>| async move {
+                // print the orderbook in a nice format
+                let mut out = String::new();
+                out.push_str("\n~~~~~~~~~~~~~~~~~~~~\n");
+                for tick_v in d.params.data.asks.iter().rev() {
+                    let tick = tick_v[0].to_string();
+                    let tick = format!("{: <10}", tick);
+                    out.push_str(&format!("{} | {}\n", tick, tick_v[1]));
+                }
+                out.push_str("---------------------\n");
+                for tick_v in d.params.data.bids.iter() {
+                    let tick = tick_v[0].to_string();
+                    let tick = format!("{: <10}", tick);
+                    out.push_str(&format!("{} | {}\n", tick, tick_v[1]));
+                }
+                out.push_str("~~~~~~~~~~~~~~~~~~~~");
+                info!("{}", out);
+                Ok(())
+            })
+            .await?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, clap::Args)]
@@ -39,13 +94,21 @@ impl CliRpc {
         Ok(serde_json::from_str(&params)?)
     }
 
-    pub async fn call() -> Result<Value> {
-        let args = CliRpc::parse();
+    pub async fn execute() -> Result<()> {
+        let args = Cli::parse();
         info!("Parsed Request {:?}", args);
+        match args.command {
+            Command::Rpc(rpc) => Self::call(rpc).await,
+            Command::Sub(_) => Ok(()),
+            Command::Orderbook(ob) => ob.subscribe().await,
+        }
+    }
+
+    pub async fn call(args: CliRpc) -> Result<()> {
         let params = args.params_to_value().await?;
         let client = WsClient::new_client().await?;
         client.login().await?;
-        match args.method.as_str() {
+        let res = match args.method.as_str() {
             "private/order" => {
                 let order_args = serde_json::from_value::<OrderArgs>(params.clone())?;
                 let ticker = http_rpc::<_, TickerResponse>(
@@ -65,6 +128,11 @@ impl CliRpc {
                 }
             }
             _ => client.send_rpc::<Value, Value>(&args.method, params).await?.into_result(),
-        }
+        };
+        match res {
+            Ok(r) => info!("{}", serde_json::to_string_pretty(&r)?),
+            Err(e) => error!("Error: {:?}", e),
+        };
+        Ok(())
     }
 }
