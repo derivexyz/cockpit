@@ -22,6 +22,8 @@ async fn main() -> Result<()> {
     console_subscriber::init();
     let params = tokio::fs::read_to_string("./lyra-vaults/lrtc.json").await?;
     let params: LRTCParams = serde_json::from_str(&params)?;
+    std::env::set_var("SUBACCOUNT_ID", params.subaccount_id.to_string());
+
     let mut executor = LRTCExecutor::new(params).await?;
     let task_handle = tokio::spawn(async move { executor.run().await });
     let res = task_handle.await?;
