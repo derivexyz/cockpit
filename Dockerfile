@@ -26,8 +26,10 @@ RUN cargo build --release --target aarch64-unknown-linux-gnu
 FROM arm64v8/rust:slim as runtime
 RUN apt-get update && apt-get install libclang-dev -y
 WORKDIR /app
-COPY --from=builder /app/target/aarch64-unknown-linux-gnu/release/lyra-maker ./
+COPY --from=builder /app/target/aarch64-unknown-linux-gnu/release/lyra-vaults ./
+COPY --from=builder /app/target/aarch64-unknown-linux-gnu/release/lyra-client ./
 COPY --from=builder /app/.env* ./
+COPY --from=builder /app/params ./params
 
 CMD ["/bin/bash"]
 

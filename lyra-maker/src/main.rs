@@ -83,8 +83,10 @@ pub async fn setup_ip_whitelist() -> Result<()> {
 
 async fn run_ddh() -> Result<()> {
     // read subaccount id from os args provided to the run script
-    let subaccount_id: i64 =
-        std::env::args().nth(1).unwrap_or(std::env::var("SUBACCOUNT_ID")?).parse()?;
+    let subaccount_id: i64 = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| std::env::var("SUBACCOUNT_ID").unwrap())
+        .parse()?;
     // set SUBACCOUNT_ID env variable
     std::env::set_var("SUBACCOUNT_ID", subaccount_id.to_string());
 

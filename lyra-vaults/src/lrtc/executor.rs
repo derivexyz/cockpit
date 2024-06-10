@@ -4,9 +4,7 @@ use crate::lrtc::selector::{maybe_select_from_positions, select_new_option};
 use crate::lrtc::stages::LRTCExecutorStage::{
     AwaitSettlement, OptionAuction, SpotAuction, SpotOnly,
 };
-use crate::lrtc::stages::{
-    LRTCAwaitSettlement, LRTCExecutorStage, LRTCSpotAuction, LRTCSpotOnly, LRTCStage,
-};
+use crate::lrtc::stages::{LRTCAwaitSettlement, LRTCExecutorStage, LRTCSpotOnly, LRTCStage};
 use crate::market::new_market_state;
 use crate::shared::{fetch_ticker, sync_subaccount};
 use anyhow::Result;
@@ -75,7 +73,7 @@ impl LRTCExecutor {
         params: LRTCParams,
         option_name: String,
     ) -> Result<LRTCExecutorStage> {
-        Ok(AwaitSettlement(LRTCAwaitSettlement::new(option_name).await?))
+        Ok(AwaitSettlement(LRTCAwaitSettlement::new(params, option_name).await?))
     }
 
     pub async fn new_option_stage(

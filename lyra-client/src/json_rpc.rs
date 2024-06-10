@@ -490,7 +490,7 @@ where
     let root = std::env::var("HTTP_ADDRESS").expect("HTTP_ADDRESS must be set");
     let url = format!("{root}/{method}");
     let client = Client::new();
-    info!("HTTP Request: {} with {:?}", url, params);
+    info!("HTTP Request: {} with {:?} and headers {:?}", url, params, headers);
     let response = client.post(url).json(&params).headers(headers).send().await?;
     let response_text = response.text().await?;
     debug!("HTTP Response: {response_text}");

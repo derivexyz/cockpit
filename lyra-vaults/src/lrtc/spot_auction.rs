@@ -2,7 +2,7 @@ use crate::lrtc::auction::{LimitOrderAuction, OrderStrategy};
 use crate::lrtc::params::SpotAuctionParams;
 use anyhow::{Error, Result};
 use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive, Zero};
-use log::info;
+use log::{debug, info};
 use lyra_client::orders::Direction;
 use lyra_utils::black76::OptionContract;
 use orderbook_types::types::tickers::OptionType;
@@ -31,7 +31,7 @@ impl OrderStrategy for SpotAuctionParams {
         let spread = self.get_spot_spread(auction.start_timestamp_sec);
         let spot = ticker.mark_price.to_f64().ok_or(Error::msg("spot cast to f64 failed"))?;
 
-        info!("SpotAuction spot, spread: {}, {}", spot, spread);
+        debug!("SpotAuction spot, spread: {}, {}", spot, spread);
 
         let price = match direction {
             Direction::Buy => spot * (1.0 + spread),

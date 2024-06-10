@@ -38,9 +38,6 @@ pub async fn setup_env() {
     let env_name = std::env::var("ENV").unwrap();
     let env_consts = format!(".env.constants.{env_name}");
     let env_keys = format!(".env.keys.{env_name}");
-    println!("{}", env_consts);
-    println!("{}", env_keys);
-
     dotenv::from_filename(env_consts).expect("Failed to load .env.constants.{} file");
     let key_loaded = dotenv::from_filename(env_keys);
     if key_loaded.is_err() {

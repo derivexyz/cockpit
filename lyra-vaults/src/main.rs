@@ -20,7 +20,7 @@ use tokio::{join, select, try_join};
 async fn main() -> Result<()> {
     setup_env().await;
     console_subscriber::init();
-    let params = tokio::fs::read_to_string("./lyra-vaults/lrtc.json").await?;
+    let params = tokio::fs::read_to_string("./params/lrtc.json").await?;
     let params: LRTCParams = serde_json::from_str(&params)?;
     std::env::set_var("SUBACCOUNT_ID", params.subaccount_id.to_string());
 

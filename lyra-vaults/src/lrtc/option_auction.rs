@@ -2,7 +2,7 @@ use crate::lrtc::auction::{LimitOrderAuction, OrderStrategy};
 use crate::lrtc::params::OptionAuctionParams;
 use anyhow::{Error, Result};
 use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive, Zero};
-use log::info;
+use log::{debug, info};
 use lyra_client::orders::Direction;
 use lyra_utils::black76::OptionContract;
 use orderbook_types::types::tickers::OptionType;
@@ -27,7 +27,7 @@ impl OrderStrategy for OptionAuctionParams {
 
         let fwd = pricing.forward_price.to_f64().ok_or(Error::msg("fwd cast to f64 failed"))?;
 
-        info!("OptionAuction mark_iv, spread, iv, fwd: {}, {}, {}, {}", mark_iv, spread, iv, fwd);
+        debug!("OptionAuction mark_iv, spread, iv, fwd: {}, {}, {}, {}", mark_iv, spread, iv, fwd);
 
         let price = contract.price(fwd, iv);
         let price = BigDecimal::from_f64(price)

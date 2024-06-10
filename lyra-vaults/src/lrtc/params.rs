@@ -35,6 +35,7 @@ pub struct LRTCParams {
     pub expiry_days: u64,
     pub target_delta: BigDecimal,
     pub max_delta: BigDecimal,
+    pub auction_delay_min: i64, // Delay after expiry before starting auctions
 
     pub option_auction_params: OptionAuctionParams,
     pub spot_auction_params: SpotAuctionParams,
