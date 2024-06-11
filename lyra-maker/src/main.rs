@@ -11,12 +11,12 @@ use ethers::types::spoof::state;
 use futures::future::join_all;
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
-use lyra_client::auth::{load_signer, sign_auth_header, sign_auth_msg};
-use lyra_client::json_rpc::{http_rpc, Response, WsClient, WsClientExt};
-use lyra_client::orders::{get_order_signature, OrderArgs};
-use lyra_client::orders::{
+use lyra_client::actions::OrderArgs;
+use lyra_client::actions::{
     Direction, LiquidityRole, OrderParams, OrderResponse, OrderStatus, OrderType, TimeInForce,
 };
+use lyra_client::auth::{load_signer, sign_auth_header, sign_auth_msg};
+use lyra_client::json_rpc::{http_rpc, Response, WsClient, WsClientExt};
 use market::tasks::private::start_subaccount;
 use market::tasks::public::{start_market, start_option_tickers};
 use reqwest::{header::HeaderMap, header::HeaderValue, Client};

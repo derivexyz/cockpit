@@ -1,11 +1,17 @@
+use crate::actions::OrderArgs;
 use crate::json_rpc::{http_rpc, Notification, WsClient, WsClientExt};
-use crate::orders::OrderArgs;
 use anyhow::Result;
+use bigdecimal::BigDecimal;
 use clap::{Args, Parser, Subcommand};
 use log::{error, info};
 use orderbook_types::generated::channel_orderbook_instrument_name_group_depth::OrderbookInstrumentNameGroupDepthPublisherDataSchema;
+use orderbook_types::generated::private_get_subaccount::{
+    PrivateGetSubaccount, PrivateGetSubaccountParamsSchema, PrivateGetSubaccountResponseSchema,
+};
+use orderbook_types::generated::public_login::PublicLoginResponseSchema;
 use orderbook_types::types::tickers::TickerResponse;
 use serde_json::{json, Value};
+
 pub type OrderbookData = OrderbookInstrumentNameGroupDepthPublisherDataSchema;
 
 /// A CLI for interacting with the Lyra API
@@ -34,7 +40,28 @@ pub struct CliRpc {
 }
 
 #[derive(Args, Debug)]
-pub struct CliSub {}
+pub struct CliSub {
+    pub channels: String,
+}
+
+impl CliSub {
+    pub async fn subscribe(&self) -> Result<()> {
+        info!("Starting market task");
+        let channels = serde_json::from_str::<Vec<String>>(&self.channels)?;
+        let client = WsClient::new_client().await?;
+        let login_res = client.login().await;
+        if let Err(e) = login_res {
+            error!("Error logging in: {:?}", e);
+        }
+        client
+            .subscribe(channels, |d: Notification<Value>| async move {
+                info!("{}", serde_json::to_string_pretty(&d)?);
+                Ok(())
+            })
+            .await?;
+        Ok(())
+    }
+}
 
 #[derive(Args, Debug)]
 pub struct CliOrderbook {
@@ -99,7 +126,7 @@ impl CliRpc {
         info!("Parsed Request {:?}", args);
         match args.command {
             Command::Rpc(rpc) => Self::call(rpc).await,
-            Command::Sub(_) => Ok(()),
+            Command::Sub(sub) => sub.subscribe().await,
             Command::Orderbook(ob) => ob.subscribe().await,
         }
     }
@@ -124,6 +151,37 @@ impl CliRpc {
                 let subaccount_id: i64 = params["subaccount_id"].as_i64().unwrap();
                 let response =
                     client.send_order(&ticker, subaccount_id, order_args).await?.into_result();
+                match response {
+                    Ok(response) => Ok(serde_json::to_value(response)?),
+                    Err(response) => Err(response),
+                }
+            }
+            "private/deposit" => {
+                let subaccount_id: i64 = params["subaccount_id"].as_i64().unwrap();
+                let amount: BigDecimal = params["amount"].as_str().unwrap().parse()?;
+                let asset_name: String = params["asset_name"].as_str().unwrap().to_string();
+                let subacc = client
+                    .send_rpc::<_, PrivateGetSubaccountResponseSchema>(
+                        "private/get_subaccount",
+                        PrivateGetSubaccountParamsSchema { subaccount_id },
+                    )
+                    .await?
+                    .into_result()?;
+                let response = client
+                    .deposit(subaccount_id, amount, asset_name, subacc.result.margin_type)
+                    .await?
+                    .into_result();
+                match response {
+                    Ok(response) => Ok(serde_json::to_value(response)?),
+                    Err(response) => Err(response),
+                }
+            }
+            "private/withdraw" => {
+                let subaccount_id: i64 = params["subaccount_id"].as_i64().unwrap();
+                let amount: BigDecimal = params["amount"].as_str().unwrap().parse()?;
+                let asset_name: String = params["asset_name"].as_str().unwrap().to_string();
+                let response =
+                    client.withdraw(subaccount_id, amount, asset_name).await?.into_result();
                 match response {
                     Ok(response) => Ok(serde_json::to_value(response)?),
                     Err(response) => Err(response),

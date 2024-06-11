@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use lyra_client::orders::{Direction, OrderResponse, OrderStatus};
+use lyra_client::actions::{Direction, OrderResponse, OrderStatus};
 use orderbook_types::generated::channel_orderbook_instrument_name_group_depth::OrderbookInstrumentNameGroupDepthPublisherDataSchema;
 use orderbook_types::types::tickers::result::InstrumentTicker;
 

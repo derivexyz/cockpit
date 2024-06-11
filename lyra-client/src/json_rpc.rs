@@ -1,4 +1,5 @@
 use anyhow::{Error, Result};
+use bigdecimal::BigDecimal;
 use ethers::prelude::{LocalWallet, Signer};
 use ethers::utils::hex;
 use futures_util::{FutureExt, SinkExt, StreamExt};
@@ -25,17 +26,23 @@ use orderbook_types::generated::private_cancel::{
 use orderbook_types::generated::private_cancel_all::{
     PrivateCancelAll, PrivateCancelAllParamsSchema, PrivateCancelAllResponseSchema,
 };
+use orderbook_types::generated::private_deposit::PrivateDepositResponseSchema;
+use orderbook_types::generated::private_get_subaccount::MarginType;
 use orderbook_types::generated::private_set_cancel_on_disconnect::{
     PrivateSetCancelOnDisconnectParamsSchema, PrivateSetCancelOnDisconnectResponseSchema,
 };
+use orderbook_types::generated::private_withdraw::PrivateWithdrawResponseSchema;
 use orderbook_types::generated::public_login::PublicLoginResponseSchema;
 use orderbook_types::generated::subscribe::{SubscribeParamsSchema, SubscribeResponseSchema};
 use orderbook_types::types::orders::{ReplaceResponse, SendOrderResponse};
 use orderbook_types::types::tickers::InstrumentTicker;
 use orderbook_types::types::RPCErrorResponse;
 
+use crate::actions::{
+    new_deposit_params, new_order_params, new_replace_params, new_withdraw_params, DepositParams,
+    OrderArgs, OrderParams, ReplaceParams, WithdrawParams,
+};
 use crate::auth::{load_signer, sign_auth_msg};
-use crate::orders::{new_order_params, new_replace_params, OrderArgs, OrderParams, ReplaceParams};
 
 type SocketError = tungstenite::error::Error;
 
@@ -99,6 +106,19 @@ where
     async fn enable_cancel_on_disconnect(
         &self,
     ) -> Result<Response<PrivateSetCancelOnDisconnectResponseSchema>>;
+    async fn deposit(
+        &self,
+        subaccount_id: i64,
+        amount: BigDecimal,
+        asset_name: String,
+        margin_type: MarginType,
+    ) -> Result<Response<PrivateDepositResponseSchema>>;
+    async fn withdraw(
+        &self,
+        subaccount_id: i64,
+        amount: BigDecimal,
+        asset_name: String,
+    ) -> Result<Response<PrivateWithdrawResponseSchema>>;
     async fn send_order(
         &self,
         ticker: &InstrumentTicker,
@@ -189,6 +209,28 @@ impl WsClientExt for WsClient {
         )
         .await
     }
+    async fn deposit(
+        &self,
+        subaccount_id: i64,
+        amount: BigDecimal,
+        asset_name: String,
+        margin_type: MarginType,
+    ) -> Result<Response<PrivateDepositResponseSchema>> {
+        let deposit_params =
+            WsClientState::new_signed_deposit(self, subaccount_id, amount, asset_name, margin_type)
+                .await?;
+        self.send_rpc("private/deposit", deposit_params).await
+    }
+    async fn withdraw(
+        &self,
+        subaccount_id: i64,
+        amount: BigDecimal,
+        asset_name: String,
+    ) -> Result<Response<PrivateWithdrawResponseSchema>> {
+        let withdraw_params =
+            WsClientState::new_signed_withdraw(self, subaccount_id, amount, asset_name).await?;
+        self.send_rpc("private/withdraw", withdraw_params).await
+    }
     async fn send_order(
         &self,
         ticker: &InstrumentTicker,
@@ -268,6 +310,35 @@ impl WsClientState {
     async fn set_owner(client: &WsClient, owner: String) {
         let mut client_guard = client.lock().await;
         client_guard.owner = owner;
+    }
+
+    async fn new_signed_deposit(
+        client: &WsClient,
+        subaccount_id: i64,
+        amount: BigDecimal,
+        asset_name: String,
+        margin_type: MarginType,
+    ) -> Result<DepositParams> {
+        let client_guard = client.lock().await;
+        if let Some(signer) = &client_guard.signer {
+            Ok(new_deposit_params(signer, subaccount_id, amount, asset_name, margin_type)?)
+        } else {
+            Err(Error::msg("Not logged in or signer not set"))
+        }
+    }
+
+    async fn new_signed_withdraw(
+        client: &WsClient,
+        subaccount_id: i64,
+        amount: BigDecimal,
+        asset_name: String,
+    ) -> Result<WithdrawParams> {
+        let client_guard = client.lock().await;
+        if let Some(signer) = &client_guard.signer {
+            Ok(new_withdraw_params(signer, subaccount_id, amount, asset_name)?)
+        } else {
+            Err(Error::msg("Not logged in or signer not set"))
+        }
     }
 
     async fn new_signed_order(

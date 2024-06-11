@@ -3,7 +3,7 @@ use crate::lrtc::params::SpotAuctionParams;
 use anyhow::{Error, Result};
 use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive, Zero};
 use log::{debug, info};
-use lyra_client::orders::Direction;
+use lyra_client::actions::Direction;
 use lyra_utils::black76::OptionContract;
 use orderbook_types::types::tickers::OptionType;
 use std::cmp::Ordering;
