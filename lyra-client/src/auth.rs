@@ -7,8 +7,12 @@ use reqwest::header::HeaderMap;
 use serde_json::{json, Value};
 
 pub async fn load_signer() -> LocalWallet {
+    load_signer_by_name("SESSION_PRIVATE_KEY").await
+}
+
+pub async fn load_signer_by_name(name: &str) -> LocalWallet {
     info!("Loading signer from env");
-    let mut pk_str = std::env::var("SESSION_PRIVATE_KEY").expect("SESSION_PRIVATE_KEY");
+    let mut pk_str = std::env::var(name).unwrap();
     let wallet = pk_str.parse::<LocalWallet>().unwrap();
     wallet
 }

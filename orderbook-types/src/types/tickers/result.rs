@@ -214,7 +214,8 @@ impl From<&TickerNotificationData> for TickerNotificationData {
 
 impl InstrumentTicker {
     pub fn get_max_fee(&self) -> BigDecimal {
-        BigDecimal::from(3) * &self.taker_fee_rate * &self.index_price
+        let max_base_fee = &self.base_fee / &self.minimum_amount;
+        BigDecimal::from(3) * &self.taker_fee_rate * &self.index_price + max_base_fee
     }
     pub fn get_unit_fee(&self, role: LiquidityRole) -> BigDecimal {
         match role {

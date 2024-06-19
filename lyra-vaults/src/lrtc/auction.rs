@@ -3,14 +3,17 @@ use crate::lrtc::selector::select_new_option;
 use crate::lrtc::stages::LRTCStage;
 use crate::market::{new_market_state, MarketState};
 use crate::shared::{subscribe_subaccount, subscribe_tickers, sync_subaccount, TickerInterval};
+use crate::web3::actions::{get_tsa_contract, sign_order, ProviderWithSigner, TSA};
 use anyhow::{Error, Result};
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
 use core::fmt;
+use ethers::prelude::Middleware;
 use log::{info, warn};
 use lyra_client::actions::{Direction, OrderArgs, OrderType, TimeInForce};
 use lyra_client::json_rpc::{WsClient, WsClientExt};
 use lyra_utils::black76::OptionContract;
 use orderbook_types::types::tickers::OptionType;
+use serde_json::Value;
 use std::fmt::Debug;
 use std::str::FromStr;
 use tokio::select;
@@ -30,6 +33,7 @@ pub struct LimitOrderAuction {
     pub subaccount_id: i64,
     pub market: MarketState,
     pub client: WsClient,
+    pub tsa: TSA<ProviderWithSigner>,
     pub start_timestamp_sec: i64,
 
     // Params
@@ -45,17 +49,19 @@ impl LimitOrderAuction {
         price_change_tolerance: BigDecimal,
     ) -> Result<Self> {
         info!("LimitOrderAuction selected option: {}", instrument_name);
+        let vault_name = std::env::var("VAULT_NAME").unwrap();
         let subaccount_id = std::env::var("SUBACCOUNT_ID").unwrap().parse().unwrap();
         let start_timestamp_sec = chrono::Utc::now().timestamp();
         let market = new_market_state();
         let client = WsClient::new_client().await?;
         client.login().await?;
         client.enable_cancel_on_disconnect().await?;
-
+        let tsa = get_tsa_contract(&vault_name).await?;
         Ok(LimitOrderAuction {
             subaccount_id,
             market,
             client,
+            tsa,
             start_timestamp_sec,
             instrument_name,
             auction_sec,
@@ -174,7 +180,6 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
     async fn cancel_all(&self) -> Result<()> {
         self.auction.client.cancel_all(self.auction.subaccount_id).await?.into_result()?;
         Ok(())
-        // todo on-chain cancel signature
     }
 
     async fn needs_update(&self, desired_price: &BigDecimal) -> Result<bool> {
@@ -216,11 +221,18 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
             .ok_or(Error::msg("Ticker not found"))?
             .clone();
         drop(reader);
-        self.auction
-            .client
-            .send_order(&ticker, self.auction.subaccount_id, order_args)
-            .await?
-            .into_result()?;
+
+        let provider = self.auction.tsa.client();
+        let signer = provider.inner().signer();
+        let action_data = sign_order(&self.auction.tsa, &ticker, &order_args).await?;
+        let order_params = action_data.to_order_params(
+            &signer,
+            &ticker,
+            self.auction.subaccount_id,
+            order_args,
+        )?;
+        let res = self.auction.client.send_rpc::<_, Value>("private/order", order_params).await?;
+        res.into_result()?;
         Ok(amount)
     }
 }

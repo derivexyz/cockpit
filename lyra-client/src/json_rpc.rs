@@ -97,6 +97,8 @@ where
     async fn get_signer(&self) -> String;
     async fn close(&self) -> Result<()>;
     async fn ping(&self) -> Result<()>;
+    /// A task that will forever send ping messages to the server at a given interval.
+    /// Use with `select!` if you'd like to be able to cancel it.
     async fn ping_interval(&self, interval_sec: u64) -> Result<()>;
     async fn send_rpc<P, R>(&self, method: &str, params: P) -> Result<Response<R>>
     where

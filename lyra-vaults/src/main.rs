@@ -3,6 +3,7 @@ extern crate core;
 mod lrtc;
 mod market;
 mod shared;
+mod web3;
 
 use crate::lrtc::executor::LRTCExecutor;
 use crate::lrtc::stages::LRTCStage;
@@ -19,10 +20,13 @@ use tokio::{join, select, try_join};
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
     setup_env().await;
-    console_subscriber::init();
-    let params = tokio::fs::read_to_string("./params/lrtc.json").await?;
+    // read json name from cmd input
+    let args: Vec<String> = std::env::args().collect();
+    let json_name = args.get(1).ok_or(Error::msg("No json name provided"))?;
+    let params = tokio::fs::read_to_string(format!("./params/{json_name}.json")).await?;
     let params: LRTCParams = serde_json::from_str(&params)?;
     std::env::set_var("SUBACCOUNT_ID", params.subaccount_id.to_string());
+    std::env::set_var("VAULT_NAME", params.vault_name.clone());
 
     let mut executor = LRTCExecutor::new(params).await?;
     let task_handle = tokio::spawn(async move { executor.run().await });
@@ -30,5 +34,7 @@ async fn main() -> Result<()> {
     if let Err(e) = res {
         error!("Executor failed: {:?}", e);
     }
+
+    // web3::actions::test_deposit().await?;
     Ok(())
 }

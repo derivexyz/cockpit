@@ -22,11 +22,7 @@ pub async fn select_new_option(params: &LRTCParams) -> Result<String> {
     let now = chrono::Utc::now().timestamp();
     let options_res = http_rpc::<_, InstrumentsResponse>(
         "public/get_instruments",
-        json!({
-            "currency": params.currency,
-            "instrument_type": "option",
-            "expired": false,
-        }),
+        json!({"currency": params.currency, "instrument_type": "option","expired": false}),
         None,
     )
     .await?

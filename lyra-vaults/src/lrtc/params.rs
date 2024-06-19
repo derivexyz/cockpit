@@ -28,10 +28,11 @@ pub struct SpotAuctionParams {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LRTCParams {
-    pub subaccount_id: i64,
-    pub currency: String,
-    pub spot_name: String,
-    pub cash_name: String,
+    pub vault_name: String, // used as prefix for env vars, e.g. {vault_name}_TSA_ADDRESS
+    pub subaccount_id: i64, // Subaccount ID for the vault
+    pub currency: String,   // Currency of the options (e.g. ETH)
+    pub spot_name: String,  // Spot asset name as in the orderbook API
+    pub cash_name: String,  // Cash asset name as in the orderbook API
     pub expiry_days: u64,
     pub target_delta: BigDecimal,
     pub max_delta: BigDecimal,

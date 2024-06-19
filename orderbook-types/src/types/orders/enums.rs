@@ -1,8 +1,8 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
-use serde::{Deserialize, Serialize};
 use bigdecimal;
 use bigdecimal::BigDecimal;
+use serde::{Deserialize, Serialize};
 use uuid;
 ///If cancelled, reason behind order cancellation
 ///
@@ -28,18 +28,7 @@ use uuid;
 }*/
 /// ```
 /// </details>
-#[derive(
-Clone,
-Copy,
-Debug,
-Deserialize,
-Eq,
-Hash,
-Ord,
-PartialEq,
-PartialOrd,
-Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum CancelReason {
     #[serde(rename = "")]
     X,
@@ -135,18 +124,7 @@ impl std::convert::TryFrom<String> for CancelReason {
 }*/
 /// ```
 /// </details>
-#[derive(
-Clone,
-Copy,
-Debug,
-Deserialize,
-Eq,
-Hash,
-Ord,
-PartialEq,
-PartialOrd,
-Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum Direction {
     #[serde(rename = "buy")]
     Buy,
@@ -165,6 +143,12 @@ impl Direction {
         match self {
             Self::Buy => BigDecimal::from(1),
             Self::Sell => BigDecimal::from(-1),
+        }
+    }
+    pub fn is_bid(&self) -> bool {
+        match self {
+            Self::Buy => true,
+            Self::Sell => false,
         }
     }
 }
@@ -225,18 +209,7 @@ impl std::fmt::Display for Direction {
 }*/
 /// ```
 /// </details>
-#[derive(
-Clone,
-Copy,
-Debug,
-Deserialize,
-Eq,
-Hash,
-Ord,
-PartialEq,
-PartialOrd,
-Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum LiquidityRole {
     #[serde(rename = "maker")]
     Maker,
@@ -303,18 +276,7 @@ impl std::convert::TryFrom<String> for LiquidityRole {
 }*/
 /// ```
 /// </details>
-#[derive(
-Clone,
-Copy,
-Debug,
-Deserialize,
-Eq,
-Hash,
-Ord,
-PartialEq,
-PartialOrd,
-Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum OrderStatus {
     #[serde(rename = "open")]
     Open,
@@ -390,18 +352,7 @@ impl std::convert::TryFrom<String> for OrderStatus {
 }*/
 /// ```
 /// </details>
-#[derive(
-Clone,
-Copy,
-Debug,
-Deserialize,
-Eq,
-Hash,
-Ord,
-PartialEq,
-PartialOrd,
-Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum OrderType {
     #[serde(rename = "limit")]
     Limit,
@@ -468,18 +419,7 @@ impl std::convert::TryFrom<String> for OrderType {
 }*/
 /// ```
 /// </details>
-#[derive(
-Clone,
-Copy,
-Debug,
-Deserialize,
-Eq,
-Hash,
-Ord,
-PartialEq,
-PartialOrd,
-Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum TimeInForce {
     #[serde(rename = "gtc")]
     Gtc,
@@ -555,18 +495,7 @@ impl std::convert::TryFrom<String> for TimeInForce {
 }*/
 /// ```
 /// </details>
-#[derive(
-Clone,
-Copy,
-Debug,
-Deserialize,
-Eq,
-Hash,
-Ord,
-PartialEq,
-PartialOrd,
-Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum TxStatus {
     #[serde(rename = "requested")]
     Requested,
@@ -628,9 +557,9 @@ impl std::convert::TryFrom<String> for TxStatus {
 }
 pub mod defaults {
     pub(super) fn default_u64<T, const V: u64>() -> T
-        where
-            T: std::convert::TryFrom<u64>,
-            <T as std::convert::TryFrom<u64>>::Error: std::fmt::Debug,
+    where
+        T: std::convert::TryFrom<u64>,
+        <T as std::convert::TryFrom<u64>>::Error: std::fmt::Debug,
     {
         T::try_from(V).unwrap()
     }

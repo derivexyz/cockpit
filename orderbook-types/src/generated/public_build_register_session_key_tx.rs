@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
-use serde::{Deserialize, Serialize};
 use bigdecimal;
+use serde::{Deserialize, Serialize};
 use uuid;
 ///Build a signable transaction params dictionary.
 ///
@@ -21,17 +21,14 @@ use uuid;
 /// ```
 /// </details>
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PublicBuildRegisterSessionKeyTx(
-    pub PublicBuildRegisterSessionKeyTxJsonrpcSchema,
-);
+pub struct PublicBuildRegisterSessionKeyTx(pub PublicBuildRegisterSessionKeyTxJsonrpcSchema);
 impl std::ops::Deref for PublicBuildRegisterSessionKeyTx {
     type Target = PublicBuildRegisterSessionKeyTxJsonrpcSchema;
     fn deref(&self) -> &PublicBuildRegisterSessionKeyTxJsonrpcSchema {
         &self.0
     }
 }
-impl From<PublicBuildRegisterSessionKeyTx>
-for PublicBuildRegisterSessionKeyTxJsonrpcSchema {
+impl From<PublicBuildRegisterSessionKeyTx> for PublicBuildRegisterSessionKeyTxJsonrpcSchema {
     fn from(value: PublicBuildRegisterSessionKeyTx) -> Self {
         value.0
     }
@@ -41,8 +38,7 @@ impl From<&PublicBuildRegisterSessionKeyTx> for PublicBuildRegisterSessionKeyTx 
         value.clone()
     }
 }
-impl From<PublicBuildRegisterSessionKeyTxJsonrpcSchema>
-for PublicBuildRegisterSessionKeyTx {
+impl From<PublicBuildRegisterSessionKeyTxJsonrpcSchema> for PublicBuildRegisterSessionKeyTx {
     fn from(value: PublicBuildRegisterSessionKeyTxJsonrpcSchema) -> Self {
         Self(value)
     }
@@ -81,7 +77,8 @@ pub struct PublicBuildRegisterSessionKeyTxJsonrpcSchema {
     pub response: PublicBuildRegisterSessionKeyTxResponseSchema,
 }
 impl From<&PublicBuildRegisterSessionKeyTxJsonrpcSchema>
-for PublicBuildRegisterSessionKeyTxJsonrpcSchema {
+    for PublicBuildRegisterSessionKeyTxJsonrpcSchema
+{
     fn from(value: &PublicBuildRegisterSessionKeyTxJsonrpcSchema) -> Self {
         value.clone()
     }
@@ -152,7 +149,8 @@ pub struct PublicBuildRegisterSessionKeyTxParamsSchema {
     pub wallet: String,
 }
 impl From<&PublicBuildRegisterSessionKeyTxParamsSchema>
-for PublicBuildRegisterSessionKeyTxParamsSchema {
+    for PublicBuildRegisterSessionKeyTxParamsSchema
+{
     fn from(value: &PublicBuildRegisterSessionKeyTxParamsSchema) -> Self {
         value.clone()
     }
@@ -205,7 +203,8 @@ pub struct PublicBuildRegisterSessionKeyTxRequestSchema {
     pub params: PublicBuildRegisterSessionKeyTxParamsSchema,
 }
 impl From<&PublicBuildRegisterSessionKeyTxRequestSchema>
-for PublicBuildRegisterSessionKeyTxRequestSchema {
+    for PublicBuildRegisterSessionKeyTxRequestSchema
+{
     fn from(value: &PublicBuildRegisterSessionKeyTxRequestSchema) -> Self {
         value.clone()
     }
@@ -236,7 +235,8 @@ pub enum PublicBuildRegisterSessionKeyTxRequestSchemaId {
     Variant1(i64),
 }
 impl From<&PublicBuildRegisterSessionKeyTxRequestSchemaId>
-for PublicBuildRegisterSessionKeyTxRequestSchemaId {
+    for PublicBuildRegisterSessionKeyTxRequestSchemaId
+{
     fn from(value: &PublicBuildRegisterSessionKeyTxRequestSchemaId) -> Self {
         value.clone()
     }
@@ -327,7 +327,8 @@ pub struct PublicBuildRegisterSessionKeyTxResponseSchema {
     pub result: PublicBuildRegisterSessionKeyTxResultSchema,
 }
 impl From<&PublicBuildRegisterSessionKeyTxResponseSchema>
-for PublicBuildRegisterSessionKeyTxResponseSchema {
+    for PublicBuildRegisterSessionKeyTxResponseSchema
+{
     fn from(value: &PublicBuildRegisterSessionKeyTxResponseSchema) -> Self {
         value.clone()
     }
@@ -358,7 +359,8 @@ pub enum PublicBuildRegisterSessionKeyTxResponseSchemaId {
     Variant1(i64),
 }
 impl From<&PublicBuildRegisterSessionKeyTxResponseSchemaId>
-for PublicBuildRegisterSessionKeyTxResponseSchemaId {
+    for PublicBuildRegisterSessionKeyTxResponseSchemaId
+{
     fn from(value: &PublicBuildRegisterSessionKeyTxResponseSchemaId) -> Self {
         value.clone()
     }
@@ -419,7 +421,7 @@ impl From<i64> for PublicBuildRegisterSessionKeyTxResponseSchemaId {
   "properties": {
     "tx_params": {
       "title": "tx_params",
-      "description": "Transaction params in dictionary form, same as `TxParams` in `web3.py`",
+      "description": "Transaction params in dictionary form, same as `TxParams` in `actions.py`",
       "type": "object",
       "additionalProperties": {}
     }
@@ -431,11 +433,12 @@ impl From<i64> for PublicBuildRegisterSessionKeyTxResponseSchemaId {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 
 pub struct PublicBuildRegisterSessionKeyTxResultSchema {
-    ///Transaction params in dictionary form, same as `TxParams` in `web3.py`
+    ///Transaction params in dictionary form, same as `TxParams` in `actions.py`
     pub tx_params: serde_json::Map<String, serde_json::Value>,
 }
 impl From<&PublicBuildRegisterSessionKeyTxResultSchema>
-for PublicBuildRegisterSessionKeyTxResultSchema {
+    for PublicBuildRegisterSessionKeyTxResultSchema
+{
     fn from(value: &PublicBuildRegisterSessionKeyTxResultSchema) -> Self {
         value.clone()
     }
