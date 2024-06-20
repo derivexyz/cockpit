@@ -1,7 +1,8 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
-use serde::{Deserialize, Serialize};
 use bigdecimal;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use uuid;
 ///Used for getting a transaction by its transaction id
 ///
@@ -311,8 +312,7 @@ pub enum PublicGetTransactionResponseSchemaId {
     Variant0(String),
     Variant1(i64),
 }
-impl From<&PublicGetTransactionResponseSchemaId>
-for PublicGetTransactionResponseSchemaId {
+impl From<&PublicGetTransactionResponseSchemaId> for PublicGetTransactionResponseSchemaId {
     fn from(value: &PublicGetTransactionResponseSchemaId) -> Self {
         value.clone()
     }
@@ -416,9 +416,9 @@ impl From<i64> for PublicGetTransactionResponseSchemaId {
 
 pub struct PublicGetTransactionResultSchema {
     ///Data used to create transaction
-    pub data: String,
+    pub data: Value,
     ///Error log if failed tx
-    pub error_log: Option<String>,
+    pub error_log: Option<Value>,
     ///Status of the transaction
     pub status: Status,
     ///Transaction hash of a pending tx
@@ -444,22 +444,12 @@ impl From<&PublicGetTransactionResultSchema> for PublicGetTransactionResultSchem
     "settled",
     "reverted",
     "ignored"
+    "timed_out"
   ]
 }*/
 /// ```
 /// </details>
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Deserialize,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum Status {
     #[serde(rename = "requested")]
     Requested,
@@ -471,6 +461,8 @@ pub enum Status {
     Reverted,
     #[serde(rename = "ignored")]
     Ignored,
+    #[serde(rename = "timed_out")]
+    TimedOut,
 }
 impl From<&Status> for Status {
     fn from(value: &Status) -> Self {
@@ -485,6 +477,7 @@ impl ToString for Status {
             Self::Settled => "settled".to_string(),
             Self::Reverted => "reverted".to_string(),
             Self::Ignored => "ignored".to_string(),
+            Self::TimedOut => "timed_out".to_string(),
         }
     }
 }
@@ -497,6 +490,7 @@ impl std::str::FromStr for Status {
             "settled" => Ok(Self::Settled),
             "reverted" => Ok(Self::Reverted),
             "ignored" => Ok(Self::Ignored),
+            "timed_out" => Ok(Self::TimedOut),
             _ => Err("invalid value"),
         }
     }

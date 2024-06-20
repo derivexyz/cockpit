@@ -1428,13 +1428,13 @@
       {
         "name": "depositId",
         "type": "uint256",
-        "indexed": false,
+        "indexed": true,
         "internalType": "uint256"
       },
       {
         "name": "recipient",
         "type": "address",
-        "indexed": false,
+        "indexed": true,
         "internalType": "address"
       },
       {
@@ -1453,13 +1453,13 @@
       {
         "name": "depositId",
         "type": "uint256",
-        "indexed": false,
+        "indexed": true,
         "internalType": "uint256"
       },
       {
         "name": "recipient",
         "type": "address",
-        "indexed": false,
+        "indexed": true,
         "internalType": "address"
       },
       {

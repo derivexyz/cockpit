@@ -56,7 +56,7 @@ impl LimitOrderAuction {
         let client = WsClient::new_client().await?;
         client.login().await?;
         client.enable_cancel_on_disconnect().await?;
-        let tsa = get_tsa_contract(&vault_name).await?;
+        let tsa = get_tsa_contract(&vault_name, "SESSION").await?;
         Ok(LimitOrderAuction {
             subaccount_id,
             market,

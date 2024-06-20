@@ -3,7 +3,8 @@ use crate::lrtc::params::{LRTCParams, OptionAuctionParams, SpotAuctionParams};
 use crate::lrtc::selector::maybe_select_from_positions;
 use crate::market::new_market_state;
 use crate::shared::{fetch_ticker, sync_subaccount};
-use anyhow::Result;
+use crate::web3::{get_tsa_contract, process_deposits_forever, ProviderWithSigner, TSA};
+use anyhow::{Error, Result};
 use bigdecimal::Zero;
 use log::{error, info, warn};
 use lyra_client::auth::get_auth_headers;
@@ -31,6 +32,7 @@ impl LRTCStage for LRTCSpotOnly {
 #[derive(Debug)]
 pub struct LRTCAwaitSettlement {
     pub subaccount_id: i64,
+    pub tsa: TSA<ProviderWithSigner>,
     pub option_name: String,
     pub option_expiry: i64,
     pub delay_min: i64,
@@ -39,12 +41,20 @@ pub struct LRTCAwaitSettlement {
 impl LRTCAwaitSettlement {
     pub async fn new(params: LRTCParams, option_name: String) -> Result<Self> {
         let subaccount_id = std::env::var("SUBACCOUNT_ID").unwrap().parse().unwrap();
+        let vault_name = std::env::var("VAULT_NAME").unwrap();
+        let tsa = get_tsa_contract(&vault_name, "SESSION").await?;
         let market = new_market_state();
         fetch_ticker(market.clone(), &option_name).await?;
         let reader = market.read().await;
         let option_expiry =
             reader.get_ticker(&option_name).unwrap().option_details.as_ref().unwrap().expiry;
-        Ok(Self { subaccount_id, option_name, option_expiry, delay_min: params.auction_delay_min })
+        Ok(Self {
+            subaccount_id,
+            tsa,
+            option_name,
+            option_expiry,
+            delay_min: params.auction_delay_min,
+        })
     }
     pub async fn is_settled(&self) -> Result<bool> {
         // todo some of these might be cleaner to use REST for
@@ -59,10 +69,8 @@ impl LRTCAwaitSettlement {
         let sec_to_auction = sec_to_expiry + self.delay_min * 60;
         sec_to_auction
     }
-}
 
-impl LRTCStage for LRTCAwaitSettlement {
-    async fn run(&self) -> Result<()> {
+    async fn wait_for_auction(&self) -> Result<()> {
         let heartbeat_sec = 600;
         let mut sleep_sec = self.sec_to_auction().min(heartbeat_sec);
         while sleep_sec > 0 {
@@ -78,7 +86,24 @@ impl LRTCStage for LRTCAwaitSettlement {
             tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
         }
     }
+}
+
+impl LRTCStage for LRTCAwaitSettlement {
+    async fn run(&self) -> Result<()> {
+        let wait_task = self.wait_for_auction();
+        let asset_name = std::env::var("SPOT_NAME").unwrap();
+        let deposit_task = process_deposits_forever(&self.tsa, asset_name);
+        tokio::select! {
+            w = wait_task => w,
+            d = deposit_task => {
+                error!("Deposit task unexpected early exit with {:#?}", d);
+                Err(Error::msg("Deposit task unexpected early exit"))
+            }
+        }
+    }
     async fn reconnect(&mut self) -> Result<()> {
+        let vault_name = std::env::var("VAULT_NAME").unwrap();
+        self.tsa = get_tsa_contract(&vault_name, "SESSION").await?;
         Ok(())
     }
 }
