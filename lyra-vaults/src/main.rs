@@ -47,5 +47,10 @@ async fn main() -> Result<()> {
         error!("Executor failed: {:?}", e);
     }
 
+    // actions::test_initiate_deposit().await?;
+    // let tsa = web3::contracts::get_tsa_contract(&vault_name, "SESSION").await?;
+    // let asset_name = std::env::var("SPOT_NAME").unwrap();
+    // actions::process_withdrawals(&tsa, asset_name).await?;
+
     Ok(())
 }

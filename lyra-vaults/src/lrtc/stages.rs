@@ -3,7 +3,9 @@ use crate::lrtc::params::{LRTCParams, OptionAuctionParams, SpotAuctionParams};
 use crate::lrtc::selector::maybe_select_from_positions;
 use crate::market::new_market_state;
 use crate::shared::{fetch_ticker, sync_subaccount};
-use crate::web3::{get_tsa_contract, process_deposits_forever, ProviderWithSigner, TSA};
+use crate::web3::{
+    get_tsa_contract, process_deposits_forever, process_withdrawals, ProviderWithSigner, TSA,
+};
 use anyhow::{Error, Result};
 use bigdecimal::Zero;
 use log::{error, info, warn};
@@ -16,15 +18,33 @@ use orderbook_types::types::tickers::TickerResponse;
 use serde_json::json;
 use std::fmt::Debug;
 
+/// - This stage will process withdrawals for the spot asset.
+/// - Will keep reconnecting in case of any errors raised during process_withdrawals.
+/// - Will stop when total pending withdrawals are 0.
+/// - TODO Note that there are also some edge cases when some stray USDC was not fully sold off and
+/// withdrawals are so large that the vault has not enough LRT balance to cover it.
 #[derive(Debug)]
-pub struct LRTCSpotOnly {}
+pub struct LRTCSpotOnly {
+    pub tsa: TSA<ProviderWithSigner>,
+}
+
+impl LRTCSpotOnly {
+    pub async fn new() -> Result<Self> {
+        let vault_name = std::env::var("VAULT_NAME").unwrap();
+        let tsa = get_tsa_contract(&vault_name, "SESSION").await?;
+        Ok(Self { tsa })
+    }
+}
 
 impl LRTCStage for LRTCSpotOnly {
     async fn run(&self) -> Result<()> {
-        // todo process withdrawals
+        let asset_name = std::env::var("SPOT_NAME").unwrap();
+        process_withdrawals(&self.tsa, asset_name).await?;
         Ok(())
     }
     async fn reconnect(&mut self) -> Result<()> {
+        let vault_name = std::env::var("VAULT_NAME").unwrap();
+        self.tsa = get_tsa_contract(&vault_name, "SESSION").await?;
         Ok(())
     }
 }

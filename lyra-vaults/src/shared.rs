@@ -11,6 +11,7 @@ use orderbook_types::types::tickers::result::{
 };
 
 use anyhow::{Error, Result};
+use bigdecimal::{BigDecimal, Zero};
 use chrono::Utc;
 use log::{debug, error, info, warn};
 use orderbook_types::types::orders::{
@@ -186,4 +187,25 @@ pub async fn subscribe_subaccount(state: MarketState, subaccount_id: i64) -> Res
         })
         .await?;
     Ok(())
+}
+
+/// Fetches the balance of a subaccount for a given asset.
+pub async fn get_single_balance(subaccount_id: i64, asset_name: &str) -> Result<BigDecimal> {
+    let headers = get_auth_headers().await;
+    let subaccount = http_rpc::<_, PrivateGetSubaccountResponseSchema>(
+        "private/get_subaccount",
+        PrivateGetSubaccountParamsSchema { subaccount_id },
+        Some(headers.clone()),
+    )
+    .await?
+    .into_result()?;
+    let balance = subaccount.result.collaterals.into_iter().find(|p| p.asset_name == asset_name);
+    if let Some(balance) = balance {
+        return Ok(balance.amount);
+    }
+    let balance = subaccount.result.positions.into_iter().find(|p| p.instrument_name == asset_name);
+    if let Some(balance) = balance {
+        return Ok(balance.amount);
+    }
+    Ok(BigDecimal::zero())
 }

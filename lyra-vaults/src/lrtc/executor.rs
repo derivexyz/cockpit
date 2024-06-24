@@ -41,7 +41,7 @@ impl LRTCExecutor {
 
         if option_name.is_none() && is_cash_within_threshold {
             info!("Starting in Spot Only stage");
-            return Ok(Self { params, stage: SpotOnly(LRTCSpotOnly {}) });
+            return Ok(Self { params, stage: SpotOnly(LRTCSpotOnly::new().await?) });
         } else if option_name.is_none() && !is_cash_within_threshold {
             info!("Starting in Spot Auction stage");
             let stage = LRTCExecutor::new_spot_stage(params.clone()).await?;
@@ -118,7 +118,7 @@ impl LRTCExecutor {
                 LRTCExecutor::new_settlement_stage(self.params.clone(), option_name).await?
             }
             AwaitSettlement(_) => LRTCExecutor::new_spot_stage(self.params.clone()).await?,
-            SpotAuction(_) => SpotOnly(LRTCSpotOnly {}),
+            SpotAuction(_) => SpotOnly(LRTCSpotOnly::new().await?),
         };
         Ok(())
     }
