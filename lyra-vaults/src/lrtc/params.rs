@@ -35,6 +35,7 @@ pub struct LRTCParams {
     pub spot_name: String,  // Spot asset name as in the orderbook API
     pub cash_name: String,  // Cash asset name as in the orderbook API
     pub expiry_days: u64,
+    pub min_expiry_hours: u64, // Minimum expiry for options in hours, will remain in spot only stage until an option is available
     pub target_delta: BigDecimal,
     pub max_delta: BigDecimal,
     pub auction_delay_min: i64, // Delay after expiry before starting auctions
@@ -46,6 +47,14 @@ pub struct LRTCParams {
 impl LRTCParams {
     pub fn expiry_sec(&self) -> i64 {
         self.expiry_days as i64 * 86400
+    }
+
+    pub fn min_expiry_sec(&self) -> i64 {
+        self.min_expiry_hours as i64 * 3600
+    }
+
+    pub fn auction_delay_sec(&self) -> i64 {
+        self.auction_delay_min * 60
     }
 }
 

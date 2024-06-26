@@ -34,6 +34,7 @@ pub async fn select_new_option(params: &LRTCParams) -> Result<String> {
             r.is_active
                 && details.option_type.is_call()
                 && details.expiry < now + params.expiry_sec()
+                && details.expiry > now + params.min_expiry_sec()
         } else {
             false
         }

@@ -54,11 +54,15 @@ impl LRTCExecutor {
         let option_expiry =
             reader.get_ticker(&option_name).unwrap().option_details.as_ref().unwrap().expiry;
 
-        let approx_auction_start = option_expiry - params.expiry_sec();
-        let is_still_ongoing = chrono::Utc::now().timestamp() - approx_auction_start
-            < params.option_auction_params.auction_sec * 2;
+        // in case of an executor restart during an auction, we will continue the auction
+        // if it is likely to still be ongoing
+        let now = chrono::Utc::now().timestamp();
+        let approx_auction_start = option_expiry - params.expiry_sec() + params.auction_delay_sec();
+        let is_still_ongoing =
+            now < approx_auction_start + params.option_auction_params.auction_sec * 2;
+        let is_expiry_still_valid = option_expiry > now + params.min_expiry_sec();
 
-        return if is_still_ongoing {
+        return if is_still_ongoing && is_expiry_still_valid {
             info!("Starting in Option Auction stage");
             let stage = LRTCExecutor::new_option_stage(params.clone(), option_name).await?;
             Ok(Self { params, stage })
@@ -107,10 +111,22 @@ impl LRTCExecutor {
         Ok(stage)
     }
 
+    pub async fn select_new_option_until_success(&self) -> String {
+        loop {
+            match select_new_option(&self.params).await {
+                Ok(option_name) => return option_name,
+                Err(e) => {
+                    info!("select_new_option failed with {:#}, waiting for 60s", e);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                }
+            }
+        }
+    }
+
     pub async fn next(&mut self) -> Result<()> {
         self.stage = match &self.stage {
             SpotOnly(_) => {
-                let option_name = select_new_option(&self.params).await?;
+                let option_name = self.select_new_option_until_success().await;
                 LRTCExecutor::new_option_stage(self.params.clone(), option_name).await?
             }
             OptionAuction(ref s) => {

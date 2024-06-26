@@ -50,6 +50,5 @@ async fn main() -> Result<()> {
     if let Err(e) = res {
         error!("Executor failed: {:?}", e);
     }
-
     Ok(())
 }
