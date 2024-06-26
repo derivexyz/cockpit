@@ -65,7 +65,7 @@ pub async fn sign_action<T: AbiEncode + ModuleData + Clone>(
     Ok(action_data)
 }
 
-pub async fn get_erc20_balance_of(
+pub async fn get_erc20_balance_of_tsa(
     tsa: &TSA<ProviderWithSigner>,
     asset_name: &String,
 ) -> Result<U256> {
@@ -79,7 +79,7 @@ pub async fn get_balance_to_deposit(
     tsa: &TSA<ProviderWithSigner>,
     asset_name: &String,
 ) -> Result<BigDecimal> {
-    let balance = get_erc20_balance_of(tsa, asset_name).await?;
+    let balance = get_erc20_balance_of_tsa(tsa, asset_name).await?;
     let pending_deposits = tsa.total_pending_deposits().call().await?;
     let available_balance = balance - pending_deposits;
     u256_to_decimal(available_balance)
@@ -89,7 +89,7 @@ pub async fn get_balance_to_withdraw(
     tsa: &TSA<ProviderWithSigner>,
     asset_name: &String,
 ) -> Result<BigDecimal> {
-    let balance = get_erc20_balance_of(tsa, asset_name).await?;
+    let balance = get_erc20_balance_of_tsa(tsa, asset_name).await?;
     let pending_deposits = tsa.total_pending_deposits().call().await?;
     let pending_withdrawals = tsa.total_pending_withdrawals().call().await?;
     let tsa_params = tsa.get_tsa_params().call().await?;
@@ -157,7 +157,7 @@ async fn process_withdrawals_onchain(
     asset_name: String,
 ) -> Result<()> {
     loop {
-        let balance = get_erc20_balance_of(tsa, &asset_name).await?;
+        let balance = get_erc20_balance_of_tsa(tsa, &asset_name).await?;
         let pending = tsa.total_pending_withdrawals().call().await?;
         if balance == U256::from(0) || pending == U256::from(0) {
             info!("Balance & pending withdrawals for {}: {} & {}", asset_name, balance, pending);
@@ -244,129 +244,5 @@ pub async fn await_tx_settlement(transaction_id: Uuid) -> Result<()> {
             }
         }
     }
-    Ok(())
-}
-
-pub async fn test_order() -> Result<()> {
-    let subaccount_id: i64 = std::env::var("SUBACCOUNT_ID")?.parse()?;
-    let tsa_contract = get_tsa_contract("RSWETH", "SESSION").await?;
-    let order_args = OrderArgs {
-        amount: BigDecimal::from_str("1")?,
-        limit_price: BigDecimal::from_str("9")?,
-        direction: Direction::Sell,
-        time_in_force: TimeInForce::Gtc,
-        order_type: OrderType::Limit,
-        label: String::from("test-vault"),
-        mmp: false,
-    };
-    let ticker = http_rpc::<_, TickerResponse>(
-        "public/get_ticker",
-        json!({ "instrument_name": "ETH-20240621-3700-C" }),
-        None,
-    )
-    .await?
-    .into_result()?
-    .result;
-    let action_data = sign_order(&tsa_contract, &ticker, &order_args).await?;
-    let client = WsClient::new_client().await?;
-    client.login().await?;
-    let session_signer = load_signer_by_name("SESSION").await;
-    let order = action_data.to_order_params(&session_signer, &ticker, subaccount_id, order_args)?;
-    let res = client.send_rpc::<_, Value>("private/order", order).await?;
-    info!("Order response: {:?}", res);
-    Ok(())
-}
-
-pub async fn test_mint() -> Result<()> {
-    let asset_name = String::from("RSWETH");
-    let erc20_addr: Address = std::env::var(format!("{asset_name}_ADDRESS"))?.parse()?;
-    let provider = get_provider_with_signer("KEEPER").await?;
-    let erc20_contract = ERC20::new(erc20_addr, provider);
-    let mint_to: Address = Address::from_str("0xb94dCcaDf0c72E4A472f6ccf07595Ba27B49e033")?;
-    let amount = BigDecimal::from_str("500")?;
-    let keeper_addr = erc20_contract.client().default_sender().unwrap();
-    info!("Minting {} to {} by {}", amount, mint_to, keeper_addr);
-    let call = erc20_contract.mint(mint_to, decimal_to_u256(amount)?);
-    let pending_tx = call.send().await?;
-    let receipt = pending_tx.await?.ok_or(Error::msg("Failed"))?;
-    info!("Tx receipt: {}", serde_json::to_string(&receipt)?);
-    let tx = erc20_contract.client().get_transaction(receipt.transaction_hash).await?;
-    info!("Mint tx: {:?}", tx);
-    Ok(())
-}
-
-pub async fn test_deposit() -> Result<()> {
-    let asset_name = String::from("RSWETH");
-    let tsa_contract = get_tsa_contract(&asset_name, "SESSION").await?;
-    let amount = BigDecimal::from_str("1")?;
-    let action_data = sign_deposit(&tsa_contract, &asset_name, &amount).await?;
-    let client = WsClient::new_client().await?;
-    client.login().await?;
-    let session_signer = load_signer_by_name("SESSION").await;
-    let deposit = action_data.to_deposit_params(&session_signer, amount, asset_name)?;
-    let res = client.send_rpc::<_, Value>("private/deposit", deposit).await?;
-    info!("Deposit response: {:?}", res);
-    Ok(())
-}
-
-pub async fn test_withdrawal() -> Result<()> {
-    let asset_name = String::from("RSWETH");
-    let tsa_contract = get_tsa_contract(&asset_name, "SESSION").await?;
-    let amount = BigDecimal::from_str("1")?;
-    let action_data = sign_withdrawal(&tsa_contract, &asset_name, &amount).await?;
-    let client = WsClient::new_client().await?;
-    client.login().await?;
-    let session_signer = load_signer_by_name("SESSION").await;
-    let deposit = action_data.to_withdraw_params(&session_signer, amount, asset_name)?;
-    let res = client.send_rpc::<_, Value>("private/withdraw", deposit).await?;
-    info!("Withdrawal response: {:?}", res);
-
-    Ok(())
-}
-
-pub async fn test_header() -> Result<()> {
-    let subaccount_id: i64 = std::env::var("SUBACCOUNT_ID")?.parse()?;
-    let wallet = load_signer_by_name("KEEPER").await;
-    let header = sign_auth_header(&wallet).await;
-    info!("Header: {:?}", header);
-    http_rpc::<Value, Value>(
-        "private/get_subaccount",
-        json!({"subaccount_id": subaccount_id}),
-        Some(header),
-    )
-    .await?;
-    Ok(())
-}
-
-pub async fn test_initiate_deposit() -> Result<()> {
-    let asset_name = String::from("RSWETH");
-    let amount = BigDecimal::from_str("69")?;
-    let tsa_contract = get_tsa_contract(&asset_name, "SESSION").await?;
-
-    let addr: Address = tsa_contract.client().default_sender().unwrap();
-    let call = tsa_contract.initiate_deposit(decimal_to_u256(amount)?, addr);
-    let static_call = call.call().await?;
-    info!("Initiate deposit call: {:?}", static_call);
-    let pending_tx = call.send().await?;
-    let receipt = pending_tx.await?.ok_or(Error::msg("Failed"))?;
-    info!("Tx receipt: {}", serde_json::to_string(&receipt)?);
-    let tx = tsa_contract.client().get_transaction(receipt.transaction_hash).await?;
-    info!("Initiate deposit tx: {:?}", tx);
-    Ok(())
-}
-
-pub async fn test_initiate_withdrawal() -> Result<()> {
-    let asset_name = String::from("RSWETH");
-    let amount = BigDecimal::from_str("69")?;
-    let tsa_contract = get_tsa_contract(&asset_name, "SESSION").await?;
-
-    let call = tsa_contract.request_withdrawal(decimal_to_u256(amount)?);
-    let static_call = call.call().await?;
-    info!("Initiate wd call: {:?}", static_call);
-    let pending_tx = call.send().await?;
-    let receipt = pending_tx.await?.ok_or(Error::msg("Failed"))?;
-    info!("Tx receipt: {}", serde_json::to_string(&receipt)?);
-    let tx = tsa_contract.client().get_transaction(receipt.transaction_hash).await?;
-    info!("Initiate withdrawal tx: {:?}", tx);
     Ok(())
 }

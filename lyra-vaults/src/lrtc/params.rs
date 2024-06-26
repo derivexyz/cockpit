@@ -28,6 +28,7 @@ pub struct SpotAuctionParams {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LRTCParams {
+    pub env: String,        // Environment name (e.g. staging, prod)
     pub vault_name: String, // used as prefix for env vars, e.g. {vault_name}_TSA_ADDRESS
     pub subaccount_id: i64, // Subaccount ID for the vault
     pub currency: String,   // Currency of the options (e.g. ETH)

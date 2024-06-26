@@ -1,4 +1,5 @@
 {
+  "env": "staging",
   "vault_name": "RSWETH",
   "subaccount_id": 54122,
   "currency": "ETH",

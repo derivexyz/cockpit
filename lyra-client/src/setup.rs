@@ -16,8 +16,9 @@ pub async fn ensure_session_key() {
     if pk_str.is_err() {
         info!("No signer in env, loading signer from AWS");
         let env = std::env::var("ENV").expect("ENV must be set");
-        let name = format!("/session_keys/{env}");
-        std::env::set_var("SESSION_PRIVATE_KEY", get_secret(&name, None).await);
+        let name = std::env::var("SESSION_KEY_NAME").expect("SESSION_KEY_NAME must be set");
+        let aws_param_name = format!("/session_keys/{env}/{name}");
+        std::env::set_var("SESSION_PRIVATE_KEY", get_secret(&aws_param_name, None).await);
     }
 }
 
@@ -26,8 +27,9 @@ pub async fn ensure_owner() {
     if pk_str.is_err() {
         info!("No owner in env, loading owner from AWS");
         let env = std::env::var("ENV").expect("ENV must be set");
-        let name = format!("/owners/{env}");
-        std::env::set_var("OWNER_PUBLIC_KEY", get_secret(&name, None).await);
+        let name = std::env::var("OWNER_KEY_NAME").expect("OWNER_KEY_NAME must be set");
+        let aws_param_name = format!("/owners/{env}/{name}");
+        std::env::set_var("OWNER_PUBLIC_KEY", get_secret(&aws_param_name, None).await);
     }
 }
 
