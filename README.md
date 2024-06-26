@@ -30,10 +30,20 @@ OWNER_PUBLIC_KEY=0x0000000000000000000000000000000000000000
 
 Make sure to never commit the secretes to the repo! The `.env.keys.*` patterns is present in .gitignore already.
 
-2. Set the environment variables via AWS parameter store using the following paths names:
+2. Set the environment variables via AWS parameter store using the following path rules:
 
-- `"/session_keys/prod"` or `"/session_keys/staging"` for `SESSION_PRIVATE_KEY`
-- `"/owners/prod"` or `"/owners/staging"` for `OWNER_PUBLIC_KEY`
+- Add `SESSION_KEY_NAME` and `OWNER_KEY_NAME` to the .env files (e.g. `.env.keys.staging` or `.env.keys.prod`)
+
+```dotenv
+SESSION_KEY_NAME=alice_session
+OWNER_KEY_NAME=bob_owner
+```
+
+- Use the following paths for the AWS parameter store:
+    - `"/session_keys/prod/{}"` or `"/session_keys/staging/{}"` for `SESSION_PRIVATE_KEY` where `{}` is the key name (
+      e.g. `"/session_keys/prod/alice_session"`)
+    - `"/owners/prod/{}"` or `"/owners/staging/{}"` for `OWNER_PUBLIC_KEY` where `{}` is the key name (
+      e.g. `"/owners/prod/bob_owner"`)
 
 The parameters should use a secret string type.
 

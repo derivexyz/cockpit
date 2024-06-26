@@ -18,19 +18,23 @@ use std::str::FromStr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 use tokio::{join, select, try_join};
+use web3::scripts;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
-    info!("Setting up env for LRTC executor");
-    setup_env().await;
+    println!("Reading params from json file");
     // read json name from cmd input
-    info!("Reading params from json file");
     let args: Vec<String> = std::env::args().collect();
     let json_name = args.get(1).ok_or(Error::msg("No json name provided"))?;
     let params = tokio::fs::read_to_string(format!("./params/{json_name}.json")).await?;
     let params: LRTCParams = serde_json::from_str(&params)?;
 
     let vault_name = params.vault_name.clone();
+    std::env::set_var("ENV", params.env.clone());
+    std::env::set_var("SESSION_KEY_NAME", vault_name.to_lowercase());
+    println!("Setting up {} env for LRTC executor", params.env.clone());
+    setup_env().await;
+
     std::env::set_var("SUBACCOUNT_ID", params.subaccount_id.to_string());
     std::env::set_var("VAULT_NAME", vault_name.clone());
     std::env::set_var("SPOT_NAME", params.spot_name.clone());
@@ -46,11 +50,6 @@ async fn main() -> Result<()> {
     if let Err(e) = res {
         error!("Executor failed: {:?}", e);
     }
-
-    // actions::test_initiate_deposit().await?;
-    // let tsa = web3::contracts::get_tsa_contract(&vault_name, "SESSION").await?;
-    // let asset_name = std::env::var("SPOT_NAME").unwrap();
-    // actions::process_withdrawals(&tsa, asset_name).await?;
 
     Ok(())
 }
