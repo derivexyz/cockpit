@@ -1,22 +1,22 @@
 {
-  "env": "staging",
-  "vault_name": "RSWETH",
+  "env": "prod",
+  "vault_name": "RSETH",
   "currency": "ETH",
-  "spot_name": "RSWETH",
+  "spot_name": "RSETH",
   "cash_name": "USDC",
-  "expiry_days": 1,
-  "min_expiry_hours": 12,
-  "target_delta": "0.4",
-  "max_delta": "0.49",
+  "expiry_days": 7,
+  "min_expiry_hours": 144,
+  "target_delta": "0.1",
+  "max_delta": "0.15",
   "spot_auction_delay_min": 60,
   "option_auction_delay_min": 120,
   "option_auction_params": {
     "max_iv_spread": 0.2,
     "init_iv_spread": -0.05,
-    "iv_spread_per_min": 0.02,
+    "iv_spread_per_min": 0.01,
     "auction_sec": 7200,
     "price_change_tolerance": "0.2",
-    "spot_name": "RSWETH"
+    "spot_name": "RSETH"
   },
   "spot_auction_params": {
     "max_spot_spread": 0.01,
@@ -25,6 +25,6 @@
     "auction_sec": 1800,
     "price_change_tolerance": "1",
     "cash_name": "USDC",
-    "max_cash": "500"
+    "max_cash": "20000"
   }
 }

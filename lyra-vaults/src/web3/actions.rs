@@ -65,6 +65,12 @@ pub async fn sign_action<T: AbiEncode + ModuleData + Clone>(
     Ok(action_data)
 }
 
+pub async fn get_subaccount_id(vault_name: &String) -> Result<i64> {
+    let tsa = get_tsa_contract(vault_name, "SESSION").await?;
+    let subaccount_id = tsa.sub_account().call().await?;
+    Ok(subaccount_id.as_u64() as i64)
+}
+
 pub async fn get_erc20_balance_of_tsa(
     tsa: &TSA<ProviderWithSigner>,
     asset_name: &String,

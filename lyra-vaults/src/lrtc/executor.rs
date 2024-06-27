@@ -27,7 +27,8 @@ impl LRTCExecutor {
     /// recovery from hard crashes during e.g. spot or option auction
     pub async fn new(params: LRTCParams) -> Result<Self> {
         let market = new_market_state();
-        sync_subaccount(market.clone(), params.subaccount_id, vec![]).await?;
+        let subaccount_id: i64 = std::env::var("SUBACCOUNT_ID").unwrap().parse()?;
+        sync_subaccount(market.clone(), subaccount_id, vec![]).await?;
 
         let option_name = maybe_select_from_positions(&market).await?;
         info!("Current option position: {:?}", option_name);
@@ -128,15 +129,16 @@ impl LRTCExecutor {
         }
     }
 
-    async fn await_option_auction_start(&self) -> String {
+    async fn await_option_auction_start(&self) -> Result<()> {
         let option_name = self.select_new_option_until_success().await;
         let option_expiry = get_option_expiry(&option_name).await?;
-        let start_sec = self.option_auction_start(option_expiry);
+        let start_sec = self.params.option_auction_start(option_expiry);
         let sleep_sec = start_sec - chrono::Utc::now().timestamp();
         if sleep_sec > 0 {
             info!("Executor await_option_auction_start sleep for {} sec", sleep_sec);
             tokio::time::sleep(tokio::time::Duration::from_secs(sleep_sec as u64)).await;
         }
+        Ok(())
     }
 
     pub async fn next(&mut self) -> Result<()> {

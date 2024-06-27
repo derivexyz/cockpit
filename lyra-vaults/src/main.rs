@@ -7,7 +7,7 @@ mod web3;
 
 use crate::lrtc::executor::LRTCExecutor;
 use crate::lrtc::stages::LRTCStage;
-use crate::web3::{actions, events};
+use crate::web3::{actions, events, get_subaccount_id};
 use anyhow::{Error, Result};
 use bigdecimal::BigDecimal;
 use ethers::abi::Address;
@@ -35,7 +35,9 @@ async fn main() -> Result<()> {
     println!("Setting up {} env for LRTC executor", params.env.clone());
     setup_env().await;
 
-    std::env::set_var("SUBACCOUNT_ID", params.subaccount_id.to_string());
+    let subacc_id = get_subaccount_id(&vault_name).await?;
+    info!("Vault Subaccount ID: {}", subacc_id);
+    std::env::set_var("SUBACCOUNT_ID", subacc_id.to_string());
     std::env::set_var("VAULT_NAME", vault_name.clone());
     std::env::set_var("SPOT_NAME", params.spot_name.clone());
     std::env::set_var("CASH_NAME", params.cash_name.clone());
