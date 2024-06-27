@@ -38,7 +38,8 @@ pub struct LRTCParams {
     pub min_expiry_hours: u64, // Minimum expiry for options in hours, will remain in spot only stage until an option is available
     pub target_delta: BigDecimal,
     pub max_delta: BigDecimal,
-    pub auction_delay_min: i64, // Delay after expiry before starting auctions
+    pub spot_auction_delay_min: i64, // Min delay after expiry before starting spot auctions
+    pub option_auction_delay_min: i64, // Min Delay after expiry before starting option auctions
 
     pub option_auction_params: OptionAuctionParams,
     pub spot_auction_params: SpotAuctionParams,
@@ -53,8 +54,20 @@ impl LRTCParams {
         self.min_expiry_hours as i64 * 3600
     }
 
-    pub fn auction_delay_sec(&self) -> i64 {
-        self.auction_delay_min * 60
+    pub fn spot_auction_delay_sec(&self) -> i64 {
+        self.spot_auction_delay_min * 60
+    }
+
+    pub fn option_auction_delay_sec(&self) -> i64 {
+        self.option_auction_delay_min * 60
+    }
+
+    pub fn spot_auction_start(&self, option_expiry: i64) -> i64 {
+        option_expiry - self.expiry_sec() + self.spot_auction_delay_sec()
+    }
+
+    pub fn option_auction_start(&self, option_expiry: i64) -> i64 {
+        option_expiry - self.expiry_sec() + self.option_auction_delay_sec()
     }
 }
 

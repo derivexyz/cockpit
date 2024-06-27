@@ -45,12 +45,20 @@ pub struct LimitOrderAuction {
 impl LimitOrderAuction {
     pub async fn new(
         instrument_name: String,
+        start_sec: i64,
         auction_sec: i64,
         price_change_tolerance: BigDecimal,
     ) -> Result<Self> {
         info!("LimitOrderAuction selected option: {}", instrument_name);
         let vault_name = std::env::var("VAULT_NAME").unwrap();
         let subaccount_id = std::env::var("SUBACCOUNT_ID").unwrap().parse().unwrap();
+
+        let sleep_sec = start_sec - chrono::Utc::now().timestamp();
+        if sleep_sec > 0 {
+            info!("LimitOrderAuction sleeping for {} sec", sleep_sec);
+            tokio::time::sleep(tokio::time::Duration::from_secs(sleep_sec as u64)).await;
+        }
+
         let start_timestamp_sec = chrono::Utc::now().timestamp();
         let market = new_market_state();
         let client = WsClient::new_client().await?;

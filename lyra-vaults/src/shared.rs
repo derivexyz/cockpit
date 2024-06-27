@@ -209,3 +209,14 @@ pub async fn get_single_balance(subaccount_id: i64, asset_name: &str) -> Result<
     }
     Ok(BigDecimal::zero())
 }
+
+pub async fn get_option_expiry(instrument_name: &str) -> Result<i64> {
+    let ticker = http_rpc::<_, TickerResponse>(
+        "public/get_ticker",
+        json!({ "instrument_name": instrument_name }),
+        None,
+    )
+    .await?
+    .into_result()?;
+    Ok(ticker.result.option_details.unwrap().expiry)
+}

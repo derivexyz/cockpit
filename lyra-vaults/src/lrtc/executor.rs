@@ -6,7 +6,7 @@ use crate::lrtc::stages::LRTCExecutorStage::{
 };
 use crate::lrtc::stages::{LRTCAwaitSettlement, LRTCExecutorStage, LRTCSpotOnly, LRTCStage};
 use crate::market::new_market_state;
-use crate::shared::{fetch_ticker, sync_subaccount};
+use crate::shared::{fetch_ticker, get_option_expiry, sync_subaccount};
 use anyhow::Result;
 use bigdecimal::{BigDecimal, Zero};
 use log::info;
@@ -57,7 +57,7 @@ impl LRTCExecutor {
         // in case of an executor restart during an auction, we will continue the auction
         // if it is likely to still be ongoing
         let now = chrono::Utc::now().timestamp();
-        let approx_auction_start = option_expiry - params.expiry_sec() + params.auction_delay_sec();
+        let approx_auction_start = params.option_auction_start(option_expiry);
         let is_still_ongoing =
             now < approx_auction_start + params.option_auction_params.auction_sec * 2;
         let is_expiry_still_valid = option_expiry > now + params.min_expiry_sec();
@@ -84,8 +84,10 @@ impl LRTCExecutor {
         params: LRTCParams,
         option_name: String,
     ) -> Result<LRTCExecutorStage> {
+        let option_expiry = get_option_expiry(&option_name).await?;
         let auction = LimitOrderAuction::new(
             option_name,
+            params.option_auction_start(option_expiry),
             params.option_auction_params.auction_sec,
             params.option_auction_params.price_change_tolerance.clone(),
         )
@@ -98,8 +100,11 @@ impl LRTCExecutor {
     }
 
     pub async fn new_spot_stage(params: LRTCParams) -> Result<LRTCExecutorStage> {
+        // pass current time as start_sec to avoid querying the option expiry (which is not known yet)
+        // spot auction always start after AwaitSettlement and it will ensure to wait for spot_auction_delay
         let auction = LimitOrderAuction::new(
             format!("{}-{}", params.spot_name.clone(), params.cash_name.clone()),
+            chrono::Utc::now().timestamp(),
             params.spot_auction_params.auction_sec,
             params.spot_auction_params.price_change_tolerance.clone(),
         )

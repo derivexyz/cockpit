@@ -2,7 +2,7 @@ use crate::lrtc::auction::LimitOrderAuctionExecutor;
 use crate::lrtc::params::{LRTCParams, OptionAuctionParams, SpotAuctionParams};
 use crate::lrtc::selector::maybe_select_from_positions;
 use crate::market::new_market_state;
-use crate::shared::{fetch_ticker, sync_subaccount};
+use crate::shared::{fetch_ticker, get_option_expiry, sync_subaccount};
 use crate::web3::{
     get_tsa_contract, process_deposits_forever, process_withdrawals, ProviderWithSigner, TSA,
 };
@@ -63,17 +63,13 @@ impl LRTCAwaitSettlement {
         let subaccount_id = std::env::var("SUBACCOUNT_ID").unwrap().parse().unwrap();
         let vault_name = std::env::var("VAULT_NAME").unwrap();
         let tsa = get_tsa_contract(&vault_name, "SESSION").await?;
-        let market = new_market_state();
-        fetch_ticker(market.clone(), &option_name).await?;
-        let reader = market.read().await;
-        let option_expiry =
-            reader.get_ticker(&option_name).unwrap().option_details.as_ref().unwrap().expiry;
+        let option_expiry = get_option_expiry(&option_name).await?;
         Ok(Self {
             subaccount_id,
             tsa,
             option_name,
             option_expiry,
-            delay_min: params.auction_delay_min,
+            delay_min: params.spot_auction_delay_min,
         })
     }
     pub async fn is_settled(&self) -> Result<bool> {
