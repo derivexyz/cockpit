@@ -128,9 +128,21 @@ impl LRTCExecutor {
         }
     }
 
+    async fn await_option_auction_start(&self) -> String {
+        let option_name = self.select_new_option_until_success().await;
+        let option_expiry = get_option_expiry(&option_name).await?;
+        let start_sec = self.option_auction_start(option_expiry);
+        let sleep_sec = start_sec - chrono::Utc::now().timestamp();
+        if sleep_sec > 0 {
+            info!("Executor await_option_auction_start sleep for {} sec", sleep_sec);
+            tokio::time::sleep(tokio::time::Duration::from_secs(sleep_sec as u64)).await;
+        }
+    }
+
     pub async fn next(&mut self) -> Result<()> {
         self.stage = match &self.stage {
             SpotOnly(_) => {
+                self.await_option_auction_start().await?;
                 let option_name = self.select_new_option_until_success().await;
                 LRTCExecutor::new_option_stage(self.params.clone(), option_name).await?
             }
