@@ -4,7 +4,8 @@ use crate::lrtc::selector::maybe_select_from_positions;
 use crate::market::new_market_state;
 use crate::shared::{fetch_ticker, get_option_expiry, sync_subaccount};
 use crate::web3::{
-    get_tsa_contract, process_deposits_forever, process_withdrawals, ProviderWithSigner, TSA,
+    get_tsa_contract, process_deposits_forever, process_deposits_once, process_withdrawals,
+    ProviderWithSigner, TSA,
 };
 use anyhow::{Error, Result};
 use bigdecimal::Zero;
@@ -39,6 +40,7 @@ impl LRTCSpotOnly {
 impl LRTCStage for LRTCSpotOnly {
     async fn run(&self) -> Result<()> {
         let asset_name = std::env::var("SPOT_NAME").unwrap();
+        process_deposits_once(&self.tsa, asset_name.clone()).await?;
         process_withdrawals(&self.tsa, asset_name).await?;
         Ok(())
     }

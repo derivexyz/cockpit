@@ -34,6 +34,7 @@ async fn main() -> Result<()> {
     std::env::set_var("SESSION_KEY_NAME", vault_name.to_lowercase());
     println!("Setting up {} env for LRTC executor", params.env.clone());
     setup_env().await;
+    info!("LRTC executor params: {:?}", params);
 
     let subacc_id = get_subaccount_id(&vault_name).await?;
     info!("Vault Subaccount ID: {}", subacc_id);

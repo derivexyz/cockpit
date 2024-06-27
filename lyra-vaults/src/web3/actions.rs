@@ -117,32 +117,38 @@ pub async fn sign_deposit(
     Ok(action_data)
 }
 
+pub async fn process_deposits_once(
+    tsa: &TSA<ProviderWithSigner>,
+    asset_name: String,
+) -> Result<()> {
+    process_deposit_events(tsa).await?;
+
+    let balance = get_balance_to_deposit(tsa, &asset_name).await?;
+    if balance <= BigDecimal::zero() {
+        // todo some magic numbers -> env (e.g. 5 sec wait time here)
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        return Ok(());
+    }
+
+    let action_data = sign_deposit(tsa, &asset_name, &balance).await?;
+    let client = WsClient::new_client().await?;
+    client.login().await?;
+    let session_signer = load_signer_by_name("SESSION").await;
+    let deposit = action_data.to_deposit_params(&session_signer, balance, asset_name.clone())?;
+    let deposit_res = client
+        .send_rpc::<_, PrivateDepositResponseSchema>("private/deposit", deposit)
+        .await?
+        .into_result()?;
+    info!("Deposit response: {:?}", deposit_res);
+    await_tx_settlement(deposit_res.result.transaction_id).await
+}
+
 pub async fn process_deposits_forever(
     tsa: &TSA<ProviderWithSigner>,
     asset_name: String,
 ) -> Result<()> {
     loop {
-        process_deposit_events(tsa).await?;
-
-        let balance = get_balance_to_deposit(tsa, &asset_name).await?;
-        if balance <= BigDecimal::zero() {
-            // todo some magic numbers -> env (e.g. 5 sec wait time here)
-            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-            continue;
-        }
-
-        let action_data = sign_deposit(tsa, &asset_name, &balance).await?;
-        let client = WsClient::new_client().await?;
-        client.login().await?;
-        let session_signer = load_signer_by_name("SESSION").await;
-        let deposit =
-            action_data.to_deposit_params(&session_signer, balance, asset_name.clone())?;
-        let deposit_res = client
-            .send_rpc::<_, PrivateDepositResponseSchema>("private/deposit", deposit)
-            .await?
-            .into_result()?;
-        info!("Deposit response: {:?}", deposit_res);
-        await_tx_settlement(deposit_res.result.transaction_id).await?;
+        process_deposits_once(tsa, asset_name.clone()).await?;
     }
 }
 

@@ -13,7 +13,7 @@
   "option_auction_params": {
     "max_iv_spread": 0.2,
     "init_iv_spread": -0.05,
-    "iv_spread_per_min": 0.01,
+    "iv_spread_per_min": 0.005,
     "auction_sec": 7200,
     "price_change_tolerance": "0.2",
     "spot_name": "RSWETH"
