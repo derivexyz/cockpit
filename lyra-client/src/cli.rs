@@ -1,4 +1,5 @@
-use crate::actions::OrderArgs;
+use crate::actions::QuoteArgs;
+use crate::actions::{new_quote_params, OrderArgs};
 use crate::json_rpc::{http_rpc, Notification, WsClient, WsClientExt};
 use anyhow::Result;
 use bigdecimal::BigDecimal;
@@ -9,8 +10,10 @@ use orderbook_types::generated::private_get_subaccount::{
     PrivateGetSubaccount, PrivateGetSubaccountParamsSchema, PrivateGetSubaccountResponseSchema,
 };
 use orderbook_types::generated::public_login::PublicLoginResponseSchema;
-use orderbook_types::types::tickers::TickerResponse;
+use orderbook_types::types::rfqs::{PollQuotesResponse, PollQuotesResult, QuoteResultPublic};
+use orderbook_types::types::tickers::{InstrumentTicker, TickerResponse};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 
 pub type OrderbookData = OrderbookInstrumentNameGroupDepthPublisherDataSchema;
 
@@ -135,7 +138,8 @@ impl CliRpc {
         let params = args.params_to_value().await?;
         let client = WsClient::new_client().await?;
         if args.method.starts_with("private") {
-            client.login().await?;
+            client.login().await?.into_result()?;
+            client.set_cancel_on_disconnect(false).await?.into_result()?;
         }
         let res = match args.method.as_str() {
             "private/order" => {
@@ -186,6 +190,46 @@ impl CliRpc {
                     Ok(response) => Ok(serde_json::to_value(response)?),
                     Err(response) => Err(response),
                 }
+            }
+            "private/send_quote" => {
+                let quote_args = serde_json::from_value::<QuoteArgs>(params.clone())?;
+                let mut tickers = HashMap::<String, InstrumentTicker>::new();
+                for leg in quote_args.legs.iter() {
+                    let ticker = http_rpc::<_, TickerResponse>(
+                        "public/get_ticker",
+                        json!({ "instrument_name": leg.instrument_name }),
+                        None,
+                    )
+                    .await?
+                    .into_result()?;
+                    tickers.insert(leg.instrument_name.clone(), ticker.result);
+                }
+                let subaccount_id: i64 = params["subaccount_id"].as_i64().unwrap();
+                client.send_quote(&tickers, subaccount_id, quote_args).await?.into_result()
+            }
+            "private/execute_quote" => {
+                let subaccount_id: i64 = params["subaccount_id"].as_i64().unwrap();
+                let poll_params = json!({
+                    "subaccount_id": subaccount_id,
+                    "quote_id": params["quote_id"],
+                });
+                let quote = client
+                    .send_rpc::<_, PollQuotesResponse>("private/poll_quotes", poll_params)
+                    .await?
+                    .into_result()?;
+                let quote = &quote.result.quotes[0];
+                let mut tickers = HashMap::<String, InstrumentTicker>::new();
+                for leg in quote.legs.iter() {
+                    let ticker = http_rpc::<_, TickerResponse>(
+                        "public/get_ticker",
+                        json!({ "instrument_name": leg.instrument_name }),
+                        None,
+                    )
+                    .await?
+                    .into_result()?;
+                    tickers.insert(leg.instrument_name.clone(), ticker.result);
+                }
+                client.send_execute(&tickers, subaccount_id, quote).await?.into_result()
             }
             _ => client.send_rpc::<Value, Value>(&args.method, params).await?.into_result(),
         };

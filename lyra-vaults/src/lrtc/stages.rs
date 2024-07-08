@@ -31,6 +31,7 @@ pub struct LRTCSpotOnly {
 
 impl LRTCSpotOnly {
     pub async fn new() -> Result<Self> {
+        info!("Starting LRTCSpotOnly Stage");
         let vault_name = std::env::var("VAULT_NAME").unwrap();
         let tsa = get_tsa_contract(&vault_name, "SESSION").await?;
         Ok(Self { tsa })
@@ -42,6 +43,7 @@ impl LRTCStage for LRTCSpotOnly {
         let asset_name = std::env::var("SPOT_NAME").unwrap();
         process_deposits_once(&self.tsa, asset_name.clone()).await?;
         process_withdrawals(&self.tsa, asset_name).await?;
+        process_deposits_once(&self.tsa, asset_name.clone()).await?;
         Ok(())
     }
     async fn reconnect(&mut self) -> Result<()> {
@@ -141,7 +143,7 @@ where
     async fn run(&self) -> Result<()>;
     async fn reconnect(&mut self) -> Result<()>;
     async fn reconnect_with_backoff(&mut self) -> Result<()> {
-        let mut backoff = 1;
+        let mut backoff = 4;
         let max_backoff = 64;
         loop {
             let res = self.reconnect().await;

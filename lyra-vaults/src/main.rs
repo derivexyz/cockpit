@@ -13,27 +13,28 @@ use bigdecimal::BigDecimal;
 use ethers::abi::Address;
 use log::{debug, error, info, warn};
 use lrtc::params::{LRTCParams, OptionAuctionParams, SpotAuctionParams};
-use lyra_client::setup::setup_env;
+use lyra_client::setup::{ensure_session_key, setup_env};
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 use tokio::{join, select, try_join};
 use web3::scripts;
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
-async fn main() -> Result<()> {
-    println!("Reading params from json file");
-    // read json name from cmd input
-    let args: Vec<String> = std::env::args().collect();
-    let json_name = args.get(1).ok_or(Error::msg("No json name provided"))?;
-    let params = tokio::fs::read_to_string(format!("./params/{json_name}.json")).await?;
-    let params: LRTCParams = serde_json::from_str(&params)?;
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+enum VaultParams {
+    LRTC(LRTCParams),
+    // Add more vaults here
+}
 
+async fn run_lrtc(params: LRTCParams) -> Result<()> {
     let vault_name = params.vault_name.clone();
     std::env::set_var("ENV", params.env.clone());
     std::env::set_var("SESSION_KEY_NAME", vault_name.to_lowercase());
     println!("Setting up {} env for LRTC executor", params.env.clone());
     setup_env().await;
+    ensure_session_key().await;
     info!("LRTC executor params: {:?}", params);
 
     let subacc_id = get_subaccount_id(&vault_name).await?;
@@ -53,5 +54,20 @@ async fn main() -> Result<()> {
     if let Err(e) = res {
         error!("Executor failed: {:?}", e);
     }
+    Ok(())
+}
+
+#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
+async fn main() -> Result<()> {
+    println!("Reading params from json file");
+    // read json name from cmd input
+    let args: Vec<String> = std::env::args().collect();
+    let json_name = args.get(1).ok_or(Error::msg("No json name provided"))?;
+    let params = tokio::fs::read_to_string(format!("./params/{json_name}.json")).await?;
+    let params: VaultParams = serde_json::from_str(&params)?;
+    match params {
+        VaultParams::LRTC(params) => run_lrtc(params).await?,
+    }
+
     Ok(())
 }

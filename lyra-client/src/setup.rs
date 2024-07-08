@@ -11,6 +11,8 @@ pub async fn ensure_env() {
     }
 }
 
+/// Validates that the session private key is set in the environment or loads it from AWS if not.
+/// Will panic if neither is set.
 pub async fn ensure_session_key() {
     let mut pk_str = std::env::var("SESSION_PRIVATE_KEY");
     if pk_str.is_err() {
@@ -22,6 +24,8 @@ pub async fn ensure_session_key() {
     }
 }
 
+/// Validates that the owner public key is set in the environment or loads it from AWS if not.
+/// Will panic if neither is set.
 pub async fn ensure_owner() {
     let mut pk_str = std::env::var("OWNER_PUBLIC_KEY");
     if pk_str.is_err() {
@@ -46,6 +50,4 @@ pub async fn setup_env() {
         println!("No keys file found for env, expecting them to be in AWS");
     }
     env_logger::builder().format_timestamp_millis().init();
-    ensure_session_key().await;
-    ensure_owner().await;
 }

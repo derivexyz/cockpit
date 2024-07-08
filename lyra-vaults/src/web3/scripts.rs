@@ -38,7 +38,7 @@ pub async fn test_order() -> anyhow::Result<()> {
     let client = WsClient::new_client().await?;
     client.login().await?;
     let session_signer = load_signer_by_name("SESSION").await;
-    let order = action_data.to_order_params(&session_signer, &ticker, subaccount_id, order_args)?;
+    let order = action_data.to_order_params(&session_signer, &ticker, order_args)?;
     let res = client.send_rpc::<_, Value>("private/order", order).await?;
     info!("Order response: {:?}", res);
     Ok(())

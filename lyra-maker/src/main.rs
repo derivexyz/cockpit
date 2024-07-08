@@ -61,7 +61,7 @@ use orderbook_types::generated::public_login::{
 };
 
 use crate::market::tasks::public::MarketSubscriberData;
-use lyra_client::setup::setup_env;
+use lyra_client::setup::{ensure_owner, ensure_session_key, setup_env};
 
 pub async fn setup_ip_whitelist() -> Result<()> {
     let client = WsClient::new_client().await?;
@@ -162,6 +162,8 @@ async fn run_ddh() -> Result<()> {
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> Result<()> {
     setup_env().await;
+    ensure_session_key().await;
+    ensure_owner().await;
     loop {
         let res = run_ddh().await;
         error!("Unexpected exit in run_ddh(): {:?}", res);

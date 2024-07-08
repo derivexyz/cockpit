@@ -223,6 +223,10 @@ impl InstrumentTicker {
             LiquidityRole::Taker => self.taker_fee_rate.clone() * &self.index_price,
         }
     }
+    pub fn get_leg_max_fee(&self, amount: &BigDecimal) -> BigDecimal {
+        (BigDecimal::from(3) * &self.taker_fee_rate * &self.index_price * amount + &self.base_fee)
+            .with_scale_round(6, bigdecimal::RoundingMode::Up)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

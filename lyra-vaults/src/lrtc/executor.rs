@@ -60,7 +60,7 @@ impl LRTCExecutor {
         let now = chrono::Utc::now().timestamp();
         let approx_auction_start = params.option_auction_start(option_expiry);
         let is_still_ongoing =
-            now < approx_auction_start + params.option_auction_params.auction_sec * 2;
+            now < approx_auction_start + params.option_auction_params.auction_sec;
         let is_expiry_still_valid = option_expiry > now + params.min_expiry_sec();
 
         return if is_still_ongoing && is_expiry_still_valid {
@@ -144,9 +144,19 @@ impl LRTCExecutor {
     pub async fn next(&mut self) -> Result<()> {
         self.stage = match &self.stage {
             SpotOnly(_) => {
-                self.await_option_auction_start().await?;
-                let option_name = self.select_new_option_until_success().await;
-                LRTCExecutor::new_option_stage(self.params.clone(), option_name).await?
+                let option_name = select_new_option(&self.params).await;
+                match option_name {
+                    Ok(_) => {
+                        self.await_option_auction_start().await?;
+                        let option_name = self.select_new_option_until_success().await;
+                        LRTCExecutor::new_option_stage(self.params.clone(), option_name).await?
+                    }
+                    Err(e) => {
+                        info!("select_new_option failed with {:#}, re-entering spot only stage", e);
+                        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                        SpotOnly(LRTCSpotOnly::new().await?)
+                    }
+                }
             }
             OptionAuction(ref s) => {
                 let option_name = s.auction.instrument_name.clone();

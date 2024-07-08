@@ -27,7 +27,7 @@ pub struct OrderArgs {
     pub mmp: bool,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, EthAbiType, EthAbiCodec)]
+#[derive(Clone, Debug, Default, PartialEq, EthAbiCodec, EthAbiType)]
 pub struct TradeData {
     asset_address: Address,
     sub_id: U256,
@@ -79,7 +79,7 @@ pub fn new_order_params(
         args.direction.is_bid(),
     )?;
     let order_action = ActionData::new(trade_data, subaccount_id, signer.address())?;
-    order_action.to_order_params(signer, ticker, subaccount_id, args)
+    order_action.to_order_params(signer, ticker, args)
 }
 
 pub fn new_replace_params(
@@ -97,7 +97,7 @@ pub fn new_replace_params(
         args.direction.is_bid(),
     )?;
     let order_action = ActionData::new(trade_data, subaccount_id, signer.address())?;
-    order_action.to_replace_params(signer, ticker, subaccount_id, order_id_to_cancel, args)
+    order_action.to_replace_params(signer, ticker, order_id_to_cancel, args)
 }
 
 impl ActionData {
@@ -105,12 +105,11 @@ impl ActionData {
         self,
         signer: &LocalWallet,
         ticker: &InstrumentTicker,
-        subaccount_id: i64,
         args: OrderArgs,
     ) -> Result<OrderParams> {
         Ok(OrderParams {
             instrument_name: ticker.instrument_name.clone(),
-            subaccount_id,
+            subaccount_id: self.subaccount_id.as_u64() as i64,
             amount: args.amount,
             limit_price: args.limit_price,
             direction: args.direction,
@@ -135,13 +134,12 @@ impl ActionData {
         self,
         signer: &LocalWallet,
         ticker: &InstrumentTicker,
-        subaccount_id: i64,
         order_id_to_cancel: Uuid,
         args: OrderArgs,
     ) -> Result<ReplaceParams> {
         Ok(ReplaceParams {
             instrument_name: ticker.instrument_name.clone(),
-            subaccount_id,
+            subaccount_id: self.subaccount_id.as_u64() as i64,
             amount: args.amount,
             limit_price: args.limit_price,
             direction: args.direction,

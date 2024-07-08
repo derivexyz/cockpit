@@ -233,12 +233,7 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
         let provider = self.auction.tsa.client();
         let signer = provider.inner().signer();
         let action_data = sign_order(&self.auction.tsa, &ticker, &order_args).await?;
-        let order_params = action_data.to_order_params(
-            &signer,
-            &ticker,
-            self.auction.subaccount_id,
-            order_args,
-        )?;
+        let order_params = action_data.to_order_params(&signer, &ticker, order_args)?;
         let res = self.auction.client.send_rpc::<_, Value>("private/order", order_params).await?;
         res.into_result()?;
         Ok(amount)

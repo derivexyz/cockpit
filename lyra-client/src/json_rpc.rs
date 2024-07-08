@@ -35,12 +35,14 @@ use orderbook_types::generated::private_withdraw::PrivateWithdrawResponseSchema;
 use orderbook_types::generated::public_login::PublicLoginResponseSchema;
 use orderbook_types::generated::subscribe::{SubscribeParamsSchema, SubscribeResponseSchema};
 use orderbook_types::types::orders::{ReplaceResponse, SendOrderResponse};
+use orderbook_types::types::rfqs::{ExecuteQuoteParams, QuoteParams, QuoteResultPublic};
 use orderbook_types::types::tickers::InstrumentTicker;
 use orderbook_types::types::RPCErrorResponse;
 
 use crate::actions::{
-    new_deposit_params, new_order_params, new_replace_params, new_withdraw_params, DepositParams,
-    OrderArgs, OrderParams, ReplaceParams, WithdrawParams,
+    new_deposit_params, new_execute_params, new_order_params, new_quote_params, new_replace_params,
+    new_withdraw_params, DepositParams, OrderArgs, OrderParams, QuoteArgs, ReplaceParams,
+    WithdrawParams,
 };
 use crate::auth::{load_signer, sign_auth_msg};
 
@@ -108,6 +110,10 @@ where
     async fn enable_cancel_on_disconnect(
         &self,
     ) -> Result<Response<PrivateSetCancelOnDisconnectResponseSchema>>;
+    async fn set_cancel_on_disconnect(
+        &self,
+        enabled: bool,
+    ) -> Result<Response<PrivateSetCancelOnDisconnectResponseSchema>>;
     async fn deposit(
         &self,
         subaccount_id: i64,
@@ -134,6 +140,18 @@ where
         to_cancel: Uuid,
         args: OrderArgs,
     ) -> Result<Response<ReplaceResponse>>;
+    async fn send_quote(
+        &self,
+        tickers: &HashMap<String, InstrumentTicker>,
+        subaccount_id: i64,
+        args: QuoteArgs,
+    ) -> Result<Response<Value>>;
+    async fn send_execute(
+        &self,
+        tickers: &HashMap<String, InstrumentTicker>,
+        subaccount_id: i64,
+        quote: &QuoteResultPublic,
+    ) -> Result<Response<Value>>;
     async fn cancel_all(
         &self,
         subaccount_id: i64,
@@ -199,17 +217,20 @@ impl WsClientExt for WsClient {
         WsClientState::set_owner(self, owner).await;
         self.send_rpc("public/login", login_params).await
     }
-    async fn enable_cancel_on_disconnect(
+    async fn set_cancel_on_disconnect(
         &self,
+        enabled: bool,
     ) -> Result<Response<PrivateSetCancelOnDisconnectResponseSchema>> {
         self.send_rpc(
             "private/set_cancel_on_disconnect",
-            PrivateSetCancelOnDisconnectParamsSchema {
-                enabled: true,
-                wallet: self.get_owner().await,
-            },
+            PrivateSetCancelOnDisconnectParamsSchema { enabled, wallet: self.get_owner().await },
         )
         .await
+    }
+    async fn enable_cancel_on_disconnect(
+        &self,
+    ) -> Result<Response<PrivateSetCancelOnDisconnectResponseSchema>> {
+        self.set_cancel_on_disconnect(true).await
     }
     async fn deposit(
         &self,
@@ -253,6 +274,27 @@ impl WsClientExt for WsClient {
         let replace_params =
             WsClientState::new_signed_replace(self, ticker, subaccount_id, to_cancel, args).await?;
         self.send_rpc("private/replace", replace_params).await
+    }
+    /// todo return type to be proper type, lazy for now
+    async fn send_quote(
+        &self,
+        tickers: &HashMap<String, InstrumentTicker>,
+        subaccount_id: i64,
+        args: QuoteArgs,
+    ) -> Result<Response<Value>> {
+        let quote_params =
+            WsClientState::new_signed_quote(self, tickers, subaccount_id, args).await?;
+        self.send_rpc("private/send_quote", quote_params).await
+    }
+    async fn send_execute(
+        &self,
+        tickers: &HashMap<String, InstrumentTicker>,
+        subaccount_id: i64,
+        quote: &QuoteResultPublic,
+    ) -> Result<Response<Value>> {
+        let execute_params =
+            WsClientState::new_signed_execute(self, tickers, subaccount_id, &quote).await?;
+        self.send_rpc("private/execute_quote", execute_params).await
     }
     async fn cancel_all(
         &self,
@@ -367,6 +409,33 @@ impl WsClientState {
         let client_guard = client.lock().await;
         if let Some(signer) = &client_guard.signer {
             Ok(new_replace_params(signer, ticker, subaccount_id, to_cancel, args)?)
+        } else {
+            Err(Error::msg("Not logged in or signer not set"))
+        }
+    }
+
+    async fn new_signed_quote(
+        client: &WsClient,
+        tickers: &HashMap<String, InstrumentTicker>,
+        subaccount_id: i64,
+        args: QuoteArgs,
+    ) -> Result<QuoteParams> {
+        let client_guard = client.lock().await;
+        if let Some(signer) = &client_guard.signer {
+            Ok(new_quote_params(signer, tickers, subaccount_id, args)?)
+        } else {
+            Err(Error::msg("Not logged in or signer not set"))
+        }
+    }
+    async fn new_signed_execute(
+        client: &WsClient,
+        tickers: &HashMap<String, InstrumentTicker>,
+        subaccount_id: i64,
+        quote: &QuoteResultPublic,
+    ) -> Result<ExecuteQuoteParams> {
+        let client_guard = client.lock().await;
+        if let Some(signer) = &client_guard.signer {
+            Ok(new_execute_params(signer, tickers, subaccount_id, &quote)?)
         } else {
             Err(Error::msg("Not logged in or signer not set"))
         }

@@ -10,11 +10,13 @@ use crate::cli::CliRpc;
 use clap::Parser;
 use log::{error, info};
 use lyra_client::json_rpc::{http_rpc, WsClient, WsClientExt};
-use lyra_client::setup::setup_env;
+use lyra_client::setup::{ensure_owner, ensure_session_key, setup_env};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     setup_env().await;
+    ensure_session_key().await;
+    ensure_owner().await;
     let _ = CliRpc::execute().await;
     Ok(())
 }

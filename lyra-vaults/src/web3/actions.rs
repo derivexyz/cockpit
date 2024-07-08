@@ -15,9 +15,10 @@ use ethers::prelude::{
 use ethers::prelude::{ProviderExt, U256};
 use ethers::providers::{Http, Provider};
 use log::{info, warn};
+use lyra_client::actions::order::TradeData;
 use lyra_client::actions::{
-    ActionData, DepositData, DepositParams, MarginType, ModuleData, OrderArgs, TradeData,
-    WithdrawParams, WithdrawalData,
+    ActionData, DepositData, DepositParams, MarginType, ModuleData, OrderArgs, WithdrawParams,
+    WithdrawalData,
 };
 use lyra_client::auth::{load_signer_by_name, sign_auth_header};
 use lyra_client::json_rpc::{http_rpc, WsClient, WsClientExt};
@@ -40,6 +41,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 const BLOCK_SEC: u64 = 2;
+const WITHDRAW_BUFFER_FACTOR: &str = "1.01";
 
 pub async fn sign_action<T: AbiEncode + ModuleData + Clone>(
     tsa: &TSA<ProviderWithSigner>,
@@ -103,7 +105,8 @@ pub async fn get_balance_to_withdraw(
     let scaled_pending = scale * pending_withdrawals / U256::from(1e18 as i64);
     let shares_value = tsa.get_shares_value(scaled_pending).call().await?;
     let extra_balance_needed = shares_value - (balance - pending_deposits);
-    u256_to_decimal(extra_balance_needed)
+    let buffer = BigDecimal::from_str(WITHDRAW_BUFFER_FACTOR)?;
+    Ok(u256_to_decimal(extra_balance_needed)? * buffer)
 }
 
 pub async fn sign_deposit(
