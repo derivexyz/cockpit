@@ -13,7 +13,7 @@ use orderbook_types::types::tickers::result::{
 use serde_json::{json, Value};
 use tokio::select;
 
-use crate::shared::{subscribe_tickers, sync_subaccount, TickerInterval};
+use crate::helpers::{subscribe_tickers, sync_subaccount, TickerInterval};
 
 /// Returns the option name that satisfies the LRT-C params (target expiry and delta)
 pub async fn select_new_option(params: &LRTCParams) -> Result<String> {

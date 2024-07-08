@@ -1,8 +1,6 @@
-use crate::lrtc::params::{LRTCParams, OptionAuctionParams};
-use crate::lrtc::selector::select_new_option;
+use crate::helpers::{subscribe_subaccount, subscribe_tickers, sync_subaccount, TickerInterval};
 use crate::lrtc::stages::LRTCStage;
 use crate::market::{new_market_state, MarketState};
-use crate::shared::{subscribe_subaccount, subscribe_tickers, sync_subaccount, TickerInterval};
 use crate::web3::actions::{get_tsa_contract, sign_order, ProviderWithSigner, TSA};
 use anyhow::{Error, Result};
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
@@ -76,7 +74,7 @@ impl LimitOrderAuction {
             price_change_tolerance,
         })
     }
-    fn remain_sec(&self) -> i64 {
+    pub fn remain_sec(&self) -> i64 {
         self.auction_sec - (chrono::Utc::now().timestamp() - self.start_timestamp_sec)
     }
 }
@@ -101,7 +99,7 @@ pub struct LimitOrderAuctionExecutor<S: OrderStrategy + Debug> {
 }
 
 impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
-    async fn run_market(&self) -> Result<()> {
+    pub async fn run_market(&self) -> Result<()> {
         let market = &self.auction.market;
         let sync_instruments = vec![self.auction.instrument_name.clone()];
         sync_subaccount(market.clone(), self.auction.subaccount_id, sync_instruments).await?;
@@ -135,7 +133,7 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
     }
 
     /// Executes an option auction. Assumes market is already running and has correct state.
-    async fn run_auction(&self) -> Result<()> {
+    pub async fn run_auction(&self) -> Result<()> {
         self.wait_for_ticker().await;
         loop {
             let desired_price = self.strategy.get_desired_price(&self.auction).await?;
@@ -237,32 +235,5 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
         let res = self.auction.client.send_rpc::<_, Value>("private/order", order_params).await?;
         res.into_result()?;
         Ok(amount)
-    }
-}
-
-impl<S: OrderStrategy + Debug> LRTCStage for LimitOrderAuctionExecutor<S> {
-    async fn run(&self) -> Result<()> {
-        let remain_sec = self.auction.remain_sec();
-        if remain_sec <= 0 {
-            return Ok(());
-        }
-
-        let market_task = self.run_market();
-        let auction_task = self.run_auction();
-        let ping_task = self.auction.client.ping_interval(15);
-        let res = select! {
-            _ = market_task => {Err(Error::msg("Market task exited early"))},
-            _ = ping_task => {Err(Error::msg("Ping task exited early"))},
-            _ = tokio::time::sleep(tokio::time::Duration::from_secs(remain_sec as u64)) => {Ok(())},
-            auction_res = auction_task => { auction_res },
-        };
-        res
-    }
-    async fn reconnect(&mut self) -> Result<()> {
-        self.auction.market = new_market_state();
-        self.auction.client = WsClient::new_client().await?;
-        self.auction.client.login().await?;
-        self.auction.client.enable_cancel_on_disconnect().await?;
-        Ok(())
     }
 }

@@ -1,5 +1,5 @@
-use crate::lrtc::auction::{LimitOrderAuction, OrderStrategy};
-use crate::lrtc::params::SpotAuctionParams;
+use crate::shared::auction::{LimitOrderAuction, OrderStrategy};
+use crate::shared::params::SpotAuctionParams;
 use anyhow::{Error, Result};
 use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive, Zero};
 use log::{debug, info};

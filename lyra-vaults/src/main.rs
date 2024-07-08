@@ -1,5 +1,6 @@
 extern crate core;
 
+mod helpers;
 mod lrtc;
 mod market;
 mod shared;
@@ -12,9 +13,10 @@ use anyhow::{Error, Result};
 use bigdecimal::BigDecimal;
 use ethers::abi::Address;
 use log::{debug, error, info, warn};
-use lrtc::params::{LRTCParams, OptionAuctionParams, SpotAuctionParams};
+use lrtc::params::{LRTCParams, OptionAuctionParams};
 use lyra_client::setup::{ensure_session_key, setup_env};
 use serde::{Deserialize, Serialize};
+use shared::params::SpotAuctionParams;
 use std::str::FromStr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
