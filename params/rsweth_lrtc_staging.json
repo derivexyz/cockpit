@@ -2,8 +2,6 @@
   "env": "staging",
   "vault_name": "RSWETH",
   "currency": "ETH",
-  "spot_name": "RSWETH",
-  "cash_name": "USDC",
   "expiry_days": 1,
   "min_expiry_hours": 12,
   "target_delta": "0.4",

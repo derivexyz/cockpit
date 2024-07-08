@@ -43,8 +43,8 @@ async fn run_lrtc(params: LRTCParams) -> Result<()> {
     info!("Vault Subaccount ID: {}", subacc_id);
     std::env::set_var("SUBACCOUNT_ID", subacc_id.to_string());
     std::env::set_var("VAULT_NAME", vault_name.clone());
-    std::env::set_var("SPOT_NAME", params.spot_name.clone());
-    std::env::set_var("CASH_NAME", params.cash_name.clone());
+    std::env::set_var("SPOT_NAME", params.option_auction_params.spot_name.clone());
+    std::env::set_var("CASH_NAME", params.spot_auction_params.cash_name.clone());
 
     let tsa_address: String = std::env::var(format!("{vault_name}_TSA_ADDRESS")).unwrap();
     std::env::set_var("OWNER_PUBLIC_KEY", tsa_address);

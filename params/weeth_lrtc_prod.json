@@ -2,8 +2,6 @@
   "env": "prod",
   "vault_name": "WEETH",
   "currency": "ETH",
-  "spot_name": "WEETH",
-  "cash_name": "USDC",
   "expiry_days": 7,
   "min_expiry_hours": 144,
   "target_delta": "0.1",
