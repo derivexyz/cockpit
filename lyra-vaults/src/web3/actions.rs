@@ -26,6 +26,7 @@ use lyra_client::utils::{decimal_to_u256, decimal_to_u256_with_prec, u256_to_dec
 use orderbook_types::generated::private_deposit::PrivateDepositResponseSchema;
 use orderbook_types::generated::private_withdraw::PrivateWithdrawResponseSchema;
 
+use crate::web3::contracts::GAS_PRICE;
 use orderbook_types::generated::private_get_subaccount::{
     PrivateGetSubaccountParamsSchema, PrivateGetSubaccountResponseSchema,
 };
@@ -58,7 +59,7 @@ pub async fn sign_action<T: AbiEncode + ModuleData + Clone>(
         owner: action_data.owner,
         signer: action_data.signer,
     };
-    let call = tsa.sign_action_data(action.clone());
+    let call = tsa.sign_action_data(action.clone()).gas_price(GAS_PRICE);
     let pending_tx = call.send().await?;
     let receipt = pending_tx.await?.ok_or(Error::msg("Failed"))?;
     info!("Tx receipt: {}", serde_json::to_string(&receipt)?);
@@ -178,7 +179,9 @@ async fn process_withdrawals_onchain(
             info!("Balance & pending withdrawals for {}: {} & {}", asset_name, balance, pending);
             break;
         }
-        let call = tsa.process_withdrawal_requests(U256::from(MAX_TO_PROCESS_PER_CALL));
+        let call = tsa
+            .process_withdrawal_requests(U256::from(MAX_TO_PROCESS_PER_CALL))
+            .gas_price(GAS_PRICE);
         let pending_tx = call.send().await?;
         let receipt = pending_tx.await?.ok_or(Error::msg("Failed"))?;
         info!("Tx receipt: {}", serde_json::to_string(&receipt)?);

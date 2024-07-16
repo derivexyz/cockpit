@@ -32,7 +32,8 @@ impl SpotAuctionParams {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct OptionRFQParams {
-    pub max_cost: f64,
+    pub max_cost: BigDecimal,
+    pub min_cost: BigDecimal,
     pub max_premium_spread: f64,
     pub init_premium_spread: f64,
     pub premium_spread_per_min: f64,
@@ -43,4 +44,13 @@ pub struct OptionRFQParams {
     pub auction_sec: i64,
 
     pub collat_name: String,
+}
+
+impl OptionRFQParams {
+    pub fn get_premium_spread(&self, start_timestamp_sec: i64) -> f64 {
+        let sec_since_start = chrono::Utc::now().timestamp() - start_timestamp_sec;
+        let min_since_start = sec_since_start as f64 / 60.0;
+        let spread = self.init_premium_spread + min_since_start * self.premium_spread_per_min;
+        spread.min(self.max_premium_spread)
+    }
 }

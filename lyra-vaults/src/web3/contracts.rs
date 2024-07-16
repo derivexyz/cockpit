@@ -37,3 +37,5 @@ pub async fn get_tsa_contract(
         std::env::var(format!("{vault_name}_TSA_ADDRESS")).unwrap().parse()?;
     Ok(TSA::new(tsa_address, provider.clone()))
 }
+
+pub const GAS_PRICE: u64 = 200000;

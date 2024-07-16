@@ -1,8 +1,8 @@
 use crate::shared::params::{OptionRFQParams, SpotAuctionParams};
-use crate::shared::rfq::{RFQAuction, RFQStrategy};
+use crate::shared::rfq::{RFQAuction, RFQLot, RFQStrategy};
 use anyhow::Result;
-use bigdecimal::BigDecimal;
-use bigdecimal::RoundingMode::Down;
+use bigdecimal::RoundingMode::{Down, HalfEven};
+use bigdecimal::{BigDecimal, Zero};
 use log::info;
 use rust_decimal::prelude::FromPrimitive;
 use serde::Deserialize;
@@ -38,13 +38,19 @@ impl LongPPParams {
 }
 
 impl RFQStrategy for OptionRFQParams {
-    async fn get_desired_unit_cost(&self, auction: &RFQAuction) -> Result<BigDecimal> {
-        // todo this is a mock for now
-        // todo long vs short premium...
+    async fn get_desired_unit_cost(
+        &self,
+        auction: &RFQAuction,
+        lot: &RFQLot,
+    ) -> Result<BigDecimal> {
+        let start_sec = lot.start_sec();
+        let spread = self.get_premium_spread(start_sec);
         let mark = auction.get_mark_unit_cost().await?;
-        let prem = self.max_premium_spread;
-        let factor = BigDecimal::from_f64(1.0 + prem).unwrap();
-        Ok(mark * factor)
+        // TODO currently assumes we are long the call spreads, will generalize later
+        let factor = BigDecimal::from_f64(1.0 + spread).unwrap();
+        let uncapped_cost = mark * factor;
+        let capped_cost = uncapped_cost.max(self.min_cost.clone()).min(self.max_cost.clone());
+        Ok(capped_cost.with_scale_round(6, HalfEven))
     }
 
     async fn get_desired_lot_size(
@@ -53,11 +59,19 @@ impl RFQStrategy for OptionRFQParams {
         unit_cost: &BigDecimal,
     ) -> Result<BigDecimal> {
         // todo this is a mock for now
-        let notional = BigDecimal::from_str("10000000")?;
-        let apy = BigDecimal::from_str("0.17")?;
+        let market = &auction.market;
+        let reader = market.read().await;
+        let option_names = auction.instrument_names();
+        let position = reader.get_position(&option_names[0]);
+        let balance = match position {
+            Some(pos) => pos.amount.clone().abs(),
+            None => BigDecimal::zero(),
+        };
+        let notional = BigDecimal::from_str("1500000")?;
+        let apy = BigDecimal::from_str("0.18")?;
         let weekly_rate = apy / BigDecimal::from_str("52")?;
         let weekly_interest = notional * weekly_rate;
-        let size = weekly_interest / unit_cost;
+        let size = (weekly_interest / unit_cost) - balance;
         let num_rounded = (&size / &self.lot_rounding).with_scale_round(0, Down);
         let round_size = num_rounded * &self.lot_rounding;
         let lot_size = round_size.clone().min(self.lot_size.clone());

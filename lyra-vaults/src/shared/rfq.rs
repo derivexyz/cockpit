@@ -32,7 +32,8 @@ const POLL_INTERVAL_MS: u64 = 500;
 
 pub trait RFQStrategy {
     /// Implement specific pricing logic for specific spreads (e.g. for long calls spreads, etc.)
-    async fn get_desired_unit_cost(&self, auction: &RFQAuction) -> Result<BigDecimal>;
+    async fn get_desired_unit_cost(&self, auction: &RFQAuction, lot: &RFQLot)
+        -> Result<BigDecimal>;
     /// Returns the TOTAL number of spreads to request the RFQs for (e.g. 6969 call spreads)
     /// before splitting into sub-lots. Will get re-computed with more accurate unit prices
     /// as the fill info comes in for the first few lots.
@@ -73,6 +74,10 @@ impl RFQLot {
     }
     pub fn status(&self) -> OrderStatus {
         self.rfq.status
+    }
+    pub fn start_sec(&self) -> i64 {
+        let ms_time = self.rfq.creation_timestamp;
+        ms_time / 1000
     }
 }
 
@@ -261,8 +266,9 @@ impl<S: RFQStrategy + Debug> RFQAuctionExecutor<S> {
     async fn maybe_execute_lot(&self) -> Result<Option<Value>> {
         let lots = self.auction.lots.lock().await;
         let current_lot = lots.last().unwrap();
-        let unit_cost = self.strategy.get_desired_unit_cost(&self.auction).await?;
-        let desired_cost = unit_cost * &current_lot.size;
+        let unit_cost = self.strategy.get_desired_unit_cost(&self.auction, current_lot).await?;
+        let desired_cost = &unit_cost * &current_lot.size;
+        info!("RFQAuctionExecutor unit and desired costs: {}, {}", unit_cost, desired_cost);
         let best_quote = current_lot.best_quote();
         if best_quote.is_none() {
             info!("RFQAuctionExecutor no quotes found for current lot");
@@ -272,7 +278,7 @@ impl<S: RFQStrategy + Debug> RFQAuctionExecutor<S> {
         let best_cost = -best_quote.total_cost();
         info!("RFQAuctionExecutor best quote cost: {} vs. desired {}", best_cost, desired_cost);
         if best_cost > desired_cost {
-            info!("RFQ best quote cost too high. Full quote: {:#?}", best_quote);
+            info!("RFQ best quote cost too high. Cost: {}", best_cost);
             Ok(None)
         } else {
             let reader = self.auction.market.read().await;
@@ -313,6 +319,7 @@ impl<S: RFQStrategy + Debug> RFQAuctionExecutor<S> {
 
             loop {
                 let status = self.update_current_lot().await?;
+                info!("RFQAuctionExecutor current lot status: {:?}", status);
                 if status != OrderStatus::Open {
                     warn!("RFQAuctionExecutor current lot status no longer open: {:?}", status);
                     break;

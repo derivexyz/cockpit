@@ -17,8 +17,8 @@
     "spot_name": "RSWETH"
   },
   "spot_auction_params": {
-    "max_spot_spread": 0.012,
-    "init_spot_spread": 0.012,
+    "max_spot_spread": 0.008,
+    "init_spot_spread": 0.008,
     "spot_spread_per_min": 0.000,
     "auction_sec": 2700,
     "price_change_tolerance": "2",

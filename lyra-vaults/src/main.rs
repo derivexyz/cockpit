@@ -10,6 +10,7 @@ mod web3;
 use crate::longpp::params::LongPPParams;
 use crate::longpp::selector::select_new_spread;
 use crate::lrtc::executor::LRTCExecutor;
+use crate::web3::scripts::test_initiate_deposit;
 use crate::web3::{actions, events, get_subaccount_id};
 use anyhow::{Error, Result};
 use bigdecimal::BigDecimal;
@@ -54,6 +55,8 @@ async fn run_lrtc(params: LRTCParams) -> Result<()> {
     let tsa_address: String = std::env::var(format!("{vault_name}_TSA_ADDRESS")).unwrap();
     std::env::set_var("OWNER_PUBLIC_KEY", tsa_address);
 
+    test_initiate_deposit().await?;
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     info!("Starting LRTC executor");
     let mut executor = LRTCExecutor::new(params).await?;
     let task_handle = tokio::spawn(async move { executor.run().await });
@@ -75,13 +78,13 @@ async fn run_mock_pp(params: LongPPParams) -> Result<()> {
     std::env::set_var("VAULT_NAME", "RSWETH");
     let legs = select_new_spread(&params).await?;
     info!("Selected legs: {:?}", legs);
-    // let p = params.option_auction_params;
-    // let exec_p = p.clone();
-    // let now = chrono::Utc::now().timestamp();
-    // let auction =
-    //     shared::rfq::RFQAuction::new(legs, now, p.lot_init_sleep_sec, p.auction_sec).await?;
-    // let mut exec = shared::rfq::RFQAuctionExecutor { auction, strategy: exec_p };
-    // exec.run_with_reconnect().await?;
+    let p = params.option_auction_params;
+    let exec_p = p.clone();
+    let now = chrono::Utc::now().timestamp();
+    let auction =
+        shared::rfq::RFQAuction::new(legs, now, p.lot_init_sleep_sec, p.auction_sec).await?;
+    let mut exec = shared::rfq::RFQAuctionExecutor { auction, strategy: exec_p };
+    exec.run_with_reconnect().await?;
     Ok(())
 }
 
