@@ -18,6 +18,8 @@ use tokio::select;
 
 pub trait OrderStrategy {
     async fn get_desired_price(&self, auction: &LimitOrderAuction) -> Result<BigDecimal>;
+    /// Returns the amount to trade and the direction to trade in
+    /// Auction stops IF AND ONLY IF the amount returned is zero
     async fn get_desired_amount(
         &self,
         auction: &LimitOrderAuction,

@@ -23,6 +23,6 @@
     "auction_sec": 2700,
     "price_change_tolerance": "2",
     "cash_name": "USDC",
-    "max_cash": "20000"
+    "max_cash": "90000"
   }
 }

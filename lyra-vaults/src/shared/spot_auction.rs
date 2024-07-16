@@ -60,6 +60,9 @@ impl OrderStrategy for SpotAuctionParams {
             return Ok((Direction::Sell, zero));
         }
         let cash_pos = cash_pos.unwrap();
+        if auction.remain_sec() <= 0 && cash_pos.amount > -&self.max_cash {
+            return Ok((Direction::Sell, zero));
+        }
 
         let amount = &cash_pos.amount / price;
         let (direction, amount) = match &amount.cmp(&zero) {

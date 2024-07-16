@@ -40,18 +40,12 @@ where
 
 impl<S: OrderStrategy + Debug> ExecutorStage for LimitOrderAuctionExecutor<S> {
     async fn run(&self) -> anyhow::Result<()> {
-        let remain_sec = self.auction.remain_sec();
-        if remain_sec <= 0 {
-            return Ok(());
-        }
-
         let market_task = self.run_market();
         let auction_task = self.run_auction();
         let ping_task = self.auction.client.ping_interval(15);
         let res = select! {
             _ = market_task => {Err(Error::msg("Market task exited early"))},
             _ = ping_task => {Err(Error::msg("Ping task exited early"))},
-            _ = tokio::time::sleep(tokio::time::Duration::from_secs(remain_sec as u64)) => {Ok(())},
             auction_res = auction_task => { auction_res },
         };
         res

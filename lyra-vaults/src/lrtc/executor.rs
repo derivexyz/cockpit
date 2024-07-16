@@ -46,7 +46,7 @@ impl LRTCExecutor {
             return Ok(Self { params, stage: SpotOnly(LRTCSpotOnly::new().await?) });
         } else if option_name.is_none() && !is_cash_within_threshold {
             info!("Starting in Spot Auction stage");
-            let stage = LRTCExecutor::new_spot_stage(params.clone()).await?;
+            let stage = LRTCExecutor::new_spot_auction_stage(params.clone()).await?;
             return Ok(Self { params, stage });
         }
         let option_name = option_name.unwrap();
@@ -101,7 +101,7 @@ impl LRTCExecutor {
         Ok(stage)
     }
 
-    pub async fn new_spot_stage(params: LRTCParams) -> Result<LRTCExecutorStage> {
+    pub async fn new_spot_auction_stage(params: LRTCParams) -> Result<LRTCExecutorStage> {
         // pass current time as start_sec to avoid querying the option expiry (which is not known yet)
         // spot auction always start after AwaitSettlement and it will ensure to wait for spot_auction_delay
         let auction = LimitOrderAuction::new(
@@ -163,7 +163,7 @@ impl LRTCExecutor {
                 let option_name = s.auction.instrument_name.clone();
                 LRTCExecutor::new_settlement_stage(self.params.clone(), option_name).await?
             }
-            AwaitSettlement(_) => LRTCExecutor::new_spot_stage(self.params.clone()).await?,
+            AwaitSettlement(_) => LRTCExecutor::new_spot_auction_stage(self.params.clone()).await?,
             SpotAuction(_) => SpotOnly(LRTCSpotOnly::new().await?),
         };
         Ok(())

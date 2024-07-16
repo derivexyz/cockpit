@@ -42,6 +42,10 @@ impl OrderStrategy for OptionAuctionParams {
         auction: &LimitOrderAuction,
         price: &BigDecimal,
     ) -> Result<(Direction, BigDecimal)> {
+        if auction.remain_sec() <= 0 {
+            return Ok((Direction::Sell, BigDecimal::zero()));
+        }
+
         let market = &auction.market;
         let reader = market.read().await;
         let ticker =
