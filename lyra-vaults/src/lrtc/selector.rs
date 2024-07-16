@@ -13,44 +13,23 @@ use orderbook_types::types::tickers::result::{
 use serde_json::{json, Value};
 use tokio::select;
 
-use crate::helpers::{subscribe_tickers, sync_subaccount, TickerInterval};
+use crate::helpers::{get_expiry_options, subscribe_tickers, sync_subaccount, TickerInterval};
 
 /// Returns the option name that satisfies the LRT-C params (target expiry and delta)
 pub async fn select_new_option(params: &LRTCParams) -> Result<String> {
     let market = new_market_state();
     let client = WsClient::new_client().await?;
     let now = chrono::Utc::now().timestamp();
-    let options_res = http_rpc::<_, InstrumentsResponse>(
-        "public/get_instruments",
-        json!({"currency": params.currency, "instrument_type": "option","expired": false}),
-        None,
-    )
-    .await?
-    .into_result()?
-    .result;
-
-    let options_iter = options_res.iter().filter(|&r| {
-        if let Some(ref details) = r.option_details {
-            r.is_active
-                && details.option_type.is_call()
-                && details.expiry < now + params.expiry_sec()
-                && details.expiry > now + params.min_expiry_sec()
-        } else {
-            false
-        }
-    });
-
     let err = Error::msg("No options found within the LRTC params");
-    let expiry = options_iter.clone().map(|r| r.option_details.as_ref().unwrap().expiry).max();
-    let expiry = match expiry {
-        Some(expiry) => expiry,
-        None => return Err(err),
-    };
 
-    let expiry_options: Vec<String> = options_iter
-        .filter(|r| r.option_details.as_ref().unwrap().expiry == expiry)
-        .map(|r| r.instrument_name.clone())
-        .collect();
+    let expiry_options = get_expiry_options(
+        &params.option_currency,
+        params.expiry_sec(),
+        params.min_expiry_sec(),
+        true,
+    )
+    .await?;
+
     let sub = subscribe_tickers(market.clone(), expiry_options, TickerInterval::_1000Ms);
     let _ = select! {
         _ = sub => {},

@@ -1,13 +1,15 @@
 extern crate core;
 
 mod helpers;
+mod longpp;
 mod lrtc;
 mod market;
 mod shared;
 mod web3;
 
+use crate::longpp::params::LongPPParams;
+use crate::longpp::selector::select_new_spread;
 use crate::lrtc::executor::LRTCExecutor;
-use crate::lrtc::stages::LRTCStage;
 use crate::web3::{actions, events, get_subaccount_id};
 use anyhow::{Error, Result};
 use bigdecimal::BigDecimal;
@@ -15,8 +17,10 @@ use ethers::abi::Address;
 use log::{debug, error, info, warn};
 use lrtc::params::{LRTCParams, OptionAuctionParams};
 use lyra_client::setup::{ensure_session_key, setup_env};
+use orderbook_types::types::rfqs::{Direction, LegUnpriced};
 use serde::{Deserialize, Serialize};
 use shared::params::SpotAuctionParams;
+use shared::stages::ExecutorStage;
 use std::str::FromStr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
@@ -27,6 +31,7 @@ use web3::scripts;
 #[serde(untagged)]
 enum VaultParams {
     LRTC(LRTCParams),
+    LongPP(LongPPParams),
     // Add more vaults here
 }
 
@@ -59,6 +64,27 @@ async fn run_lrtc(params: LRTCParams) -> Result<()> {
     Ok(())
 }
 
+async fn run_mock_pp(params: LongPPParams) -> Result<()> {
+    std::env::set_var("ENV", params.env.clone());
+    setup_env().await;
+    ensure_session_key().await;
+
+    let subacc_id = 6581;
+    info!("Vault Subaccount ID: {}", subacc_id);
+    std::env::set_var("SUBACCOUNT_ID", subacc_id.to_string());
+    std::env::set_var("VAULT_NAME", "RSWETH");
+    let legs = select_new_spread(&params).await?;
+    info!("Selected legs: {:?}", legs);
+    // let p = params.option_auction_params;
+    // let exec_p = p.clone();
+    // let now = chrono::Utc::now().timestamp();
+    // let auction =
+    //     shared::rfq::RFQAuction::new(legs, now, p.lot_init_sleep_sec, p.auction_sec).await?;
+    // let mut exec = shared::rfq::RFQAuctionExecutor { auction, strategy: exec_p };
+    // exec.run_with_reconnect().await?;
+    Ok(())
+}
+
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
     println!("Reading params from json file");
@@ -69,6 +95,7 @@ async fn main() -> Result<()> {
     let params: VaultParams = serde_json::from_str(&params)?;
     match params {
         VaultParams::LRTC(params) => run_lrtc(params).await?,
+        VaultParams::LongPP(params) => run_mock_pp(params).await?,
     }
 
     Ok(())

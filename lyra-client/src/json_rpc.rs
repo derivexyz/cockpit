@@ -51,8 +51,8 @@ type SocketError = tungstenite::error::Error;
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
 pub enum Response<T> {
-    Success(T),
     Error(RPCErrorResponse),
+    Success(T),
 }
 
 impl<T> Response<T> {

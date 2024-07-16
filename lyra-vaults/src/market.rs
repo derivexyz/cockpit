@@ -6,6 +6,7 @@ use bigdecimal::{BigDecimal, Zero};
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -60,6 +61,9 @@ impl MarketData {
     }
     pub fn iter_orderbooks(&self) -> impl Iterator<Item = &OrderbookData> {
         self.orderbooks.values()
+    }
+    pub fn get_tickers(&self) -> &HashMap<String, InstrumentTicker> {
+        &self.tickers
     }
     pub fn get_ticker(&self, instrument_name: &str) -> Option<&InstrumentTicker> {
         let ticker = self.tickers.get(instrument_name);

@@ -4,6 +4,7 @@ use crate::lrtc::selector::maybe_select_from_positions;
 use crate::market::new_market_state;
 use crate::shared::auction::{LimitOrderAuctionExecutor, OrderStrategy};
 use crate::shared::params::SpotAuctionParams;
+use crate::shared::stages::ExecutorStage;
 use crate::web3::{
     get_tsa_contract, process_deposits_forever, process_deposits_once, process_withdrawals,
     ProviderWithSigner, TSA,
@@ -40,7 +41,7 @@ impl LRTCSpotOnly {
     }
 }
 
-impl LRTCStage for LRTCSpotOnly {
+impl ExecutorStage for LRTCSpotOnly {
     async fn run(&self) -> Result<()> {
         let asset_name = std::env::var("SPOT_NAME").unwrap();
         process_deposits_once(&self.tsa, asset_name.clone()).await?;
@@ -110,7 +111,7 @@ impl LRTCAwaitSettlement {
     }
 }
 
-impl LRTCStage for LRTCAwaitSettlement {
+impl ExecutorStage for LRTCAwaitSettlement {
     async fn run(&self) -> Result<()> {
         let wait_task = self.wait_for_auction();
         let asset_name = std::env::var("SPOT_NAME").unwrap();
@@ -136,62 +137,4 @@ pub enum LRTCExecutorStage {
     OptionAuction(LimitOrderAuctionExecutor<OptionAuctionParams>),
     AwaitSettlement(LRTCAwaitSettlement),
     SpotAuction(LimitOrderAuctionExecutor<SpotAuctionParams>),
-}
-
-pub trait LRTCStage
-where
-    Self: Debug,
-{
-    async fn run(&self) -> Result<()>;
-    async fn reconnect(&mut self) -> Result<()>;
-    async fn reconnect_with_backoff(&mut self) -> Result<()> {
-        let mut backoff = 4;
-        let max_backoff = 64;
-        loop {
-            let res = self.reconnect().await;
-            if res.is_ok() {
-                return Ok(());
-            }
-            error!("{:#?} reconnect failed with {:#?}, reconnecting in {}", self, res, backoff);
-            tokio::time::sleep(tokio::time::Duration::from_secs(backoff)).await;
-            backoff = (backoff * 2).min(max_backoff);
-        }
-    }
-    async fn run_with_reconnect(&mut self) -> Result<()> {
-        loop {
-            let res = self.run().await;
-            if res.is_ok() {
-                return Ok(());
-            }
-            error!("{:#?} run failed with {:#?}", self, res);
-            self.reconnect_with_backoff().await?;
-        }
-    }
-}
-
-impl<S: OrderStrategy + Debug> LRTCStage for LimitOrderAuctionExecutor<S> {
-    async fn run(&self) -> Result<()> {
-        let remain_sec = self.auction.remain_sec();
-        if remain_sec <= 0 {
-            return Ok(());
-        }
-
-        let market_task = self.run_market();
-        let auction_task = self.run_auction();
-        let ping_task = self.auction.client.ping_interval(15);
-        let res = select! {
-            _ = market_task => {Err(Error::msg("Market task exited early"))},
-            _ = ping_task => {Err(Error::msg("Ping task exited early"))},
-            _ = tokio::time::sleep(tokio::time::Duration::from_secs(remain_sec as u64)) => {Ok(())},
-            auction_res = auction_task => { auction_res },
-        };
-        res
-    }
-    async fn reconnect(&mut self) -> Result<()> {
-        self.auction.market = new_market_state();
-        self.auction.client = WsClient::new_client().await?;
-        self.auction.client.login().await?;
-        self.auction.client.enable_cancel_on_disconnect().await?;
-        Ok(())
-    }
 }

@@ -4,9 +4,10 @@ use crate::lrtc::selector::{maybe_select_from_positions, select_new_option};
 use crate::lrtc::stages::LRTCExecutorStage::{
     AwaitSettlement, OptionAuction, SpotAuction, SpotOnly,
 };
-use crate::lrtc::stages::{LRTCAwaitSettlement, LRTCExecutorStage, LRTCSpotOnly, LRTCStage};
+use crate::lrtc::stages::{LRTCAwaitSettlement, LRTCExecutorStage, LRTCSpotOnly};
 use crate::market::new_market_state;
 use crate::shared::auction::{LimitOrderAuction, LimitOrderAuctionExecutor};
+use crate::shared::stages::ExecutorStage;
 use anyhow::Result;
 use bigdecimal::{BigDecimal, Zero};
 use log::info;
@@ -37,8 +38,8 @@ impl LRTCExecutor {
         let cash_bal = reader.get_amount(&params.spot_auction_params.cash_name);
         drop(reader);
 
-        let cash_threshold = &params.spot_auction_params.max_cash;
-        let is_cash_within_threshold = cash_bal >= -cash_threshold && &cash_bal < cash_threshold;
+        let is_cash_within_threshold =
+            params.spot_auction_params.is_cash_within_threshold(&cash_bal);
 
         if option_name.is_none() && is_cash_within_threshold {
             info!("Starting in Spot Only stage");
@@ -103,10 +104,8 @@ impl LRTCExecutor {
     pub async fn new_spot_stage(params: LRTCParams) -> Result<LRTCExecutorStage> {
         // pass current time as start_sec to avoid querying the option expiry (which is not known yet)
         // spot auction always start after AwaitSettlement and it will ensure to wait for spot_auction_delay
-        let spot_name = &params.option_auction_params.spot_name;
-        let cash_name = &params.spot_auction_params.cash_name;
         let auction = LimitOrderAuction::new(
-            format!("{}-{}", spot_name, cash_name),
+            params.spot_instrument_name(),
             chrono::Utc::now().timestamp(),
             params.spot_auction_params.auction_sec,
             params.spot_auction_params.price_change_tolerance.clone(),

@@ -16,9 +16,9 @@ pub struct OptionAuctionParams {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LRTCParams {
-    pub env: String,        // Environment name (e.g. staging, prod)
-    pub vault_name: String, // used as prefix for env vars, e.g. {vault_name}_TSA_ADDRESS
-    pub currency: String,   // Currency of the options (e.g. ETH)
+    pub env: String,             // Environment name (e.g. staging, prod)
+    pub vault_name: String,      // used as prefix for env vars, e.g. {vault_name}_TSA_ADDRESS
+    pub option_currency: String, // Currency of the options (e.g. ETH)
     pub expiry_days: u64,
     pub min_expiry_hours: u64, // Minimum expiry for options in hours, will remain in spot only stage until an option is available
     pub target_delta: BigDecimal,
@@ -53,6 +53,12 @@ impl LRTCParams {
 
     pub fn option_auction_start(&self, option_expiry: i64) -> i64 {
         option_expiry - self.expiry_sec() + self.option_auction_delay_sec()
+    }
+
+    pub fn spot_instrument_name(&self) -> String {
+        let spot_name = &self.option_auction_params.spot_name;
+        let cash_name = &self.spot_auction_params.cash_name;
+        format!("{}-{}", spot_name, cash_name)
     }
 }
 

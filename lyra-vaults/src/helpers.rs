@@ -220,3 +220,45 @@ pub async fn get_option_expiry(instrument_name: &str) -> Result<i64> {
     .into_result()?;
     Ok(ticker.result.option_details.unwrap().expiry)
 }
+
+pub async fn get_expiry_options(
+    currency: &str,
+    max_expiry_sec: i64,
+    min_expiry_sec: i64,
+    is_call: bool,
+) -> Result<Vec<String>> {
+    let now = Utc::now().timestamp();
+    let options_res = http_rpc::<_, InstrumentsResponse>(
+        "public/get_instruments",
+        json!({"currency": currency, "instrument_type": "option","expired": false}),
+        None,
+    )
+    .await?
+    .into_result()?
+    .result;
+
+    let options_iter = options_res.iter().filter(|&r| {
+        if let Some(ref details) = r.option_details {
+            r.is_active
+                && (is_call == details.option_type.is_call())
+                && details.expiry < now + max_expiry_sec
+                && details.expiry > now + min_expiry_sec
+        } else {
+            false
+        }
+    });
+
+    let err = Error::msg("No options found within the LRTC params");
+    let expiry = options_iter.clone().map(|r| r.option_details.as_ref().unwrap().expiry).max();
+    let expiry = match expiry {
+        Some(expiry) => expiry,
+        None => return Err(err),
+    };
+
+    let expiry_options: Vec<String> = options_iter
+        .filter(|r| r.option_details.as_ref().unwrap().expiry == expiry)
+        .map(|r| r.instrument_name.clone())
+        .collect();
+
+    Ok(expiry_options)
+}

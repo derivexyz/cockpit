@@ -14,9 +14,9 @@ pub use orderbook_types::types::orders::{
     Direction, LiquidityRole, OrderParams, OrderResponse, OrderStatus, OrderType, ReplaceParams,
     TimeInForce,
 };
-pub use orderbook_types::types::rfqs::LegPriced;
-use orderbook_types::types::rfqs::{
-    ExecuteQuoteParams, LegUnpriced, QuoteParams, QuoteResultPublic, RfqParams,
+use orderbook_types::types::rfqs::QuoteParams;
+pub use orderbook_types::types::rfqs::{
+    ExecuteQuoteParams, LegPriced, LegUnpriced, QuoteResultPublic, RfqParams,
 };
 use orderbook_types::types::tickers::InstrumentTicker;
 use serde::Deserialize;

@@ -23,4 +23,24 @@ impl SpotAuctionParams {
         let spread = self.init_spot_spread + min_since_start * self.spot_spread_per_min;
         spread.min(self.max_spot_spread)
     }
+
+    pub fn is_cash_within_threshold(&self, cash_bal: &BigDecimal) -> bool {
+        let cash_threshold = self.max_cash.clone();
+        cash_bal.abs() < cash_threshold
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OptionRFQParams {
+    pub max_cost: f64,
+    pub max_premium_spread: f64,
+    pub init_premium_spread: f64,
+    pub premium_spread_per_min: f64,
+
+    pub lot_size: BigDecimal,
+    pub lot_rounding: BigDecimal,
+    pub lot_init_sleep_sec: u64,
+    pub auction_sec: i64,
+
+    pub collat_name: String,
 }

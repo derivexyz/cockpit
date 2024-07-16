@@ -1,5 +1,5 @@
-use std::fmt;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -57,19 +57,17 @@ impl From<i64> for RPCId {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RPCError
-{
-    code: i64,
+pub struct RPCError {
+    pub code: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    data: Option<serde_json::Value>,
-    message: String,
+    pub data: Option<serde_json::Value>,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RPCErrorResponse
-{
-    id: RPCId,
-    error: RPCError,
+pub struct RPCErrorResponse {
+    pub id: RPCId,
+    pub error: RPCError,
 }
 
 impl fmt::Display for RPCErrorResponse {

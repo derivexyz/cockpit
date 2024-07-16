@@ -1,7 +1,7 @@
 {
   "env": "staging",
   "vault_name": "RSWETH",
-  "currency": "ETH",
+  "option_currency": "ETH",
   "expiry_days": 1,
   "min_expiry_hours": 12,
   "target_delta": "0.4",
@@ -17,12 +17,12 @@
     "spot_name": "RSWETH"
   },
   "spot_auction_params": {
-    "max_spot_spread": 0.01,
+    "max_spot_spread": 0.012,
     "init_spot_spread": -0.001,
     "spot_spread_per_min": 0.001,
     "auction_sec": 1800,
     "price_change_tolerance": "1",
     "cash_name": "USDC",
-    "max_cash": "500"
+    "max_cash": "20000"
   }
 }

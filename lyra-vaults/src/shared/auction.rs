@@ -1,6 +1,6 @@
 use crate::helpers::{subscribe_subaccount, subscribe_tickers, sync_subaccount, TickerInterval};
-use crate::lrtc::stages::LRTCStage;
 use crate::market::{new_market_state, MarketState};
+use crate::shared::stages::ExecutorStage;
 use crate::web3::actions::{get_tsa_contract, sign_order, ProviderWithSigner, TSA};
 use anyhow::{Error, Result};
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
@@ -184,7 +184,12 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
     }
 
     async fn cancel_all(&self) -> Result<()> {
-        self.auction.client.cancel_all(self.auction.subaccount_id).await?.into_result()?;
+        let res =
+            self.auction.client.cancel_all(self.auction.subaccount_id).await?.into_result()?;
+        if res.result.cancelled_orders == 0 {
+            warn!("LimitOrderAuction cancel_all failed to cancel any orders, likely mid fill");
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        }
         Ok(())
     }
 
