@@ -1,3 +1,4 @@
+use crate::helpers::get_spot_price_at;
 use crate::shared::params::{OptionRFQParams, SpotAuctionParams};
 use crate::shared::rfq::{RFQAuction, RFQLot, RFQStrategy};
 use anyhow::Result;
@@ -35,6 +36,20 @@ impl LongPPParams {
     pub fn min_expiry_sec(&self) -> i64 {
         self.min_expiry_hours as i64 * 3600
     }
+
+    pub fn option_auction_delay_sec(&self) -> i64 {
+        self.option_auction_delay_min * 60
+    }
+
+    pub fn option_auction_start(&self, option_expiry: i64) -> i64 {
+        option_expiry - self.expiry_sec() + self.option_auction_delay_sec()
+    }
+
+    pub fn spot_instrument_name(&self) -> String {
+        let spot_name = &self.option_auction_params.collat_name;
+        let cash_name = &self.spot_auction_params.cash_name;
+        format!("{}-{}", spot_name, cash_name)
+    }
 }
 
 impl RFQStrategy for OptionRFQParams {
@@ -58,20 +73,30 @@ impl RFQStrategy for OptionRFQParams {
         auction: &RFQAuction,
         unit_cost: &BigDecimal,
     ) -> Result<BigDecimal> {
-        // todo this is a mock for now
+        let now = chrono::Utc::now().timestamp();
         let market = &auction.market;
         let reader = market.read().await;
         let option_names = auction.instrument_names();
-        let position = reader.get_position(&option_names[0]);
-        let balance = match position {
+        let ticker = reader.get_ticker(&option_names[0]).unwrap();
+        let sec_to_expiry = ticker.option_details.as_ref().unwrap().expiry - now;
+        let spread_balance = match reader.get_position(&option_names[0]) {
             Some(pos) => pos.amount.clone().abs(),
             None => BigDecimal::zero(),
         };
-        let notional = BigDecimal::from_str("1500000")?;
-        let apy = BigDecimal::from_str("0.18")?;
-        let weekly_rate = apy / BigDecimal::from_str("52")?;
-        let weekly_interest = notional * weekly_rate;
-        let size = (weekly_interest / unit_cost) - balance;
+        let collat_balance = reader.get_amount(&self.collat_name);
+        // todo MOCK NOW
+        let collat_price_now = get_spot_price_at(&self.collat_name, now).await?;
+        info!("Collat price now: {}", collat_price_now);
+        let collat_price_last = get_spot_price_at(&self.collat_name, now - sec_to_expiry).await?;
+        info!("Collat price last: {:?}", collat_price_last);
+        let growth = (&collat_price_now - &collat_price_last) / &collat_price_last;
+        info!("Growth: {}", growth);
+        let collat_tvl = collat_balance * collat_price_now;
+        info!("Collat TVL: {}", collat_tvl);
+        let dollar_growth = collat_tvl * growth;
+        info!("Dollar growth: {}", dollar_growth);
+
+        let size = (dollar_growth / unit_cost) - spread_balance;
         let num_rounded = (&size / &self.lot_rounding).with_scale_round(0, Down);
         let round_size = num_rounded * &self.lot_rounding;
         let lot_size = round_size.clone().min(self.lot_size.clone());

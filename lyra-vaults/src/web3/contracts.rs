@@ -7,12 +7,11 @@ use std::sync::Arc;
 
 abigen!(ERC20, "./abi/erc20.json");
 abigen!(TSA, "./abi/tsa.json");
-abigen!(
-    LRTBase,
-    r#"[
-        function setSubAccountWL(uint accountId, bool isWhitelisted) external
-        ]"#
-);
+
+// todo: new abi for the new longpp tsa
+// todo: RFQ signing needs to pass encoded legs as extraData
+// todo somehow minimize the deposit/withdrawal diffs? enum the two?
+// if enum, do impl on the enum to return things like client() and other shared methods w/ same name
 
 pub type ProviderWithSigner = NonceManagerMiddleware<SignerMiddleware<Provider<Http>, LocalWallet>>;
 

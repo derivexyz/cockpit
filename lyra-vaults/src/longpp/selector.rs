@@ -1,6 +1,7 @@
 use crate::lrtc::params::LRTCParams;
 use crate::market::{new_market_state, MarketState};
 use anyhow::{Error, Result};
+use bigdecimal::num_traits::real::Real;
 use bigdecimal::{BigDecimal, Zero};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -87,5 +88,50 @@ pub async fn select_new_spread(params: &LongPPParams) -> Result<Vec<LegUnpriced>
     match selected_spread {
         Some((spread, _)) => Ok(spread),
         None => Err(err),
+    }
+}
+
+/// Returns the legs array from an existing position
+/// Expects the market state to be synced to the subaccount
+pub async fn maybe_select_from_positions(market: &MarketState) -> Result<Option<Vec<LegUnpriced>>> {
+    let reader = market.read().await;
+    let option_names: Vec<String> = reader
+        .iter_positions()
+        .filter(|&p| {
+            p.amount != BigDecimal::zero()
+                && (p.instrument_name.ends_with("-C") || p.instrument_name.ends_with("-P"))
+        })
+        .map(|p| p.instrument_name.clone())
+        .collect();
+
+    // expect calls only
+    if option_names.clone().iter().any(|n| n.ends_with("-P")) {
+        return Err(Error::msg("Unexpected put option in open positions"));
+    }
+
+    match option_names.len() {
+        0 => Ok(None),
+        1 => Err(Error::msg("Unexpected single open option without spread")),
+        2 => {
+            let mut legs: Vec<LegUnpriced> = reader
+                .iter_positions()
+                .filter(|&p| option_names.contains(&p.instrument_name))
+                .map(|b| {
+                    let direction = if b.amount > BigDecimal::zero() {
+                        Direction::Buy
+                    } else {
+                        Direction::Sell
+                    };
+                    LegUnpriced {
+                        instrument_name: b.instrument_name.clone(),
+                        direction,
+                        amount: BigDecimal::one(),
+                    }
+                })
+                .collect();
+            legs.sort_by(|a, b| a.instrument_name.cmp(&b.instrument_name));
+            Ok(Some(legs))
+        }
+        _ => Err(Error::msg("Unexpected 3 or more open options positions")),
     }
 }

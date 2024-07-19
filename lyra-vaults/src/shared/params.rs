@@ -12,6 +12,7 @@ pub struct SpotAuctionParams {
     // Stopping criteria for a spot auction is USDC >=0 and USDC < max_cash
     pub cash_name: String,
     pub max_cash: BigDecimal,
+    // todo add max_cash_pct_tvl
 }
 
 impl SpotAuctionParams {

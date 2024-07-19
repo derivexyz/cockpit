@@ -7,6 +7,7 @@ mod market;
 mod shared;
 mod web3;
 
+use crate::longpp::executor::LongPPExecutor;
 use crate::longpp::params::LongPPParams;
 use crate::longpp::selector::select_new_spread;
 use crate::lrtc::executor::LRTCExecutor;
@@ -55,10 +56,37 @@ async fn run_lrtc(params: LRTCParams) -> Result<()> {
     let tsa_address: String = std::env::var(format!("{vault_name}_TSA_ADDRESS")).unwrap();
     std::env::set_var("OWNER_PUBLIC_KEY", tsa_address);
 
-    test_initiate_deposit().await?;
-    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     info!("Starting LRTC executor");
     let mut executor = LRTCExecutor::new(params).await?;
+    let task_handle = tokio::spawn(async move { executor.run().await });
+    let res = task_handle.await?;
+    if let Err(e) = res {
+        error!("Executor failed: {:?}", e);
+    }
+    Ok(())
+}
+
+async fn run_long_pp(params: LongPPParams) -> Result<()> {
+    let vault_name = params.vault_name.clone();
+    std::env::set_var("ENV", params.env.clone());
+    std::env::set_var("SESSION_KEY_NAME", vault_name.to_lowercase());
+    println!("Setting up {} env for Long PP executor", params.env.clone());
+    setup_env().await;
+    ensure_session_key().await;
+    info!("Long PP executor params: {:?}", params);
+
+    let subacc_id = get_subaccount_id(&vault_name).await?;
+    info!("Vault Subaccount ID: {}", subacc_id);
+    std::env::set_var("SUBACCOUNT_ID", subacc_id.to_string());
+    std::env::set_var("VAULT_NAME", vault_name.clone());
+    std::env::set_var("SPOT_NAME", params.option_auction_params.collat_name.clone());
+    std::env::set_var("CASH_NAME", params.spot_auction_params.cash_name.clone());
+
+    let tsa_address: String = std::env::var(format!("{vault_name}_TSA_ADDRESS")).unwrap();
+    std::env::set_var("OWNER_PUBLIC_KEY", tsa_address);
+
+    info!("Starting LongPP executor");
+    let mut executor = LongPPExecutor::new(params).await?;
     let task_handle = tokio::spawn(async move { executor.run().await });
     let res = task_handle.await?;
     if let Err(e) = res {
@@ -98,7 +126,7 @@ async fn main() -> Result<()> {
     let params: VaultParams = serde_json::from_str(&params)?;
     match params {
         VaultParams::LRTC(params) => run_lrtc(params).await?,
-        VaultParams::LongPP(params) => run_mock_pp(params).await?,
+        VaultParams::LongPP(params) => run_long_pp(params).await?,
     }
 
     Ok(())

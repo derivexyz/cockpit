@@ -1,4 +1,6 @@
-use crate::helpers::{subscribe_subaccount, subscribe_tickers, sync_subaccount, TickerInterval};
+use crate::helpers::{
+    sleep_till, subscribe_subaccount, subscribe_tickers, sync_subaccount, TickerInterval,
+};
 use crate::market::{new_market_state, MarketState};
 use crate::shared::stages::ExecutorStage;
 use crate::web3::actions::{get_tsa_contract, sign_order, ProviderWithSigner, TSA};
@@ -52,12 +54,7 @@ impl LimitOrderAuction {
         info!("LimitOrderAuction selected option: {}", instrument_name);
         let vault_name = std::env::var("VAULT_NAME").unwrap();
         let subaccount_id = std::env::var("SUBACCOUNT_ID").unwrap().parse().unwrap();
-
-        let sleep_sec = start_sec - chrono::Utc::now().timestamp();
-        if sleep_sec > 0 {
-            info!("LimitOrderAuction sleeping for {} sec", sleep_sec);
-            tokio::time::sleep(tokio::time::Duration::from_secs(sleep_sec as u64)).await;
-        }
+        sleep_till(start_sec).await;
 
         let start_timestamp_sec = chrono::Utc::now().timestamp();
         let market = new_market_state();
@@ -172,7 +169,7 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
         match orders {
             None => Ok(None),
             Some(orders) => {
-                let mut prices = orders.values().map(|o| o.limit_price.clone()).collect::<Vec<_>>();
+                let prices = orders.values().map(|o| o.limit_price.clone()).collect::<Vec<_>>();
                 match prices.len() {
                     0 => Ok(None),
                     1 => Ok(Some(prices[0].clone())),

@@ -1,4 +1,6 @@
-use crate::helpers::{subscribe_subaccount, subscribe_tickers, sync_subaccount, TickerInterval};
+use crate::helpers::{
+    sleep_till, subscribe_subaccount, subscribe_tickers, sync_subaccount, TickerInterval,
+};
 use crate::market::{new_market_state, MarketState};
 use crate::web3::{get_tsa_contract, ProviderWithSigner, TSA};
 use anyhow::{Error, Result};
@@ -106,6 +108,9 @@ impl RFQAuction {
     ) -> Result<Self> {
         let vault_name = std::env::var("VAULT_NAME").unwrap();
         let subaccount_id = std::env::var("SUBACCOUNT_ID").unwrap().parse().unwrap();
+        sleep_till(start_sec).await;
+        let start_timestamp_sec = chrono::Utc::now().timestamp();
+
         let market = new_market_state();
         let client = WsClient::new_client().await?;
         client.login().await?;
@@ -116,7 +121,7 @@ impl RFQAuction {
             market,
             client,
             tsa,
-            start_timestamp_sec: start_sec,
+            start_timestamp_sec,
             lots: Arc::new(Mutex::new(vec![])),
             unit_legs,
             auction_sec,

@@ -1,24 +1,26 @@
-use crate::helpers::{fetch_ticker, get_option_expiry, sync_subaccount};
-use crate::lrtc::params::LRTCParams;
-use crate::lrtc::selector::{maybe_select_from_positions, select_new_option};
-use crate::lrtc::stages::LRTCExecutorStage;
-use crate::lrtc::stages::LRTCExecutorStage::{
+use crate::helpers::{fetch_ticker, get_option_expiry, sleep_till, sync_subaccount};
+use crate::longpp::params::LongPPParams;
+use crate::longpp::selector::{maybe_select_from_positions, select_new_spread};
+use crate::longpp::stages::LongPPExecutorStage;
+use crate::longpp::stages::LongPPExecutorStage::{
     AwaitSettlement, OptionAuction, SpotAuction, SpotOnly,
 };
 use crate::market::new_market_state;
 use crate::shared::auction::{LimitOrderAuction, LimitOrderAuctionExecutor};
+use crate::shared::rfq::{RFQAuction, RFQAuctionExecutor};
 use crate::shared::stages::{ExecutorStage, TSACollateralOnly, TSAWaitForSettlement};
 use anyhow::Result;
 use bigdecimal::{BigDecimal, Zero};
 use log::info;
+use orderbook_types::types::rfqs::LegUnpriced;
 
-pub struct LRTCExecutor {
-    params: LRTCParams,
-    stage: LRTCExecutorStage,
+pub struct LongPPExecutor {
+    params: LongPPParams,
+    stage: LongPPExecutorStage,
 }
 
-impl LRTCExecutor {
-    /// Create a new LRTCExecutor inferring the state from the positions / market
+impl LongPPExecutor {
+    /// Create a new LongPPExecutor inferring the state from the positions / market
     /// Cues for the state:
     /// - Spot Only MUST have no options and USDC < threshold and USDC >= -threshold
     /// - Option Auction has USDC >= 0 and # of options > 0 and expiry >= auction len
@@ -26,13 +28,13 @@ impl LRTCExecutor {
     /// - Spot Auction has no options and USDC < 0 or USDC > threshold
     /// Usually the executor will start in the Spot Only state, the other states are meant for
     /// recovery from hard crashes during e.g. spot or option auction
-    pub async fn new(params: LRTCParams) -> Result<Self> {
+    pub async fn new(params: LongPPParams) -> Result<Self> {
         let market = new_market_state();
         let subaccount_id: i64 = std::env::var("SUBACCOUNT_ID").unwrap().parse()?;
         sync_subaccount(market.clone(), subaccount_id, vec![]).await?;
 
-        let option_name = maybe_select_from_positions(&market).await?;
-        info!("Current option position: {:?}", option_name);
+        let open_legs = maybe_select_from_positions(&market).await?;
+        info!("Current option positions: {:?}", open_legs);
 
         let reader = market.read().await;
         let cash_bal = reader.get_amount(&params.spot_auction_params.cash_name);
@@ -41,20 +43,16 @@ impl LRTCExecutor {
         let is_cash_within_threshold =
             params.spot_auction_params.is_cash_within_threshold(&cash_bal);
 
-        if option_name.is_none() && is_cash_within_threshold {
+        if open_legs.is_none() && is_cash_within_threshold {
             info!("Starting in Spot Only stage");
             return Ok(Self { params, stage: SpotOnly(TSACollateralOnly::new().await?) });
-        } else if option_name.is_none() && !is_cash_within_threshold {
+        } else if open_legs.is_none() && !is_cash_within_threshold {
             info!("Starting in Spot Auction stage");
-            let stage = LRTCExecutor::new_spot_auction_stage(params.clone()).await?;
+            let stage = LongPPExecutor::new_spot_auction_stage(params.clone()).await?;
             return Ok(Self { params, stage });
         }
-        let option_name = option_name.unwrap();
-
-        fetch_ticker(market.clone(), &option_name).await?;
-        let reader = market.read().await;
-        let option_expiry =
-            reader.get_ticker(&option_name).unwrap().option_details.as_ref().unwrap().expiry;
+        let open_legs = open_legs.unwrap();
+        let option_expiry = get_option_expiry(&open_legs[0].instrument_name).await?;
 
         // in case of an executor restart during an auction, we will continue the auction
         // if it is likely to still be ongoing
@@ -66,44 +64,46 @@ impl LRTCExecutor {
 
         return if is_still_ongoing && is_expiry_still_valid {
             info!("Starting in Option Auction stage");
-            let stage = LRTCExecutor::new_option_stage(params.clone(), option_name).await?;
+            let stage = LongPPExecutor::new_option_stage(params.clone(), open_legs).await?;
             Ok(Self { params, stage })
         } else {
             info!("Starting in Await Settlement stage");
-            let stage = LRTCExecutor::new_settlement_stage(params.clone(), option_name).await?;
+            let stage = LongPPExecutor::new_settlement_stage(params.clone(), open_legs).await?;
             Ok(Self { params, stage })
         };
     }
 
     pub async fn new_settlement_stage(
-        params: LRTCParams,
-        option_name: String,
-    ) -> Result<LRTCExecutorStage> {
+        params: LongPPParams,
+        legs: Vec<LegUnpriced>,
+    ) -> Result<LongPPExecutorStage> {
+        let option_names = legs.into_iter().map(|l| l.instrument_name).collect();
         Ok(AwaitSettlement(
-            TSAWaitForSettlement::new(params.spot_auction_delay_min, vec![option_name]).await?,
+            TSAWaitForSettlement::new(params.spot_auction_delay_min, option_names).await?,
         ))
     }
 
     pub async fn new_option_stage(
-        params: LRTCParams,
-        option_name: String,
-    ) -> Result<LRTCExecutorStage> {
+        params: LongPPParams,
+        legs: Vec<LegUnpriced>,
+    ) -> Result<LongPPExecutorStage> {
+        let option_name = legs[0].instrument_name.clone();
         let option_expiry = get_option_expiry(&option_name).await?;
-        let auction = LimitOrderAuction::new(
-            option_name,
+        let auction = RFQAuction::new(
+            legs,
             params.option_auction_start(option_expiry),
+            params.option_auction_params.lot_init_sleep_sec,
             params.option_auction_params.auction_sec,
-            params.option_auction_params.price_change_tolerance.clone(),
         )
         .await?;
-        let stage = OptionAuction(LimitOrderAuctionExecutor {
+        let stage = OptionAuction(RFQAuctionExecutor {
             auction,
             strategy: params.option_auction_params.clone(),
         });
         Ok(stage)
     }
 
-    pub async fn new_spot_auction_stage(params: LRTCParams) -> Result<LRTCExecutorStage> {
+    pub async fn new_spot_auction_stage(params: LongPPParams) -> Result<LongPPExecutorStage> {
         // pass current time as start_sec to avoid querying the option expiry (which is not known yet)
         // spot auction always start after AwaitSettlement and it will ensure to wait for spot_auction_delay
         let auction = LimitOrderAuction::new(
@@ -120,12 +120,12 @@ impl LRTCExecutor {
         Ok(stage)
     }
 
-    pub async fn select_new_option_until_success(&self) -> String {
+    pub async fn select_new_spread_until_success(&self) -> Vec<LegUnpriced> {
         loop {
-            match select_new_option(&self.params).await {
-                Ok(option_name) => return option_name,
+            match select_new_spread(&self.params).await {
+                Ok(legs) => return legs,
                 Err(e) => {
-                    info!("select_new_option failed with {:#}, waiting for 60s", e);
+                    info!("select_new_spread failed with {:#}, waiting for 60s", e);
                     tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
                 }
             }
@@ -133,39 +133,38 @@ impl LRTCExecutor {
     }
 
     async fn await_option_auction_start(&self) -> Result<()> {
-        let option_name = self.select_new_option_until_success().await;
+        let option_name = self.select_new_spread_until_success().await;
+        let option_name = option_name[0].instrument_name.clone();
         let option_expiry = get_option_expiry(&option_name).await?;
         let start_sec = self.params.option_auction_start(option_expiry);
-        let sleep_sec = start_sec - chrono::Utc::now().timestamp();
-        if sleep_sec > 0 {
-            info!("Executor await_option_auction_start sleep for {} sec", sleep_sec);
-            tokio::time::sleep(tokio::time::Duration::from_secs(sleep_sec as u64)).await;
-        }
+        sleep_till(start_sec).await;
         Ok(())
     }
 
     pub async fn next(&mut self) -> Result<()> {
         self.stage = match &self.stage {
             SpotOnly(_) => {
-                let option_name = select_new_option(&self.params).await;
-                match option_name {
+                let legs = select_new_spread(&self.params).await;
+                match legs {
                     Ok(_) => {
                         self.await_option_auction_start().await?;
-                        let option_name = self.select_new_option_until_success().await;
-                        LRTCExecutor::new_option_stage(self.params.clone(), option_name).await?
+                        let legs = self.select_new_spread_until_success().await;
+                        LongPPExecutor::new_option_stage(self.params.clone(), legs).await?
                     }
                     Err(e) => {
-                        info!("select_new_option failed with {:#}, re-entering spot only stage", e);
+                        info!("select_new_spread failed with {:#}, re-entering spot only stage", e);
                         tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
                         SpotOnly(TSACollateralOnly::new().await?)
                     }
                 }
             }
             OptionAuction(ref s) => {
-                let option_name = s.auction.instrument_name.clone();
-                LRTCExecutor::new_settlement_stage(self.params.clone(), option_name).await?
+                let legs = s.auction.unit_legs.clone();
+                LongPPExecutor::new_settlement_stage(self.params.clone(), legs).await?
             }
-            AwaitSettlement(_) => LRTCExecutor::new_spot_auction_stage(self.params.clone()).await?,
+            AwaitSettlement(_) => {
+                LongPPExecutor::new_spot_auction_stage(self.params.clone()).await?
+            }
             SpotAuction(_) => SpotOnly(TSACollateralOnly::new().await?),
         };
         Ok(())

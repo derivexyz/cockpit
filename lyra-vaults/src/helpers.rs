@@ -1,10 +1,15 @@
 use crate::market::{new_market_state, Balance, MarketState};
 use lyra_client::auth::get_auth_headers;
 use lyra_client::json_rpc::{http_rpc, Notification, Response, WsClient, WsClientExt};
+use std::str::FromStr;
 
 use orderbook_types::generated::channel_subaccount_id_balances::BalanceUpdateSchema;
 use orderbook_types::generated::private_get_subaccount::{
     PrivateGetSubaccountParamsSchema, PrivateGetSubaccountResponseSchema,
+};
+use orderbook_types::generated::public_get_spot_feed_history::{
+    PublicGetSpotFeedHistoryParamsSchema, PublicGetSpotFeedHistoryResponseSchema,
+    SpotFeedHistoryResponseSchema,
 };
 use orderbook_types::types::tickers::result::{
     InstrumentsResponse, OptionType, TickerNotificationData, TickerResponse,
@@ -21,6 +26,8 @@ use orderbook_types::types::orders::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::select;
+
+const SPOT_QUERY_BUFFER_SEC: i64 = 60 * 60; // 1 hour
 
 type TickerMsg = Notification<TickerNotificationData>;
 
@@ -261,4 +268,21 @@ pub async fn get_expiry_options(
         .collect();
 
     Ok(expiry_options)
+}
+
+pub async fn get_spot_price_at(currency: &str, timestamp: i64) -> Result<BigDecimal> {
+    // todo change this to call to sUSDe contract...
+    if (timestamp - Utc::now().timestamp()).abs() < 1000 {
+        return Ok(BigDecimal::from_str("1.08")?);
+    } else {
+        return Ok(BigDecimal::from_str("1.078")?);
+    }
+}
+
+pub async fn sleep_till(start_timestamp: i64) {
+    let sleep_sec = start_timestamp - Utc::now().timestamp();
+    if sleep_sec > 0 {
+        info!("Sleeping for {} sec", sleep_sec);
+        tokio::time::sleep(tokio::time::Duration::from_secs(sleep_sec as u64)).await;
+    }
 }
