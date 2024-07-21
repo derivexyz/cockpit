@@ -1,15 +1,16 @@
 use crate::helpers::{fetch_ticker, get_single_balance, sync_subaccount};
 use crate::market::new_market_state;
 pub use crate::web3::contracts::{
-    get_provider_with_signer, get_tsa_contract, tsa, ProviderWithSigner, ERC20, TSA,
+    get_provider_with_signer, get_tsa_contract, ProviderWithSigner, ERC20, TSA,
 };
+use crate::web3::tsa;
 use crate::web3::{process_deposit_events, MAX_TO_PROCESS_PER_CALL};
 use anyhow::{Error, Result};
 use bigdecimal::{BigDecimal, Zero};
 use ethers::abi::{AbiEncode, Address};
 use ethers::middleware::MiddlewareBuilder;
 use ethers::prelude::{
-    abigen, Abigen, Event, LocalWallet, Middleware, NonceManagerMiddleware, Signer,
+    abigen, Abigen, Bytes, Event, LocalWallet, Middleware, NonceManagerMiddleware, Signer,
     SignerMiddleware, Wallet, I256, U64,
 };
 use ethers::prelude::{ProviderExt, U256};
@@ -47,6 +48,7 @@ const WITHDRAW_BUFFER_FACTOR: &str = "1.01";
 pub async fn sign_action<T: AbiEncode + ModuleData + Clone>(
     tsa: &TSA<ProviderWithSigner>,
     data: T,
+    extra_data: Bytes,
 ) -> Result<ActionData> {
     let subaccount_id: i64 = std::env::var("SUBACCOUNT_ID")?.parse()?;
     let action_data = ActionData::new(data.clone(), subaccount_id, tsa.address())?;
@@ -59,7 +61,7 @@ pub async fn sign_action<T: AbiEncode + ModuleData + Clone>(
         owner: action_data.owner,
         signer: action_data.signer,
     };
-    let call = tsa.sign_action_data(action.clone()).gas_price(GAS_PRICE);
+    let call = tsa.sign_action_data(action.clone(), extra_data).gas_price(GAS_PRICE);
     let pending_tx = call.send().await?;
     let receipt = pending_tx.await?.ok_or(Error::msg("Failed"))?;
     info!("Tx receipt: {}", serde_json::to_string(&receipt)?);
@@ -117,7 +119,7 @@ pub async fn sign_deposit(
 ) -> Result<ActionData> {
     let deposit_data = DepositData::new(&amount, &asset_name, MarginType::Sm)?;
     info!("Deposit data: {:?}", deposit_data);
-    let action_data = sign_action(tsa, deposit_data.clone()).await?;
+    let action_data = sign_action(tsa, deposit_data.clone(), Bytes::new()).await?;
     Ok(action_data)
 }
 
@@ -163,7 +165,7 @@ pub async fn sign_withdrawal(
 ) -> Result<ActionData> {
     let withdrawal_data = WithdrawalData::new(&amount, &asset_name)?;
     info!("Withdrawal data: {:?}", withdrawal_data);
-    let action_data = sign_action(tsa, withdrawal_data.clone()).await?;
+    let action_data = sign_action(tsa, withdrawal_data.clone(), Bytes::new()).await?;
     Ok(action_data)
 }
 
@@ -239,7 +241,7 @@ pub async fn sign_order(
         args.direction.is_bid(),
     )?;
     info!("Order data: {:?}", order_data);
-    let action_data = sign_action(tsa, order_data.clone()).await?;
+    let action_data = sign_action(tsa, order_data.clone(), Bytes::new()).await?;
     Ok(action_data)
 }
 

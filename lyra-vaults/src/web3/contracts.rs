@@ -1,12 +1,55 @@
+pub use crate::web3::tsa::{Action, TSA};
+use anyhow::{Error, Result};
 use ethers::abi::Address;
 use ethers::contract::abigen;
 use ethers::middleware::{NonceManagerMiddleware, SignerMiddleware};
-use ethers::prelude::{Http, LocalWallet, MiddlewareBuilder, Provider, Signer};
+use ethers::prelude::{Abigen, Http, LocalWallet, MiddlewareBuilder, Provider, Signer};
+use log::error;
 use lyra_client::auth::load_signer_by_name;
+use std::env;
+use std::ops::Deref;
+use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 
 abigen!(ERC20, "./abi/erc20.json");
-abigen!(TSA, "./abi/tsa.json");
+
+pub fn generate_tsa_abi() -> Result<()> {
+    let abi_source = "./abi/tsa.json";
+    let mod_dir = PathBuf::from_str("./lyra-vaults/src/web3").expect("PathBuf::from_str() failed");
+    let abi = Abigen::new("TSA", abi_source).expect("Abigen::new() failed");
+    let bindings = abi.generate().expect("abi.generate() failed");
+    bindings.write_module_in_dir(&mod_dir).expect("write_module_in_dir() failed");
+    Ok(())
+}
+
+impl<M: ::ethers::providers::Middleware> TSA<M> {
+    ///Calls the covered call's contract's `signActionData` (0xa39cc91b) function
+    ///This function is to be called on a "legacy" covered call contract instance
+    ///New PP contracts (and future contracts) should use the new sign_action_data function
+    pub fn sign_action_data_legacy(
+        &self,
+        action: Action,
+    ) -> ::ethers::contract::builders::ContractCall<M, ()> {
+        self.deref()
+            .method_hash([116, 165, 190, 45], (action,))
+            .expect("method not found (this should never happen)")
+    }
+    pub fn sign_action(
+        &self,
+        action: Action,
+        extra_data: ::ethers::core::types::Bytes,
+    ) -> ::ethers::contract::builders::ContractCall<M, ()> {
+        let vault_name = std::env::var("VAULT_NAME").expect("VAULT_NAME is not set");
+        let tsa_type =
+            env::var(format!("{vault_name}_TSA_SIGNING")).expect("TSA_SIGNING is not set");
+        match tsa_type.as_str() {
+            "legacy" => self.sign_action_data_legacy(action),
+            "extra" => self.sign_action(action, extra_data),
+            _ => panic!("Invalid TSA_SIGNING value"),
+        }
+    }
+}
 
 // todo: new abi for the new longpp tsa
 // todo: RFQ signing needs to pass encoded legs as extraData

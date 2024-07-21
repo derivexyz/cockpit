@@ -12,7 +12,7 @@ use crate::longpp::params::LongPPParams;
 use crate::longpp::selector::select_new_spread;
 use crate::lrtc::executor::LRTCExecutor;
 use crate::web3::scripts::test_initiate_deposit;
-use crate::web3::{actions, events, get_subaccount_id};
+use crate::web3::{actions, events, generate_tsa_abi, get_subaccount_id};
 use anyhow::{Error, Result};
 use bigdecimal::BigDecimal;
 use ethers::abi::Address;

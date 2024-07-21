@@ -1,2149 +1,2293 @@
 [
   {
-    "type": "constructor",
     "inputs": [],
-    "stateMutability": "nonpayable"
+    "stateMutability": "nonpayable",
+    "type": "constructor"
   },
   {
-    "type": "function",
-    "name": "acceptOwnership",
     "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "allowance",
-    "inputs": [
-      {
-        "name": "owner",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "spender",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "approve",
-    "inputs": [
-      {
-        "name": "spender",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "approveModule",
-    "inputs": [
-      {
-        "name": "module",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "balanceOf",
-    "inputs": [
-      {
-        "name": "account",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "collectFee",
-    "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "decimals",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint8",
-        "internalType": "uint8"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getAccountValue",
-    "inputs": [
-      {
-        "name": "includePending",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getActionTypedDataHash",
-    "inputs": [
-      {
-        "name": "action",
-        "type": "tuple",
-        "internalType": "struct IActionVerifier.Action",
-        "components": [
-          {
-            "name": "subaccountId",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "nonce",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "module",
-            "type": "address",
-            "internalType": "contract IMatchingModule"
-          },
-          {
-            "name": "data",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "expiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "owner",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "signer",
-            "type": "address",
-            "internalType": "address"
-          }
-        ]
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getBasePrice",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getBaseTSAAddresses",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct BaseTSA.BaseTSAAddresses",
-        "components": [
-          {
-            "name": "subAccounts",
-            "type": "address",
-            "internalType": "contract ISubAccounts"
-          },
-          {
-            "name": "auction",
-            "type": "address",
-            "internalType": "contract DutchAuction"
-          },
-          {
-            "name": "wrappedDepositAsset",
-            "type": "address",
-            "internalType": "contract IWrappedERC20Asset"
-          },
-          {
-            "name": "cash",
-            "type": "address",
-            "internalType": "contract CashAsset"
-          },
-          {
-            "name": "depositAsset",
-            "type": "address",
-            "internalType": "contract IERC20Metadata"
-          },
-          {
-            "name": "manager",
-            "type": "address",
-            "internalType": "contract ILiquidatableManager"
-          },
-          {
-            "name": "matching",
-            "type": "address",
-            "internalType": "contract IMatching"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getLRTCCTSAParams",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct LRTCCTSA.LRTCCTSAParams",
-        "components": [
-          {
-            "name": "minSignatureExpiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "maxSignatureExpiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "worstSpotBuyPrice",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "worstSpotSellPrice",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "spotTransactionLeniency",
-            "type": "int256",
-            "internalType": "int256"
-          },
-          {
-            "name": "optionVolSlippageFactor",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "optionMaxDelta",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "optionMinTimeToExpiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "optionMaxTimeToExpiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "optionMaxNegCash",
-            "type": "int256",
-            "internalType": "int256"
-          },
-          {
-            "name": "feeFactor",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getSharesValue",
-    "inputs": [
-      {
-        "name": "numShares",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getSubAccountStats",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "numShortCalls",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "baseBalance",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "cashBalance",
-        "type": "int256",
-        "internalType": "int256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getTSAParams",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct BaseTSA.TSAParams",
-        "components": [
-          {
-            "name": "depositCap",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "minDepositValue",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "depositScale",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "withdrawScale",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "managementFee",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "feeRecipient",
-            "type": "address",
-            "internalType": "address"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "initialize",
-    "inputs": [
-      {
-        "name": "initialOwner",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "initParams",
-        "type": "tuple",
-        "internalType": "struct BaseTSA.BaseTSAInitParams",
-        "components": [
-          {
-            "name": "subAccounts",
-            "type": "address",
-            "internalType": "contract ISubAccounts"
-          },
-          {
-            "name": "auction",
-            "type": "address",
-            "internalType": "contract DutchAuction"
-          },
-          {
-            "name": "cash",
-            "type": "address",
-            "internalType": "contract CashAsset"
-          },
-          {
-            "name": "wrappedDepositAsset",
-            "type": "address",
-            "internalType": "contract IWrappedERC20Asset"
-          },
-          {
-            "name": "manager",
-            "type": "address",
-            "internalType": "contract ILiquidatableManager"
-          },
-          {
-            "name": "matching",
-            "type": "address",
-            "internalType": "contract IMatching"
-          },
-          {
-            "name": "symbol",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "name",
-            "type": "string",
-            "internalType": "string"
-          }
-        ]
-      },
-      {
-        "name": "lrtCcParams",
-        "type": "tuple",
-        "internalType": "struct LRTCCTSA.LRTCCTSAInitParams",
-        "components": [
-          {
-            "name": "baseFeed",
-            "type": "address",
-            "internalType": "contract ISpotFeed"
-          },
-          {
-            "name": "depositModule",
-            "type": "address",
-            "internalType": "contract IDepositModule"
-          },
-          {
-            "name": "withdrawalModule",
-            "type": "address",
-            "internalType": "contract IWithdrawalModule"
-          },
-          {
-            "name": "tradeModule",
-            "type": "address",
-            "internalType": "contract ITradeModule"
-          },
-          {
-            "name": "optionAsset",
-            "type": "address",
-            "internalType": "contract IOptionAsset"
-          }
-        ]
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "initiateDeposit",
-    "inputs": [
-      {
-        "name": "amount",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "recipient",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "depositId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "isActionSigned",
-    "inputs": [
-      {
-        "name": "action",
-        "type": "tuple",
-        "internalType": "struct IActionVerifier.Action",
-        "components": [
-          {
-            "name": "subaccountId",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "nonce",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "module",
-            "type": "address",
-            "internalType": "contract IMatchingModule"
-          },
-          {
-            "name": "data",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "expiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "owner",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "signer",
-            "type": "address",
-            "internalType": "address"
-          }
-        ]
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "isBlocked",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "isSigner",
-    "inputs": [
-      {
-        "name": "signer",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "isValidSignature",
-    "inputs": [
-      {
-        "name": "_hash",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "_signature",
-        "type": "bytes",
-        "internalType": "bytes"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "magicValue",
-        "type": "bytes4",
-        "internalType": "bytes4"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "lastFeeCollected",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "lastSeenHash",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "name",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "owner",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "pendingOwner",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "processDeposit",
-    "inputs": [
-      {
-        "name": "depositId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "processDeposits",
-    "inputs": [
-      {
-        "name": "depositIds",
-        "type": "uint256[]",
-        "internalType": "uint256[]"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "processWithdrawalRequests",
-    "inputs": [
-      {
-        "name": "limit",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "queuedDeposit",
-    "inputs": [
-      {
-        "name": "depositId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct BaseTSA.DepositRequest",
-        "components": [
-          {
-            "name": "recipient",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "amountDepositAsset",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "timestamp",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "sharesReceived",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "queuedWithdrawal",
-    "inputs": [
-      {
-        "name": "withdrawalId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct BaseTSA.WithdrawalRequest",
-        "components": [
-          {
-            "name": "beneficiary",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "amountShares",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "timestamp",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "assetsReceived",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "renounceOwnership",
-    "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "requestWithdrawal",
-    "inputs": [
-      {
-        "name": "amount",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "withdrawalId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "revokeActionSignature",
-    "inputs": [
-      {
-        "name": "action",
-        "type": "tuple",
-        "internalType": "struct IActionVerifier.Action",
-        "components": [
-          {
-            "name": "subaccountId",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "nonce",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "module",
-            "type": "address",
-            "internalType": "contract IMatchingModule"
-          },
-          {
-            "name": "data",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "expiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "owner",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "signer",
-            "type": "address",
-            "internalType": "address"
-          }
-        ]
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "revokeSignature",
-    "inputs": [
-      {
-        "name": "typedDataHash",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setLRTCCTSAParams",
-    "inputs": [
-      {
-        "name": "newParams",
-        "type": "tuple",
-        "internalType": "struct LRTCCTSA.LRTCCTSAParams",
-        "components": [
-          {
-            "name": "minSignatureExpiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "maxSignatureExpiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "worstSpotBuyPrice",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "worstSpotSellPrice",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "spotTransactionLeniency",
-            "type": "int256",
-            "internalType": "int256"
-          },
-          {
-            "name": "optionVolSlippageFactor",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "optionMaxDelta",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "optionMinTimeToExpiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "optionMaxTimeToExpiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "optionMaxNegCash",
-            "type": "int256",
-            "internalType": "int256"
-          },
-          {
-            "name": "feeFactor",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setShareKeeper",
-    "inputs": [
-      {
-        "name": "keeper",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "isKeeper",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setSignaturesDisabled",
-    "inputs": [
-      {
-        "name": "disabled",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setSigner",
-    "inputs": [
-      {
-        "name": "signer",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "isSigner",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setTSAParams",
-    "inputs": [
-      {
-        "name": "_params",
-        "type": "tuple",
-        "internalType": "struct BaseTSA.TSAParams",
-        "components": [
-          {
-            "name": "depositCap",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "minDepositValue",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "depositScale",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "withdrawScale",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "managementFee",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "feeRecipient",
-            "type": "address",
-            "internalType": "address"
-          }
-        ]
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "shareKeeper",
-    "inputs": [
-      {
-        "name": "keeper",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "signActionData",
-    "inputs": [
-      {
-        "name": "action",
-        "type": "tuple",
-        "internalType": "struct IActionVerifier.Action",
-        "components": [
-          {
-            "name": "subaccountId",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "nonce",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "module",
-            "type": "address",
-            "internalType": "contract IMatchingModule"
-          },
-          {
-            "name": "data",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "expiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "owner",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "signer",
-            "type": "address",
-            "internalType": "address"
-          }
-        ]
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "signaturesDisabled",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "signedData",
-    "inputs": [
-      {
-        "name": "hash",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "subAccount",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "symbol",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "totalLRTCCTSAAddresses",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ISpotFeed"
-      },
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IDepositModule"
-      },
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IWithdrawalModule"
-      },
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ITradeModule"
-      },
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IOptionAsset"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "totalPendingDeposits",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "totalPendingWithdrawals",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "totalSupply",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "transfer",
-    "inputs": [
-      {
-        "name": "to",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "transferFrom",
-    "inputs": [
-      {
-        "name": "from",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "to",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "transferOwnership",
-    "inputs": [
-      {
-        "name": "newOwner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "event",
-    "name": "ActionSigned",
-    "inputs": [
-      {
-        "name": "signer",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "hash",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "action",
-        "type": "tuple",
-        "indexed": false,
-        "internalType": "struct IActionVerifier.Action",
-        "components": [
-          {
-            "name": "subaccountId",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "nonce",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "module",
-            "type": "address",
-            "internalType": "contract IMatchingModule"
-          },
-          {
-            "name": "data",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "expiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "owner",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "signer",
-            "type": "address",
-            "internalType": "address"
-          }
-        ]
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "Approval",
-    "inputs": [
-      {
-        "name": "owner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "spender",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "DepositInitiated",
-    "inputs": [
-      {
-        "name": "depositId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "recipient",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "DepositProcessed",
-    "inputs": [
-      {
-        "name": "depositId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "recipient",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "success",
-        "type": "bool",
-        "indexed": false,
-        "internalType": "bool"
-      },
-      {
-        "name": "shares",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "FeeCollected",
-    "inputs": [
-      {
-        "name": "recipient",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "timestamp",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "totalSupply",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "Initialized",
-    "inputs": [
-      {
-        "name": "version",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "LRTCCTSAParamsSet",
-    "inputs": [
-      {
-        "name": "params",
-        "type": "tuple",
-        "indexed": false,
-        "internalType": "struct LRTCCTSA.LRTCCTSAParams",
-        "components": [
-          {
-            "name": "minSignatureExpiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "maxSignatureExpiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "worstSpotBuyPrice",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "worstSpotSellPrice",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "spotTransactionLeniency",
-            "type": "int256",
-            "internalType": "int256"
-          },
-          {
-            "name": "optionVolSlippageFactor",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "optionMaxDelta",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "optionMinTimeToExpiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "optionMaxTimeToExpiry",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "optionMaxNegCash",
-            "type": "int256",
-            "internalType": "int256"
-          },
-          {
-            "name": "feeFactor",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "ModuleApproved",
-    "inputs": [
-      {
-        "name": "module",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "OwnershipTransferStarted",
-    "inputs": [
-      {
-        "name": "previousOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "newOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "OwnershipTransferred",
-    "inputs": [
-      {
-        "name": "previousOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "newOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "ShareKeeperUpdated",
-    "inputs": [
-      {
-        "name": "keeper",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "isKeeper",
-        "type": "bool",
-        "indexed": false,
-        "internalType": "bool"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "SignatureRevoked",
-    "inputs": [
-      {
-        "name": "signer",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "hash",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "SignaturesDisabledUpdated",
-    "inputs": [
-      {
-        "name": "enabled",
-        "type": "bool",
-        "indexed": false,
-        "internalType": "bool"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "SignerUpdated",
-    "inputs": [
-      {
-        "name": "signer",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "isSigner",
-        "type": "bool",
-        "indexed": false,
-        "internalType": "bool"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "TSAParamsUpdated",
-    "inputs": [
-      {
-        "name": "params",
-        "type": "tuple",
-        "indexed": false,
-        "internalType": "struct BaseTSA.TSAParams",
-        "components": [
-          {
-            "name": "depositCap",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "minDepositValue",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "depositScale",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "withdrawScale",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "managementFee",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "feeRecipient",
-            "type": "address",
-            "internalType": "address"
-          }
-        ]
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "Transfer",
-    "inputs": [
-      {
-        "name": "from",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "to",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "WithdrawalProcessed",
-    "inputs": [
-      {
-        "name": "withdrawalId",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "beneficiary",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "complete",
-        "type": "bool",
-        "indexed": false,
-        "internalType": "bool"
-      },
-      {
-        "name": "sharesProcessed",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "amountReceived",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "WithdrawalRequested",
-    "inputs": [
-      {
-        "name": "withdrawalId",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "beneficiary",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "error",
     "name": "BOCST_InvalidAction",
-    "inputs": []
+    "type": "error"
   },
   {
-    "type": "error",
+    "inputs": [],
     "name": "BOCST_OnlySigner",
-    "inputs": []
+    "type": "error"
   },
   {
-    "type": "error",
+    "inputs": [],
     "name": "BTSA_Blocked",
-    "inputs": []
+    "type": "error"
   },
   {
-    "type": "error",
+    "inputs": [],
     "name": "BTSA_DepositAlreadyProcessed",
-    "inputs": []
+    "type": "error"
   },
   {
-    "type": "error",
+    "inputs": [],
     "name": "BTSA_DepositBelowMinimum",
-    "inputs": []
+    "type": "error"
   },
   {
-    "type": "error",
+    "inputs": [],
     "name": "BTSA_DepositCapExceeded",
-    "inputs": []
+    "type": "error"
   },
   {
-    "type": "error",
+    "inputs": [],
     "name": "BTSA_InsufficientBalance",
-    "inputs": []
+    "type": "error"
   },
   {
-    "type": "error",
+    "inputs": [],
     "name": "BTSA_InvalidParams",
-    "inputs": []
+    "type": "error"
   },
   {
-    "type": "error",
+    "inputs": [],
     "name": "BTSA_InvalidWithdrawalAmount",
-    "inputs": []
+    "type": "error"
   },
   {
-    "type": "error",
+    "inputs": [],
     "name": "BTSA_ModuleNotPartOfMatching",
-    "inputs": []
+    "type": "error"
   },
   {
-    "type": "error",
+    "inputs": [],
+    "name": "BTSA_MustReceiveShares",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "BTSA_OnlyShareKeeper",
-    "inputs": []
+    "type": "error"
   },
   {
-    "type": "error",
-    "name": "ERC20InsufficientAllowance",
+    "inputs": [],
+    "name": "CMTSA_BuyingTooMuchCollateral",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "CMTSA_DepositingTooMuch",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "CMTSA_FeeTooHigh",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "CMTSA_InvalidAsset",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "CMTSA_MustHaveNegativeCash",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "CMTSA_MustHavePositiveCash",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "CMTSA_PositionInsolvent",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "CMTSA_SellingTooMuchCollateral",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "CMTSA_SpotLimitPriceTooHigh",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "CMTSA_SpotLimitPriceTooLow",
+    "type": "error"
+  },
+  {
     "inputs": [
       {
+        "internalType": "address",
         "name": "spender",
-        "type": "address",
-        "internalType": "address"
+        "type": "address"
       },
       {
+        "internalType": "uint256",
         "name": "allowance",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint256"
       },
       {
+        "internalType": "uint256",
         "name": "needed",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint256"
       }
-    ]
+    ],
+    "name": "ERC20InsufficientAllowance",
+    "type": "error"
   },
   {
-    "type": "error",
-    "name": "ERC20InsufficientBalance",
     "inputs": [
       {
+        "internalType": "address",
         "name": "sender",
-        "type": "address",
-        "internalType": "address"
+        "type": "address"
       },
       {
+        "internalType": "uint256",
         "name": "balance",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint256"
       },
       {
+        "internalType": "uint256",
         "name": "needed",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint256"
       }
-    ]
+    ],
+    "name": "ERC20InsufficientBalance",
+    "type": "error"
   },
   {
-    "type": "error",
-    "name": "ERC20InvalidApprover",
     "inputs": [
       {
+        "internalType": "address",
         "name": "approver",
-        "type": "address",
-        "internalType": "address"
+        "type": "address"
       }
-    ]
+    ],
+    "name": "ERC20InvalidApprover",
+    "type": "error"
   },
   {
-    "type": "error",
-    "name": "ERC20InvalidReceiver",
     "inputs": [
       {
+        "internalType": "address",
         "name": "receiver",
-        "type": "address",
-        "internalType": "address"
+        "type": "address"
       }
-    ]
+    ],
+    "name": "ERC20InvalidReceiver",
+    "type": "error"
   },
   {
-    "type": "error",
-    "name": "ERC20InvalidSender",
     "inputs": [
       {
+        "internalType": "address",
         "name": "sender",
-        "type": "address",
-        "internalType": "address"
+        "type": "address"
       }
-    ]
+    ],
+    "name": "ERC20InvalidSender",
+    "type": "error"
   },
   {
-    "type": "error",
-    "name": "ERC20InvalidSpender",
     "inputs": [
       {
+        "internalType": "address",
         "name": "spender",
-        "type": "address",
-        "internalType": "address"
+        "type": "address"
       }
-    ]
+    ],
+    "name": "ERC20InvalidSpender",
+    "type": "error"
   },
   {
-    "type": "error",
+    "inputs": [],
     "name": "InvalidInitialization",
-    "inputs": []
+    "type": "error"
   },
   {
-    "type": "error",
-    "name": "LCCT_BuyingTooMuchCollateral",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_CanOnlyOpenShortOptions",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_CannotSellOptionsWithNegativeCash",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_FeeTooHigh",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_InvalidActionExpiry",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_InvalidAsset",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_InvalidDesiredAmount",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_InvalidModule",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_InvalidOptionBalance",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_InvalidParams",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_MustHaveNegativeCash",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_MustHavePositiveCash",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_OnlyShortCallsAllowed",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_OptionDeltaTooHigh",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_OptionExpired",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_OptionExpiryOutOfBounds",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_OptionPriceTooLow",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_PositionInsolvent",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_SellingTooManyCalls",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_SellingTooMuchCollateral",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_SpotLimitPriceTooHigh",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_SpotLimitPriceTooLow",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_WithdrawalNegativeCash",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "LCCT_WithdrawingUtilisedCollateral",
-    "inputs": []
-  },
-  {
-    "type": "error",
+    "inputs": [],
     "name": "NotInitializing",
-    "inputs": []
+    "type": "error"
   },
   {
-    "type": "error",
-    "name": "OwnableInvalidOwner",
     "inputs": [
       {
+        "internalType": "address",
         "name": "owner",
-        "type": "address",
-        "internalType": "address"
+        "type": "address"
       }
-    ]
+    ],
+    "name": "OwnableInvalidOwner",
+    "type": "error"
   },
   {
-    "type": "error",
-    "name": "OwnableUnauthorizedAccount",
     "inputs": [
       {
+        "internalType": "address",
         "name": "account",
-        "type": "address",
-        "internalType": "address"
+        "type": "address"
       }
-    ]
+    ],
+    "name": "OwnableUnauthorizedAccount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_InvalidActionExpiry",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_InvalidAsset",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_InvalidBaseBalance",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_InvalidDesiredAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_InvalidHighStrikeAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_InvalidModule",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_InvalidParams",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_InvalidTradeAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_MarkValueNotWithinBounds",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_OptionExpiryOutOfBounds",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_StrikePriceOutsideOfDiff",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_TotalCostBelowTolerance",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_TotalCostOverTolerance",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_TradeDataDoesNotMatchOrderHash",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_TradeTooLarge",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_WithdrawingUtilisedCollateral",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_WithdrawingWithOpenTrades",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PPT_WrongInputSpread",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ReentrancyGuardReentrantCall",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "signer",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "hash",
+        "type": "bytes32"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "subaccountId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "nonce",
+            "type": "uint256"
+          },
+          {
+            "internalType": "contract IMatchingModule",
+            "name": "module",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes",
+            "name": "data",
+            "type": "bytes"
+          },
+          {
+            "internalType": "uint256",
+            "name": "expiry",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "owner",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "signer",
+            "type": "address"
+          }
+        ],
+        "indexed": false,
+        "internalType": "struct IActionVerifier.Action",
+        "name": "action",
+        "type": "tuple"
+      }
+    ],
+    "name": "ActionSigned",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "spender",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "value",
+        "type": "uint256"
+      }
+    ],
+    "name": "Approval",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "depositId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "recipient",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "DepositInitiated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "depositId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "recipient",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "success",
+        "type": "bool"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "shares",
+        "type": "uint256"
+      }
+    ],
+    "name": "DepositProcessed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "recipient",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "totalSupply",
+        "type": "uint256"
+      }
+    ],
+    "name": "FeeCollected",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "version",
+        "type": "uint64"
+      }
+    ],
+    "name": "Initialized",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "module",
+        "type": "address"
+      }
+    ],
+    "name": "ModuleApproved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "previousOwner",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipTransferStarted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "previousOwner",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipTransferred",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "maxMarkValueToStrikeDiffRatio",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "minMarkValueToStrikeDiffRatio",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "strikeDiff",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxTotalCostTolerance",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxLossPercentOfTVL",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "negMaxCashTolerance",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "minSignatureExpiry",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxSignatureExpiry",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "optionMinTimeToExpiry",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "optionMaxTimeToExpiry",
+            "type": "uint256"
+          }
+        ],
+        "indexed": false,
+        "internalType": "struct PrincipalProtectedTSA.PPTSAParams",
+        "name": "params",
+        "type": "tuple"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "feeFactor",
+            "type": "uint256"
+          },
+          {
+            "internalType": "int256",
+            "name": "spotTransactionLeniency",
+            "type": "int256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "worstSpotSellPrice",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "worstSpotBuyPrice",
+            "type": "uint256"
+          }
+        ],
+        "indexed": false,
+        "internalType": "struct CollateralManagementTSA.CollateralManagementParams",
+        "name": "collateralManagementParams",
+        "type": "tuple"
+      }
+    ],
+    "name": "PPTSAParamsSet",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "keeper",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "isKeeper",
+        "type": "bool"
+      }
+    ],
+    "name": "ShareKeeperUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "signer",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "hash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "SignatureRevoked",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "enabled",
+        "type": "bool"
+      }
+    ],
+    "name": "SignaturesDisabledUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "signer",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "isSigner",
+        "type": "bool"
+      }
+    ],
+    "name": "SignerUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "depositCap",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "minDepositValue",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "depositScale",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "withdrawScale",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "managementFee",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "feeRecipient",
+            "type": "address"
+          }
+        ],
+        "indexed": false,
+        "internalType": "struct BaseTSA.TSAParams",
+        "name": "params",
+        "type": "tuple"
+      }
+    ],
+    "name": "TSAParamsUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "value",
+        "type": "uint256"
+      }
+    ],
+    "name": "Transfer",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "withdrawalId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "beneficiary",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "complete",
+        "type": "bool"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "sharesProcessed",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amountReceived",
+        "type": "uint256"
+      }
+    ],
+    "name": "WithdrawalProcessed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "withdrawalId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "beneficiary",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "WithdrawalRequested",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "acceptOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "spender",
+        "type": "address"
+      }
+    ],
+    "name": "allowance",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "spender",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "value",
+        "type": "uint256"
+      }
+    ],
+    "name": "approve",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "module",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "approveModule",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "balanceOf",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "collectFee",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "decimals",
+    "outputs": [
+      {
+        "internalType": "uint8",
+        "name": "",
+        "type": "uint8"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bool",
+        "name": "includePending",
+        "type": "bool"
+      }
+    ],
+    "name": "getAccountValue",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "subaccountId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "nonce",
+            "type": "uint256"
+          },
+          {
+            "internalType": "contract IMatchingModule",
+            "name": "module",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes",
+            "name": "data",
+            "type": "bytes"
+          },
+          {
+            "internalType": "uint256",
+            "name": "expiry",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "owner",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "signer",
+            "type": "address"
+          }
+        ],
+        "internalType": "struct IActionVerifier.Action",
+        "name": "action",
+        "type": "tuple"
+      }
+    ],
+    "name": "getActionTypedDataHash",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getBasePrice",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getBaseTSAAddresses",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "contract ISubAccounts",
+            "name": "subAccounts",
+            "type": "address"
+          },
+          {
+            "internalType": "contract DutchAuction",
+            "name": "auction",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IWrappedERC20Asset",
+            "name": "wrappedDepositAsset",
+            "type": "address"
+          },
+          {
+            "internalType": "contract CashAsset",
+            "name": "cash",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IERC20Metadata",
+            "name": "depositAsset",
+            "type": "address"
+          },
+          {
+            "internalType": "contract ILiquidatableManager",
+            "name": "manager",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IMatching",
+            "name": "matching",
+            "type": "address"
+          }
+        ],
+        "internalType": "struct BaseTSA.BaseTSAAddresses",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getCollateralManagementParams",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "feeFactor",
+            "type": "uint256"
+          },
+          {
+            "internalType": "int256",
+            "name": "spotTransactionLeniency",
+            "type": "int256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "worstSpotSellPrice",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "worstSpotBuyPrice",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct CollateralManagementTSA.CollateralManagementParams",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "depositAmount",
+        "type": "uint256"
+      }
+    ],
+    "name": "getNumShares",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getPPTSAAddresses",
+    "outputs": [
+      {
+        "internalType": "contract ISpotFeed",
+        "name": "",
+        "type": "address"
+      },
+      {
+        "internalType": "contract IDepositModule",
+        "name": "",
+        "type": "address"
+      },
+      {
+        "internalType": "contract IWithdrawalModule",
+        "name": "",
+        "type": "address"
+      },
+      {
+        "internalType": "contract IRfqModule",
+        "name": "",
+        "type": "address"
+      },
+      {
+        "internalType": "contract IOptionAsset",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getPPTSAParams",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "maxMarkValueToStrikeDiffRatio",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "minMarkValueToStrikeDiffRatio",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "strikeDiff",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxTotalCostTolerance",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxLossPercentOfTVL",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "negMaxCashTolerance",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "minSignatureExpiry",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxSignatureExpiry",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "optionMinTimeToExpiry",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "optionMaxTimeToExpiry",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct PrincipalProtectedTSA.PPTSAParams",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "numShares",
+        "type": "uint256"
+      }
+    ],
+    "name": "getSharesValue",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getSubAccountStats",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "openSpreads",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "baseBalance",
+        "type": "uint256"
+      },
+      {
+        "internalType": "int256",
+        "name": "cashBalance",
+        "type": "int256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getTSAParams",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "depositCap",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "minDepositValue",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "depositScale",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "withdrawScale",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "managementFee",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "feeRecipient",
+            "type": "address"
+          }
+        ],
+        "internalType": "struct BaseTSA.TSAParams",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "initialOwner",
+        "type": "address"
+      },
+      {
+        "components": [
+          {
+            "internalType": "contract ISubAccounts",
+            "name": "subAccounts",
+            "type": "address"
+          },
+          {
+            "internalType": "contract DutchAuction",
+            "name": "auction",
+            "type": "address"
+          },
+          {
+            "internalType": "contract CashAsset",
+            "name": "cash",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IWrappedERC20Asset",
+            "name": "wrappedDepositAsset",
+            "type": "address"
+          },
+          {
+            "internalType": "contract ILiquidatableManager",
+            "name": "manager",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IMatching",
+            "name": "matching",
+            "type": "address"
+          },
+          {
+            "internalType": "string",
+            "name": "symbol",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "name",
+            "type": "string"
+          }
+        ],
+        "internalType": "struct BaseTSA.BaseTSAInitParams",
+        "name": "initParams",
+        "type": "tuple"
+      },
+      {
+        "components": [
+          {
+            "internalType": "contract ISpotFeed",
+            "name": "baseFeed",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IDepositModule",
+            "name": "depositModule",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IWithdrawalModule",
+            "name": "withdrawalModule",
+            "type": "address"
+          },
+          {
+            "internalType": "contract ITradeModule",
+            "name": "tradeModule",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IRfqModule",
+            "name": "rfqModule",
+            "type": "address"
+          },
+          {
+            "internalType": "contract IOptionAsset",
+            "name": "optionAsset",
+            "type": "address"
+          },
+          {
+            "internalType": "bool",
+            "name": "isCallSpread",
+            "type": "bool"
+          },
+          {
+            "internalType": "bool",
+            "name": "isLongSpread",
+            "type": "bool"
+          }
+        ],
+        "internalType": "struct PrincipalProtectedTSA.PPTSAInitParams",
+        "name": "ppInitParams",
+        "type": "tuple"
+      }
+    ],
+    "name": "initialize",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "recipient",
+        "type": "address"
+      }
+    ],
+    "name": "initiateDeposit",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "depositId",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "subaccountId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "nonce",
+            "type": "uint256"
+          },
+          {
+            "internalType": "contract IMatchingModule",
+            "name": "module",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes",
+            "name": "data",
+            "type": "bytes"
+          },
+          {
+            "internalType": "uint256",
+            "name": "expiry",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "owner",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "signer",
+            "type": "address"
+          }
+        ],
+        "internalType": "struct IActionVerifier.Action",
+        "name": "action",
+        "type": "tuple"
+      }
+    ],
+    "name": "isActionSigned",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "isBlocked",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "signer",
+        "type": "address"
+      }
+    ],
+    "name": "isSigner",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "_hash",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes",
+        "name": "_signature",
+        "type": "bytes"
+      }
+    ],
+    "name": "isValidSignature",
+    "outputs": [
+      {
+        "internalType": "bytes4",
+        "name": "magicValue",
+        "type": "bytes4"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "lastFeeCollected",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "lastSeenHash",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "name",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "pendingOwner",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "depositId",
+        "type": "uint256"
+      }
+    ],
+    "name": "processDeposit",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "depositIds",
+        "type": "uint256[]"
+      }
+    ],
+    "name": "processDeposits",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "limit",
+        "type": "uint256"
+      }
+    ],
+    "name": "processWithdrawalRequests",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "depositId",
+        "type": "uint256"
+      }
+    ],
+    "name": "queuedDeposit",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "recipient",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "amountDepositAsset",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "timestamp",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "sharesReceived",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct BaseTSA.DepositRequest",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "withdrawalId",
+        "type": "uint256"
+      }
+    ],
+    "name": "queuedWithdrawal",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "beneficiary",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "amountShares",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "timestamp",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "assetsReceived",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct BaseTSA.WithdrawalRequest",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "renounceOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "requestWithdrawal",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "withdrawalId",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "subaccountId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "nonce",
+            "type": "uint256"
+          },
+          {
+            "internalType": "contract IMatchingModule",
+            "name": "module",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes",
+            "name": "data",
+            "type": "bytes"
+          },
+          {
+            "internalType": "uint256",
+            "name": "expiry",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "owner",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "signer",
+            "type": "address"
+          }
+        ],
+        "internalType": "struct IActionVerifier.Action",
+        "name": "action",
+        "type": "tuple"
+      }
+    ],
+    "name": "revokeActionSignature",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "typedDataHash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "revokeSignature",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "feeFactor",
+            "type": "uint256"
+          },
+          {
+            "internalType": "int256",
+            "name": "spotTransactionLeniency",
+            "type": "int256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "worstSpotSellPrice",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "worstSpotBuyPrice",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct CollateralManagementTSA.CollateralManagementParams",
+        "name": "newCollateralMgmtParams",
+        "type": "tuple"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "maxMarkValueToStrikeDiffRatio",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "minMarkValueToStrikeDiffRatio",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "strikeDiff",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxTotalCostTolerance",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxLossPercentOfTVL",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "negMaxCashTolerance",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "minSignatureExpiry",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxSignatureExpiry",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "optionMinTimeToExpiry",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "optionMaxTimeToExpiry",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct PrincipalProtectedTSA.PPTSAParams",
+        "name": "pptsaParams",
+        "type": "tuple"
+      }
+    ],
+    "name": "setPPTSAParams",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "keeper",
+        "type": "address"
+      },
+      {
+        "internalType": "bool",
+        "name": "isKeeper",
+        "type": "bool"
+      }
+    ],
+    "name": "setShareKeeper",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bool",
+        "name": "disabled",
+        "type": "bool"
+      }
+    ],
+    "name": "setSignaturesDisabled",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "signer",
+        "type": "address"
+      },
+      {
+        "internalType": "bool",
+        "name": "_isSigner",
+        "type": "bool"
+      }
+    ],
+    "name": "setSigner",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "depositCap",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "minDepositValue",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "depositScale",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "withdrawScale",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "managementFee",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "feeRecipient",
+            "type": "address"
+          }
+        ],
+        "internalType": "struct BaseTSA.TSAParams",
+        "name": "_params",
+        "type": "tuple"
+      }
+    ],
+    "name": "setTSAParams",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "keeper",
+        "type": "address"
+      }
+    ],
+    "name": "shareKeeper",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "subaccountId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "nonce",
+            "type": "uint256"
+          },
+          {
+            "internalType": "contract IMatchingModule",
+            "name": "module",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes",
+            "name": "data",
+            "type": "bytes"
+          },
+          {
+            "internalType": "uint256",
+            "name": "expiry",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "owner",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "signer",
+            "type": "address"
+          }
+        ],
+        "internalType": "struct IActionVerifier.Action",
+        "name": "action",
+        "type": "tuple"
+      },
+      {
+        "internalType": "bytes",
+        "name": "extraData",
+        "type": "bytes"
+      }
+    ],
+    "name": "signActionData",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "signaturesDisabled",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "hash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "signedData",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "subAccount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "symbol",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalPendingDeposits",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalPendingWithdrawals",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalSupply",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "value",
+        "type": "uint256"
+      }
+    ],
+    "name": "transfer",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "value",
+        "type": "uint256"
+      }
+    ],
+    "name": "transferFrom",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "transferOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
   }
 ]
