@@ -2,10 +2,11 @@ use crate::helpers::{
     sleep_till, subscribe_subaccount, subscribe_tickers, sync_subaccount, TickerInterval,
 };
 use crate::market::{new_market_state, MarketState};
-use crate::web3::{get_tsa_contract, ProviderWithSigner, TSA};
+use crate::web3::{get_tsa_contract, sign_execute_quote, sign_order, ProviderWithSigner, TSA};
 use anyhow::{Error, Result};
 use bigdecimal::{BigDecimal, Zero};
 use core::fmt;
+use ethers::prelude::Middleware;
 use log::{error, info, warn};
 use lyra_client::actions::rfq::{LegUnpriced, QuoteResultPublic};
 use lyra_client::json_rpc::{Response, WsClient, WsClientExt};
@@ -13,6 +14,7 @@ use orderbook_types::types::rfqs::{
     Direction, GetRFQsResponse, OrderStatus, PollQuotesResponse, PollQuotesResult,
     RFQResponsePrivate, RFQResultPrivate,
 };
+
 use orderbook_types::types::tickers::InstrumentTicker;
 use serde_json::{json, Value};
 use std::cell::RefCell;
@@ -31,11 +33,15 @@ use tokio::sync::Mutex;
 /// - make sure the execution cost is reasonable
 
 const POLL_INTERVAL_MS: u64 = 500;
+const BASE_FREEZE_SEC: i64 = 4;
 
 pub trait RFQStrategy {
     /// Implement specific pricing logic for specific spreads (e.g. for long calls spreads, etc.)
-    async fn get_desired_unit_cost(&self, auction: &RFQAuction, lot: &RFQLot)
-        -> Result<BigDecimal>;
+    async fn get_desired_unit_cost(
+        &self,
+        auction: &RFQAuction,
+        start_sec: i64,
+    ) -> Result<BigDecimal>;
     /// Returns the TOTAL number of spreads to request the RFQs for (e.g. 6969 call spreads)
     /// before splitting into sub-lots. Will get re-computed with more accurate unit prices
     /// as the fill info comes in for the first few lots.
@@ -52,11 +58,12 @@ pub struct RFQLot {
     pub rfq: RFQResultPrivate,
     pub size: BigDecimal,
     quotes: Vec<QuoteResultPublic>,
+    timeouts: HashMap<String, (i64, u32)>,
 }
 
 impl RFQLot {
     pub fn new(rfq: RFQResultPrivate, size: BigDecimal) -> Self {
-        Self { rfq, size, quotes: vec![] }
+        Self { rfq, size, quotes: vec![], timeouts: HashMap::new() }
     }
     /// Sorts quotes with the largest total cost first. Also filters out quotes to be sell only.
     pub fn sort_quotes(mut quotes: Vec<QuoteResultPublic>) -> Vec<QuoteResultPublic> {
@@ -72,7 +79,15 @@ impl RFQLot {
     }
     /// Note: assumes quotes are sorted from large cost to small cost (from maker perspective)
     pub fn best_quote(&self) -> Option<&QuoteResultPublic> {
-        self.quotes.first()
+        /// filter out quotes that are frozen
+        let now = chrono::Utc::now().timestamp();
+        self.quotes
+            .iter()
+            .filter(|quote| {
+                let (unfreeze, _) = self.timeouts.get(&quote.wallet).unwrap_or(&(0, 0));
+                now > *unfreeze
+            })
+            .next()
     }
     pub fn status(&self) -> OrderStatus {
         self.rfq.status
@@ -80,6 +95,13 @@ impl RFQLot {
     pub fn start_sec(&self) -> i64 {
         let ms_time = self.rfq.creation_timestamp;
         ms_time / 1000
+    }
+    pub fn timeout(&mut self, wallet: &String) {
+        let now = chrono::Utc::now().timestamp();
+        let (unfreeze, count) = self.timeouts.entry(wallet.clone()).or_insert((0, 0));
+        *unfreeze = now + BASE_FREEZE_SEC * 2_i64.pow(*count);
+        *count += 1;
+        warn!("RFQLot timeout wallet: {} for: {} count: {}", wallet, *unfreeze - now, count);
     }
 }
 
@@ -269,9 +291,10 @@ impl<S: RFQStrategy + Debug> RFQAuctionExecutor<S> {
     /// Returns Ok(None) if private/execute_quote (e.g. quote got cancelled last second)
     /// Returns Ok(Some(Value)) if the lot is executed successfully.
     async fn maybe_execute_lot(&self) -> Result<Option<Value>> {
-        let lots = self.auction.lots.lock().await;
-        let current_lot = lots.last().unwrap();
-        let unit_cost = self.strategy.get_desired_unit_cost(&self.auction, current_lot).await?;
+        let mut lots = self.auction.lots.lock().await;
+        let mut current_lot = lots.last_mut().unwrap();
+        let unit_cost =
+            self.strategy.get_desired_unit_cost(&self.auction, current_lot.start_sec()).await?;
         let desired_cost = &unit_cost * &current_lot.size;
         info!("RFQAuctionExecutor unit and desired costs: {}, {}", unit_cost, desired_cost);
         let best_quote = current_lot.best_quote();
@@ -286,19 +309,27 @@ impl<S: RFQStrategy + Debug> RFQAuctionExecutor<S> {
             info!("RFQ best quote cost too high. Cost: {}", best_cost);
             Ok(None)
         } else {
+            let provider = self.auction.tsa.client();
+            let signer = provider.inner().signer();
             let reader = self.auction.market.read().await;
             let tickers = reader.get_tickers();
+            let action_data = sign_execute_quote(&self.auction.tsa, &tickers, &best_quote).await?;
+            let execute_params = action_data.to_execute_params(&signer, tickers, best_quote)?;
             let send_resp = self
                 .auction
                 .client
-                .send_execute(tickers, self.auction.subaccount_id, best_quote)
+                .send_rpc::<_, Value>("private/execute_quote", execute_params)
                 .await?;
             return match send_resp {
                 Response::Success(v) => Ok(Some(v)),
                 Response::Error(e) => {
                     error!("RFQAuctionExecutor send_execute failed with {:#}", e);
                     match e.error.code {
-                        11104 | 8501 | 8500 => Ok(None), // issues with maker quote, just try again
+                        11104 | 8501 | 8500 => {
+                            let wallet = best_quote.wallet.clone();
+                            current_lot.timeout(&wallet);
+                            Ok(None)
+                        }
                         _ => Err(Error::new(e)),
                     }
                 }
@@ -338,8 +369,10 @@ impl<S: RFQStrategy + Debug> RFQAuctionExecutor<S> {
 
             let lots = self.auction.lots.lock().await;
             if let Some(quote) = lots.last().unwrap().best_quote() {
+                let start = lots.last().unwrap().start_sec();
                 let updated_mark = self.auction.get_mark_unit_cost().await?;
-                unit_cost = updated_mark.max(-quote.total_cost() / &lot_size);
+                let max_price = self.strategy.get_desired_unit_cost(&self.auction, start).await?;
+                unit_cost = updated_mark.max(-quote.total_cost() / &lot_size).min(max_price);
                 info!("RFQAuctionExecutor new est_unit_cost: {}", unit_cost);
             }
         }

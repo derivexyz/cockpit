@@ -27,7 +27,14 @@ fn get_rfq_max_fee(
     legs: &Vec<LegPriced>,
     tickers: &HashMap<String, InstrumentTicker>,
 ) -> BigDecimal {
-    legs.iter().map(|leg| tickers[&leg.instrument_name].get_leg_max_fee(&leg.amount)).sum()
+    let fees: Vec<BigDecimal> =
+        legs.iter().map(|leg| tickers[&leg.instrument_name].get_leg_max_fee(&leg.amount)).collect();
+    // note - currently just returns max for 2 legs and sum otherwise, but in practice
+    // 3+ legs also have discounts on cheaper legs
+    match fees.len() {
+        2 => fees.iter().fold(BigDecimal::zero(), |acc, x| acc.max(x.clone())),
+        _ => fees.iter().sum(),
+    }
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq, Hash, EthAbiType)]
@@ -98,6 +105,9 @@ impl QuoteData {
         let max_fee = get_rfq_max_fee(&legs, tickers);
         let legs = LegData::from_maker_legs(legs, tickers, direction)?;
         Ok(Self { max_fee: decimal_to_u256(max_fee)?, legs })
+    }
+    pub fn encoded_legs(self) -> Vec<u8> {
+        self.legs.encode()
     }
 }
 

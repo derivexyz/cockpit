@@ -1,12 +1,13 @@
-use crate::helpers::get_spot_price_at;
 use crate::shared::params::{OptionRFQParams, SpotAuctionParams};
 use crate::shared::rfq::{RFQAuction, RFQLot, RFQStrategy};
+use crate::web3::yields::{get_growth_between, get_price_at_timestamp};
 use anyhow::Result;
 use bigdecimal::RoundingMode::{Down, HalfEven};
 use bigdecimal::{BigDecimal, Zero};
 use log::info;
 use rust_decimal::prelude::FromPrimitive;
 use serde::Deserialize;
+use std::env;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -56,9 +57,8 @@ impl RFQStrategy for OptionRFQParams {
     async fn get_desired_unit_cost(
         &self,
         auction: &RFQAuction,
-        lot: &RFQLot,
+        start_sec: i64,
     ) -> Result<BigDecimal> {
-        let start_sec = lot.start_sec();
         let spread = self.get_premium_spread(start_sec);
         let mark = auction.get_mark_unit_cost().await?;
         // TODO currently assumes we are long the call spreads, will generalize later
@@ -84,17 +84,14 @@ impl RFQStrategy for OptionRFQParams {
             None => BigDecimal::zero(),
         };
         let collat_balance = reader.get_amount(&self.collat_name);
-        // todo MOCK NOW
-        let collat_price_now = get_spot_price_at(&self.collat_name, now).await?;
-        info!("Collat price now: {}", collat_price_now);
-        let collat_price_last = get_spot_price_at(&self.collat_name, now - sec_to_expiry).await?;
-        info!("Collat price last: {:?}", collat_price_last);
-        let growth = (&collat_price_now - &collat_price_last) / &collat_price_last;
-        info!("Growth: {}", growth);
-        let collat_tvl = collat_balance * collat_price_now;
-        info!("Collat TVL: {}", collat_tvl);
-        let dollar_growth = collat_tvl * growth;
-        info!("Dollar growth: {}", dollar_growth);
+        let dollar_growth = get_growth_between(
+            &self.collat_name,
+            &self.quote_name,
+            &collat_balance,
+            now - sec_to_expiry,
+            now,
+        )
+        .await?;
 
         let size = (dollar_growth / unit_cost) - spread_balance;
         let num_rounded = (&size / &self.lot_rounding).with_scale_round(0, Down);

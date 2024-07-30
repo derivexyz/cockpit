@@ -1,11 +1,13 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
+
 use crate::types::orders::{LiquidityRole, OrderResponse};
 use crate::types::shared::{RPCError, RPCId};
 pub use crate::types::tickers::enums::{InstrumentType, OptionType, TickerInterval};
 use bigdecimal;
 use bigdecimal::BigDecimal;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use uuid;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -225,7 +227,8 @@ impl InstrumentTicker {
         }
     }
     pub fn get_leg_max_fee(&self, amount: &BigDecimal) -> BigDecimal {
-        (BigDecimal::from(3) * &self.taker_fee_rate * &self.index_price * amount + &self.base_fee)
+        (BigDecimal::from_str("1.15").unwrap() * &self.taker_fee_rate * &self.index_price * amount
+            + &self.base_fee)
             .with_scale_round(6, bigdecimal::RoundingMode::Up)
     }
 }

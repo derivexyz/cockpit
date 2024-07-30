@@ -18,14 +18,15 @@ use ethers::providers::{Http, Provider};
 use log::{info, warn};
 use lyra_client::actions::order::TradeData;
 use lyra_client::actions::{
-    ActionData, DepositData, DepositParams, MarginType, ModuleData, OrderArgs, WithdrawParams,
-    WithdrawalData,
+    ActionData, DepositData, DepositParams, ExecuteData, MarginType, ModuleData, OrderArgs,
+    QuoteData, WithdrawParams, WithdrawalData,
 };
 use lyra_client::auth::{load_signer_by_name, sign_auth_header};
 use lyra_client::json_rpc::{http_rpc, WsClient, WsClientExt};
 use lyra_client::utils::{decimal_to_u256, decimal_to_u256_with_prec, u256_to_decimal};
 use orderbook_types::generated::private_deposit::PrivateDepositResponseSchema;
 use orderbook_types::generated::private_withdraw::PrivateWithdrawResponseSchema;
+use std::collections::HashMap;
 
 use crate::web3::contracts::GAS_PRICE;
 use orderbook_types::generated::private_get_subaccount::{
@@ -35,6 +36,7 @@ use orderbook_types::generated::public_get_transaction::{
     PublicGetTransactionParamsSchema, PublicGetTransactionResponseSchema, Status,
 };
 use orderbook_types::types::orders::{Direction, OrderType, TimeInForce};
+use orderbook_types::types::rfqs::QuoteResultPublic;
 use orderbook_types::types::tickers::{InstrumentTicker, TickerResponse};
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -242,6 +244,19 @@ pub async fn sign_order(
     )?;
     info!("Order data: {:?}", order_data);
     let action_data = sign_action(tsa, order_data.clone(), Bytes::new()).await?;
+    Ok(action_data)
+}
+
+pub async fn sign_execute_quote(
+    tsa: &TSA<ProviderWithSigner>,
+    tickers: &HashMap<String, InstrumentTicker>,
+    quote: &QuoteResultPublic,
+) -> Result<ActionData> {
+    let quote_data = QuoteData::from_quote_result(quote, tickers)?;
+    let execute_data = quote_data.clone().into_execute();
+    info!("Execute data: {:?}", execute_data);
+    let extra_data = Bytes::from(quote_data.encoded_legs());
+    let action_data = sign_action(tsa, execute_data.clone(), extra_data).await?;
     Ok(action_data)
 }
 

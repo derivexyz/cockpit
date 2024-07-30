@@ -44,7 +44,10 @@ pub struct OptionRFQParams {
     pub lot_init_sleep_sec: u64,
     pub auction_sec: i64,
 
+    // asset name for the collateral as defined in the backend
     pub collat_name: String,
+    // currency in which collateral earns interest (e.g. USDE for SUSDE or ETH for LRTs)
+    pub quote_name: String,
 }
 
 impl OptionRFQParams {

@@ -1,0 +1,35 @@
+{
+  "env": "staging",
+  "vault_name": "SUSDE",
+  "option_currency": "ETH",
+  "expiry_days": 1,
+  "min_expiry_hours": 6,
+  "strike_diff": "200",
+  "min_premium_to_strike_ratio": "0.2",
+  "max_premium_to_strike_ratio": "0.5",
+  "target_premium_to_strike_ratio": "0.4",
+  "spot_auction_delay_min": 60,
+  "option_auction_delay_min": 300,
+  "option_auction_params": {
+    "max_cost": "140",
+    "min_cost": "0",
+    "max_premium_spread": 0.2,
+    "init_premium_spread": 0.0,
+    "premium_spread_per_min": 0.10,
+    "lot_size": "50",
+    "lot_rounding": "10",
+    "lot_init_sleep_sec": 15,
+    "auction_sec": 7200,
+    "collat_name": "SUSDE",
+    "quote_name": "USDE"
+  },
+  "spot_auction_params": {
+    "max_spot_spread": 0.012,
+    "init_spot_spread": -0.001,
+    "spot_spread_per_min": 0.001,
+    "auction_sec": 1,
+    "price_change_tolerance": "2",
+    "cash_name": "USDC",
+    "max_cash": "20000"
+  }
+}

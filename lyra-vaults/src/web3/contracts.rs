@@ -24,7 +24,7 @@ pub fn generate_tsa_abi() -> Result<()> {
 }
 
 impl<M: ::ethers::providers::Middleware> TSA<M> {
-    ///Calls the covered call's contract's `signActionData` (0xa39cc91b) function
+    ///Calls the covered call's contract's `signActionData` (0x74a5be2d) function
     ///This function is to be called on a "legacy" covered call contract instance
     ///New PP contracts (and future contracts) should use the new sign_action_data function
     pub fn sign_action_data_legacy(
@@ -35,6 +35,9 @@ impl<M: ::ethers::providers::Middleware> TSA<M> {
             .method_hash([116, 165, 190, 45], (action,))
             .expect("method not found (this should never happen)")
     }
+    ///Calls the contract's `signActionData`
+    ///Selects the right ABI based on the TSA_SIGNING env var, "legacy" or "extra"
+    ///Legacy contracts (covered calls) should make sure to pass empty extra_data bytes
     pub fn sign_action(
         &self,
         action: Action,

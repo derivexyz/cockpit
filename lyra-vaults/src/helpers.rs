@@ -270,15 +270,6 @@ pub async fn get_expiry_options(
     Ok(expiry_options)
 }
 
-pub async fn get_spot_price_at(currency: &str, timestamp: i64) -> Result<BigDecimal> {
-    // todo change this to call to sUSDe contract...
-    if (timestamp - Utc::now().timestamp()).abs() < 1000 {
-        return Ok(BigDecimal::from_str("1.08")?);
-    } else {
-        return Ok(BigDecimal::from_str("1.078")?);
-    }
-}
-
 pub async fn sleep_till(start_timestamp: i64) {
     let sleep_sec = start_timestamp - Utc::now().timestamp();
     if sleep_sec > 0 {
