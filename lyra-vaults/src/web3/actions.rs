@@ -63,7 +63,7 @@ pub async fn sign_action<T: AbiEncode + ModuleData + Clone>(
         owner: action_data.owner,
         signer: action_data.signer,
     };
-    let call = tsa.sign_action_data(action.clone(), extra_data).gas_price(GAS_PRICE);
+    let call = tsa.sign_action(action.clone(), extra_data).gas_price(GAS_PRICE);
     let pending_tx = call.send().await?;
     let receipt = pending_tx.await?.ok_or(Error::msg("Failed"))?;
     info!("Tx receipt: {}", serde_json::to_string(&receipt)?);

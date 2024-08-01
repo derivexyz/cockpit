@@ -13,7 +13,7 @@ use crate::longpp::selector::select_new_spread;
 use crate::lrtc::executor::LRTCExecutor;
 use crate::web3::scripts::test_initiate_deposit;
 use crate::web3::yields::get_price_at_timestamp;
-use crate::web3::{actions, events, generate_tsa_abi, get_subaccount_id};
+use crate::web3::{actions, events, get_subaccount_id};
 use anyhow::{Error, Result};
 use bigdecimal::BigDecimal;
 use ethers::abi::Address;
@@ -56,7 +56,6 @@ async fn run_lrtc(params: LRTCParams) -> Result<()> {
 
     let tsa_address: String = std::env::var(format!("{vault_name}_TSA_ADDRESS")).unwrap();
     std::env::set_var("OWNER_PUBLIC_KEY", tsa_address);
-
     info!("Starting LRTC executor");
     let mut executor = LRTCExecutor::new(params).await?;
     let task_handle = tokio::spawn(async move { executor.run().await });

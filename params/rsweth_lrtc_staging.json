@@ -7,7 +7,7 @@
   "target_delta": "0.4",
   "max_delta": "0.49",
   "spot_auction_delay_min": 60,
-  "option_auction_delay_min": 120,
+  "option_auction_delay_min": 300,
   "option_auction_params": {
     "max_iv_spread": 0.2,
     "init_iv_spread": -0.05,

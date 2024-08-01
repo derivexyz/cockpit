@@ -4,7 +4,7 @@ use ethers::abi::Address;
 use ethers::contract::abigen;
 use ethers::middleware::{NonceManagerMiddleware, SignerMiddleware};
 use ethers::prelude::{Abigen, Http, LocalWallet, MiddlewareBuilder, Provider, Signer};
-use log::error;
+use log::{error, info};
 use lyra_client::auth::load_signer_by_name;
 use std::env;
 use std::ops::Deref;
@@ -14,7 +14,9 @@ use std::sync::Arc;
 
 abigen!(ERC20, "./abi/erc20.json");
 
-pub fn generate_tsa_abi() -> Result<()> {
+/// Generates the TSA ABI bindings. NOTE the generated file was further modified manually
+/// to add legacy LRTC signing.
+fn generate_tsa_abi() -> Result<()> {
     let abi_source = "./abi/tsa.json";
     let mod_dir = PathBuf::from_str("./lyra-vaults/src/web3").expect("PathBuf::from_str() failed");
     let abi = Abigen::new("TSA", abi_source).expect("Abigen::new() failed");
@@ -23,6 +25,8 @@ pub fn generate_tsa_abi() -> Result<()> {
     Ok(())
 }
 
+// todo i think we could support multiple TSA interfaces (e.g. PPTSA, CCTSA, BaseTSA, etc)
+// and just implement as_base_tsa() helpers
 impl<M: ::ethers::providers::Middleware> TSA<M> {
     ///Calls the covered call's contract's `signActionData` (0x74a5be2d) function
     ///This function is to be called on a "legacy" covered call contract instance
@@ -48,7 +52,7 @@ impl<M: ::ethers::providers::Middleware> TSA<M> {
             env::var(format!("{vault_name}_TSA_SIGNING")).expect("TSA_SIGNING is not set");
         match tsa_type.as_str() {
             "legacy" => self.sign_action_data_legacy(action),
-            "extra" => self.sign_action(action, extra_data),
+            "extra" => self.sign_action_data(action, extra_data),
             _ => panic!("Invalid TSA_SIGNING value"),
         }
     }
