@@ -36,7 +36,7 @@ impl<M: ::ethers::providers::Middleware> TSA<M> {
         action: Action,
     ) -> ::ethers::contract::builders::ContractCall<M, ()> {
         self.deref()
-            .method_hash([116, 165, 190, 45], (action,))
+            .method("signActionDataLegacy", (action,))
             .expect("method not found (this should never happen)")
     }
     ///Calls the contract's `signActionData`

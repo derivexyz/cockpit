@@ -1091,8 +1091,9 @@ pub mod tsa {
                         state_mutability: ::ethers::core::abi::ethabi::StateMutability::NonPayable,
                     },],
                 ),
+                // NOTE MANUAL ENTRY HERE!
                 (
-                    ::std::borrow::ToOwned::to_owned("signActionData"),
+                    ::std::borrow::ToOwned::to_owned("signActionDataLegacy"),
                     ::std::vec![::ethers::core::abi::ethabi::Function {
                         name: ::std::borrow::ToOwned::to_owned("signActionData"),
                         inputs: ::std::vec![::ethers::core::abi::ethabi::Param {
