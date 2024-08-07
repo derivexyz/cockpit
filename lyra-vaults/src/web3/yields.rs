@@ -50,7 +50,7 @@ pub async fn get_growth_between(
     let collat_price_now = get_price_at_timestamp(base, quote, to).await?;
     info!("Collat price now: {}", collat_price_now);
     let collat_price_last = get_price_at_timestamp(base, quote, from).await?;
-    info!("Collat price last: {:?}", collat_price_last);
+    info!("Collat price last: {}", collat_price_last);
     let unit_growth_in_quote = (&collat_price_now - &collat_price_last);
     info!("Growth per base in quote units: {}", unit_growth_in_quote);
     let growth_in_quote = balance * unit_growth_in_quote;

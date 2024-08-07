@@ -83,6 +83,9 @@ impl RFQStrategy for OptionRFQParams {
             Some(pos) => pos.amount.clone().abs(),
             None => BigDecimal::zero(),
         };
+
+        // todo would be nice to just cache this in the auction state
+        // or make a trait function get_total_budget and pass a new arg here
         let collat_balance = reader.get_amount(&self.collat_name);
         let dollar_growth = get_growth_between(
             &self.collat_name,
