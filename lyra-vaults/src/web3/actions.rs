@@ -18,8 +18,8 @@ use ethers::providers::{Http, Provider};
 use log::{info, warn};
 use lyra_client::actions::order::TradeData;
 use lyra_client::actions::{
-    ActionData, DepositData, DepositParams, ExecuteData, MarginType, ModuleData, OrderArgs,
-    QuoteData, WithdrawParams, WithdrawalData,
+    get_asset_decimals, ActionData, DepositData, DepositParams, ExecuteData, MarginType,
+    ModuleData, OrderArgs, QuoteData, WithdrawParams, WithdrawalData,
 };
 use lyra_client::auth::{load_signer_by_name, sign_auth_header};
 use lyra_client::json_rpc::{http_rpc, WsClient, WsClientExt};
@@ -29,6 +29,7 @@ use orderbook_types::generated::private_withdraw::PrivateWithdrawResponseSchema;
 use std::collections::HashMap;
 
 use crate::web3::contracts::GAS_PRICE;
+use bigdecimal::RoundingMode::Down;
 use orderbook_types::generated::private_get_subaccount::{
     PrivateGetSubaccountParamsSchema, PrivateGetSubaccountResponseSchema,
 };
@@ -111,7 +112,9 @@ pub async fn get_balance_to_withdraw(
     let shares_value = tsa.get_shares_value(scaled_pending).call().await?;
     let extra_balance_needed = shares_value - (balance - pending_deposits);
     let buffer = BigDecimal::from_str(WITHDRAW_BUFFER_FACTOR)?;
-    Ok(u256_to_decimal(extra_balance_needed)? * buffer)
+    let asset_decimals = get_asset_decimals(&asset_name) as i64;
+    let unround_amount = u256_to_decimal(extra_balance_needed)? * buffer;
+    Ok(unround_amount.with_scale_round(asset_decimals, Down))
 }
 
 pub async fn sign_deposit(
