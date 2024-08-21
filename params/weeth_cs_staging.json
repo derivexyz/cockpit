@@ -1,0 +1,38 @@
+{
+  "env": "staging",
+  "vault_name": "WEETH_CS",
+  "option_currency": "ETH",
+  "expiry_days": 1,
+  "min_expiry_hours": 6,
+  "strike_diff": "100",
+  "min_premium_to_strike_ratio": "0.01",
+  "max_premium_to_strike_ratio": "0.1",
+  "target_premium_to_strike_ratio": "0.05",
+  "is_long": false,
+  "spot_auction_delay_min": 60,
+  "option_auction_delay_min": 420,
+  "option_auction_params": {
+    "max_cost": "-1",
+    "min_cost": "-200",
+    "max_premium_spread": 1.0,
+    "init_premium_spread": 0.0,
+    "premium_spread_per_min": 0.5,
+    "sizing_type": "covered",
+    "allowed_drawdown": "0",
+    "lot_size": "200",
+    "lot_rounding": "100",
+    "lot_init_sleep_sec": 15,
+    "auction_sec": 7200,
+    "collat_name": "WEETH",
+    "quote_name": "EETH"
+  },
+  "spot_auction_params": {
+    "max_spot_spread": 0.008,
+    "init_spot_spread": 0.008,
+    "spot_spread_per_min": 0.000,
+    "auction_sec": 2700,
+    "price_change_tolerance": "0.0001",
+    "cash_name": "USDC",
+    "max_cash": "90000"
+  }
+}

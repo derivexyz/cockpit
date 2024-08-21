@@ -3,8 +3,8 @@ use crate::market::new_market_state;
 pub use crate::web3::contracts::{
     get_provider_with_signer, get_tsa_contract, ProviderWithSigner, ERC20, TSA,
 };
-use crate::web3::tsa;
 use crate::web3::{process_deposit_events, MAX_TO_PROCESS_PER_CALL};
+use crate::web3::{tsa, GAS_FACTOR};
 use anyhow::{Error, Result};
 use bigdecimal::{BigDecimal, Zero};
 use ethers::abi::{AbiEncode, Address};
@@ -65,9 +65,16 @@ pub async fn sign_action<T: AbiEncode + ModuleData + Clone>(
         signer: action_data.signer,
     };
     let call = tsa.sign_action(action.clone(), extra_data).gas_price(GAS_PRICE);
+    let gas = call.estimate_gas().await? * U256::from(GAS_FACTOR);
+    let call = call.gas(gas);
     let pending_tx = call.send().await?;
     let receipt = pending_tx.await?.ok_or(Error::msg("Failed"))?;
     info!("Tx receipt: {}", serde_json::to_string(&receipt)?);
+    if let Some(status) = receipt.status {
+        if status == U64::zero() {
+            return Err(Error::msg("Transaction failed"));
+        }
+    }
     let tx = tsa.client().get_transaction(receipt.transaction_hash).await?;
     info!("Sent tx: {}\n", serde_json::to_string(&tx)?);
     Ok(action_data)
@@ -189,6 +196,8 @@ async fn process_withdrawals_onchain(
         let call = tsa
             .process_withdrawal_requests(U256::from(MAX_TO_PROCESS_PER_CALL))
             .gas_price(GAS_PRICE);
+        let gas = call.estimate_gas().await? * U256::from(GAS_FACTOR);
+        let call = call.gas(gas);
         let pending_tx = call.send().await?;
         let receipt = pending_tx.await?.ok_or(Error::msg("Failed"))?;
         info!("Tx receipt: {}", serde_json::to_string(&receipt)?);

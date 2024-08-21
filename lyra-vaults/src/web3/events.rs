@@ -1,5 +1,5 @@
 use crate::web3::contracts::get_tsa_contract;
-use crate::web3::{ProviderWithSigner, GAS_PRICE, TSA};
+use crate::web3::{ProviderWithSigner, GAS_FACTOR, GAS_PRICE, TSA};
 use anyhow::{Error, Result};
 use ethers::prelude::{Middleware, ValueOrArray, U256, U64};
 use log::{debug, info};
@@ -30,6 +30,8 @@ pub async fn process_deposit_events(tsa: &TSA<ProviderWithSigner>) -> Result<()>
     info!("Processing subset of deposits: {:?}", pending);
 
     let call = tsa.process_deposits(pending).gas_price(GAS_PRICE);
+    let gas = call.estimate_gas().await? * U256::from(GAS_FACTOR);
+    let call = call.gas(gas);
     let pending_tx = call.send().await?;
     let receipt = pending_tx.await?.ok_or(Error::msg("Failed"))?;
     info!("Tx receipt: {}", serde_json::to_string(&receipt)?);

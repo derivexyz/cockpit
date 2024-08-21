@@ -3,7 +3,7 @@ use bigdecimal::{BigDecimal, One};
 use ethers::abi::Address;
 use ethers::contract::abigen;
 use ethers::prelude::{
-    Abigen, Http, LocalWallet, Middleware, MiddlewareBuilder, Provider, Signer, U256,
+    Abigen, Http, JsonRpcClient, LocalWallet, Middleware, MiddlewareBuilder, Provider, Signer, U256,
 };
 use log::{debug, error, info};
 use lyra_client::json_rpc::Response;
@@ -11,12 +11,21 @@ use lyra_client::utils::u256_to_decimal;
 use reqwest::Client;
 use serde_json::Value;
 use std::env;
+use std::ops::Deref;
+use std::str::FromStr;
 use std::sync::Arc;
 
 abigen!(
     ERC4626,
     r#"[
         function convertToAssets(uint256 shares) public view virtual override returns (uint256)
+    ]"#,
+);
+
+abigen!(
+    WeETH,
+    r#"[
+        function getRate() external view returns (uint256)
     ]"#,
 );
 
@@ -29,6 +38,8 @@ pub async fn get_price_at_timestamp(base: &str, quote: &str, timestamp: i64) -> 
 
     match (base, quote) {
         ("SUSDE", "USDE") => get_susde_price_at_timestamp(timestamp).await,
+        ("WEETH", "EETH") => get_eeth_rate_at_timestamp(timestamp).await,
+        ("EETH", "USDC") => get_eth_price_at_timestamp(timestamp).await,
         ("USDE", "USDC") => Ok(BigDecimal::one()),
         _ => Err(Error::msg(format!("Pair {}-{} not supported", base, quote))),
     }
@@ -45,6 +56,7 @@ pub async fn get_growth_between(
     balance: &BigDecimal,
     from: i64,
     to: i64,
+    allowed_drawdown: &BigDecimal,
 ) -> Result<BigDecimal> {
     let cash_name = env::var("CASH_NAME").unwrap();
     let collat_price_now = get_price_at_timestamp(base, quote, to).await?;
@@ -57,9 +69,13 @@ pub async fn get_growth_between(
     info!("Growth in quote units: {}", growth_in_quote);
     let quote_to_cash = get_price_at_timestamp(quote, &cash_name, to).await?;
     info!("Quote to Cash: {}", quote_to_cash);
-    let growth_in_cash = growth_in_quote * quote_to_cash;
+    let growth_in_cash = growth_in_quote * &quote_to_cash;
     info!("Growth in Cash: {}", growth_in_cash);
-    Ok(growth_in_cash)
+    let collat_to_cash = collat_price_now * &quote_to_cash;
+    info!("Collat to Cash: {}", collat_to_cash);
+    let drawdown_addon = balance * collat_to_cash * allowed_drawdown;
+    info!("Drawdown addon: {}", drawdown_addon);
+    Ok(growth_in_cash + drawdown_addon)
 }
 
 async fn get_susde_price_at_timestamp(timestamp: i64) -> Result<BigDecimal> {
@@ -68,10 +84,41 @@ async fn get_susde_price_at_timestamp(timestamp: i64) -> Result<BigDecimal> {
     let provider = Provider::<Http>::try_from(provider_url)?;
     let provider = Arc::new(provider);
     let contract = ERC4626::new(address, provider);
+    let block = get_block(timestamp, &contract.client()).await?;
+    let one = U256::from(1e18 as u64);
+    let price = contract.convert_to_assets(one).block(block).call().await?;
+    u256_to_decimal(price)
+}
 
+async fn get_eeth_rate_at_timestamp(timestamp: i64) -> Result<BigDecimal> {
+    let provider_url = env::var("MAINNET_PROVIDER")?;
+    let address: Address = env::var("WEETH_MAINNET_ADDRESS")?.parse()?;
+    let provider = Provider::<Http>::try_from(provider_url)?;
+    let provider = Arc::new(provider);
+    let contract = WeETH::new(address, provider);
+    let block = get_block(timestamp, &contract.client()).await?;
+    let rate = contract.get_rate().block(block).call().await?;
+    u256_to_decimal(rate)
+}
+
+async fn get_eth_price_at_timestamp(timestamp: i64) -> Result<BigDecimal> {
+    let now = chrono::Utc::now().timestamp();
+    if (timestamp - now).abs() > 30 {
+        return Err(Error::msg("Historical ETH price currently not supported"));
+    }
+
+    let url = "https://api.lyra.finance/public/get_ticker?instrument_name=ETH-PERP";
+    let response = http_get(url.to_string()).await?;
+    let index = response["result"]["index_price"].as_str();
+    let index = index.ok_or(Error::msg("Index price not found in ticker"))?;
+    let price = BigDecimal::from_str(index)?;
+    Ok(price)
+}
+
+async fn get_block<P: JsonRpcClient>(timestamp: i64, provider: &Provider<P>) -> Result<u64> {
     let now = chrono::Utc::now().timestamp();
     let block = match timestamp > now {
-        true => contract.client().get_block_number().await?.as_u64(),
+        true => provider.get_block_number().await?.as_u64(),
         false => {
             let base_url = env::var("BLOCK_ENDPOINT").expect("BLOCK_ENDPOINT is not set");
             let url = format!("{base_url}/{timestamp}");
@@ -80,9 +127,7 @@ async fn get_susde_price_at_timestamp(timestamp: i64) -> Result<BigDecimal> {
         }
     };
     info!("Block at timestamp {}: {}", timestamp, block);
-    let one = U256::from(1e18 as u64);
-    let price = contract.convert_to_assets(one).block(block).call().await?;
-    u256_to_decimal(price)
+    Ok(block)
 }
 
 async fn http_get(url: String) -> Result<Value> {

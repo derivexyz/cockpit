@@ -2,8 +2,9 @@ use crate::shared::params::{OptionRFQParams, SpotAuctionParams};
 use crate::shared::rfq::{RFQAuction, RFQLot, RFQStrategy};
 use crate::web3::yields::{get_growth_between, get_price_at_timestamp};
 use anyhow::Result;
+use bigdecimal::num_traits::real::Real;
 use bigdecimal::RoundingMode::{Down, HalfEven};
-use bigdecimal::{BigDecimal, Zero};
+use bigdecimal::{BigDecimal, One, Zero};
 use log::info;
 use rust_decimal::prelude::FromPrimitive;
 use serde::Deserialize;
@@ -21,7 +22,8 @@ pub struct LongPPParams {
     pub min_premium_to_strike_ratio: BigDecimal,
     pub max_premium_to_strike_ratio: BigDecimal,
     pub target_premium_to_strike_ratio: BigDecimal,
-    /// todo how to fetch interest
+    pub is_long: bool,
+
     pub spot_auction_delay_min: i64, // Min delay after expiry before starting spot auctions
     pub option_auction_delay_min: i64, // Min Delay after expiry before starting option auctions
 
@@ -53,6 +55,11 @@ impl LongPPParams {
     }
 }
 
+/// TODO
+/// - Mock interest rate selector for weETH
+/// - Generalize the amount selector to support PP with interest and Covered where # == LRT balance
+/// - For short spreads, make sure the unit cost logic goes down in price with time
+
 impl RFQStrategy for OptionRFQParams {
     async fn get_desired_unit_cost(
         &self,
@@ -61,8 +68,9 @@ impl RFQStrategy for OptionRFQParams {
     ) -> Result<BigDecimal> {
         let spread = self.get_premium_spread(start_sec);
         let mark = auction.get_mark_unit_cost().await?;
-        // TODO currently assumes we are long the call spreads, will generalize later
         let factor = BigDecimal::from_f64(1.0 + spread).unwrap();
+        // if mark is negative, set factor = 1/factor
+        let factor = if mark < BigDecimal::zero() { BigDecimal::one() / factor } else { factor };
         let uncapped_cost = mark * factor;
         let capped_cost = uncapped_cost.max(self.min_cost.clone()).min(self.max_cost.clone());
         Ok(capped_cost.with_scale_round(6, HalfEven))
@@ -73,34 +81,10 @@ impl RFQStrategy for OptionRFQParams {
         auction: &RFQAuction,
         unit_cost: &BigDecimal,
     ) -> Result<BigDecimal> {
-        let now = chrono::Utc::now().timestamp();
-        let market = &auction.market;
-        let reader = market.read().await;
-        let option_names = auction.instrument_names();
-        let ticker = reader.get_ticker(&option_names[0]).unwrap();
-        let sec_to_expiry = ticker.option_details.as_ref().unwrap().expiry - now;
-        let spread_balance = match reader.get_position(&option_names[0]) {
-            Some(pos) => pos.amount.clone().abs(),
-            None => BigDecimal::zero(),
-        };
-
-        // todo would be nice to just cache this in the auction state
-        // or make a trait function get_total_budget and pass a new arg here
-        let collat_balance = reader.get_amount(&self.collat_name);
-        let dollar_growth = get_growth_between(
-            &self.collat_name,
-            &self.quote_name,
-            &collat_balance,
-            now - sec_to_expiry,
-            now,
-        )
-        .await?;
-
-        let size = (dollar_growth / unit_cost) - spread_balance;
-        let num_rounded = (&size / &self.lot_rounding).with_scale_round(0, Down);
-        let round_size = num_rounded * &self.lot_rounding;
-        let lot_size = round_size.clone().min(self.lot_size.clone());
-        info!("Desired size: {}, round size: {}, lot_size: {}", size, round_size, lot_size.clone());
-        Ok(lot_size)
+        match self.sizing_type.as_str() {
+            "pp" => self.get_pp_lot_size(auction, unit_cost).await,
+            "covered" => self.get_covered_lot_size(auction).await,
+            _ => Err(anyhow::anyhow!("Invalid sizing type")),
+        }
     }
 }

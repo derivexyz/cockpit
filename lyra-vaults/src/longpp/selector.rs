@@ -28,6 +28,7 @@ pub async fn select_new_spread(params: &LongPPParams) -> Result<Vec<LegUnpriced>
     let client = WsClient::new_client().await?;
     let now = chrono::Utc::now().timestamp();
     let err = Error::msg("No options found within the LongPP params");
+    let is_long = params.is_long;
 
     let expiry_options = get_expiry_options(
         &params.option_currency,
@@ -65,16 +66,16 @@ pub async fn select_new_spread(params: &LongPPParams) -> Result<Vec<LegUnpriced>
             let legs = vec![
                 LegUnpriced {
                     instrument_name: ticker.instrument_name.clone(),
-                    direction: Direction::Buy,
+                    direction: if is_long { Direction::Buy } else { Direction::Sell },
                     amount: BigDecimal::one(),
                 },
                 LegUnpriced {
                     instrument_name: other_ticker.instrument_name.clone(),
-                    direction: Direction::Sell,
+                    direction: if is_long { Direction::Sell } else { Direction::Buy },
                     amount: BigDecimal::one(),
                 },
             ];
-            let mark = get_legs_mark_unit_cost(&legs, tickers).unwrap();
+            let mark = get_legs_mark_unit_cost(&legs, tickers).unwrap().abs();
             let r = mark / &params.strike_diff;
             if r > params.max_premium_to_strike_ratio || r < params.min_premium_to_strike_ratio {
                 return None;

@@ -8,6 +8,7 @@
   "min_premium_to_strike_ratio": "0.25",
   "max_premium_to_strike_ratio": "0.55",
   "target_premium_to_strike_ratio": "0.4",
+  "is_long": true,
   "spot_auction_delay_min": 60,
   "option_auction_delay_min": 300,
   "option_auction_params": {
@@ -16,6 +17,8 @@
     "max_premium_spread": 0.2,
     "init_premium_spread": 0.0,
     "premium_spread_per_min": 0.10,
+    "sizing_type": "pp",
+    "allowed_drawdown": "0.0",
     "lot_size": "10",
     "lot_rounding": "5",
     "lot_init_sleep_sec": 15,

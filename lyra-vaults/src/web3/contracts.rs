@@ -88,3 +88,4 @@ pub async fn get_tsa_contract(
 }
 
 pub const GAS_PRICE: u64 = 200000;
+pub const GAS_FACTOR: u64 = 2;

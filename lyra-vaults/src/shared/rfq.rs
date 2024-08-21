@@ -370,9 +370,10 @@ impl<S: RFQStrategy + Debug> RFQAuctionExecutor<S> {
             let lots = self.auction.lots.lock().await;
             if let Some(quote) = lots.last().unwrap().best_quote() {
                 let start = lots.last().unwrap().start_sec();
-                let updated_mark = self.auction.get_mark_unit_cost().await?;
-                let max_price = self.strategy.get_desired_unit_cost(&self.auction, start).await?;
-                unit_cost = updated_mark.max(-quote.total_cost() / &lot_size).min(max_price);
+                let best_price = self.auction.get_mark_unit_cost().await?;
+                let worst_price = self.strategy.get_desired_unit_cost(&self.auction, start).await?;
+                let quote_price = -quote.total_cost() / &lot_size;
+                unit_cost = best_price.max(quote_price).min(worst_price);
                 info!("RFQAuctionExecutor new est_unit_cost: {}", unit_cost);
             }
         }
