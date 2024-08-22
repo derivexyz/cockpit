@@ -213,6 +213,7 @@ pub async fn process_withdrawals(tsa: &TSA<ProviderWithSigner>, asset_name: Stri
     info!("Orderbook LRT balance for {}: {:?}", asset_name, lrt_balance);
     if lrt_balance == BigDecimal::zero() {
         warn!("No spot balance found for {}", asset_name);
+        process_withdrawals_onchain(tsa, asset_name).await?;
         return Ok(());
     }
 

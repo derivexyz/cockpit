@@ -10,7 +10,7 @@
   "target_premium_to_strike_ratio": "0.4",
   "is_long": true,
   "spot_auction_delay_min": 60,
-  "option_auction_delay_min": 315,
+  "option_auction_delay_min": 310,
   "option_auction_params": {
     "max_cost": "140",
     "min_cost": "0",
