@@ -23,7 +23,9 @@ use lyra_client::actions::{
 };
 use lyra_client::auth::{load_signer_by_name, sign_auth_header};
 use lyra_client::json_rpc::{http_rpc, WsClient, WsClientExt};
-use lyra_client::utils::{decimal_to_u256, decimal_to_u256_with_prec, u256_to_decimal};
+use lyra_client::utils::{
+    decimal_to_u256, decimal_to_u256_with_prec, u256_to_decimal, u256_to_decimal_with_prec,
+};
 use orderbook_types::generated::private_deposit::PrivateDepositResponseSchema;
 use orderbook_types::generated::private_withdraw::PrivateWithdrawResponseSchema;
 use std::collections::HashMap;
@@ -103,7 +105,8 @@ pub async fn get_balance_to_deposit(
     let balance = get_erc20_balance_of_tsa(tsa, asset_name).await?;
     let pending_deposits = tsa.total_pending_deposits().call().await?;
     let available_balance = balance - pending_deposits;
-    u256_to_decimal(available_balance)
+    let decimals = get_asset_decimals(&asset_name);
+    u256_to_decimal_with_prec(available_balance, decimals)
 }
 
 pub async fn get_balance_to_withdraw(
@@ -111,17 +114,26 @@ pub async fn get_balance_to_withdraw(
     asset_name: &String,
 ) -> Result<BigDecimal> {
     let balance = get_erc20_balance_of_tsa(tsa, asset_name).await?;
+    info!("Balance: {}", balance);
     let pending_deposits = tsa.total_pending_deposits().call().await?;
     let pending_withdrawals = tsa.total_pending_withdrawals().call().await?;
+    info!("Pending deposits, withdrawals, scale: {}, {}", pending_deposits, pending_withdrawals);
     let tsa_params = tsa.get_tsa_params().call().await?;
     let scale = tsa_params.withdraw_scale;
+    info!("Scale factor: {}", scale);
     let scaled_pending = scale * pending_withdrawals / U256::from(1e18 as i64);
     let shares_value = tsa.get_shares_value(scaled_pending).call().await?;
-    let extra_balance_needed = shares_value - (balance - pending_deposits);
+    info!("Shares value: {}", shares_value);
+    let extra_balance_needed = if shares_value + pending_deposits > balance {
+        shares_value + pending_deposits - balance
+    } else {
+        U256::from(0)
+    };
     let buffer = BigDecimal::from_str(WITHDRAW_BUFFER_FACTOR)?;
-    let asset_decimals = get_asset_decimals(&asset_name) as i64;
-    let unround_amount = u256_to_decimal(extra_balance_needed)? * buffer;
-    Ok(unround_amount.with_scale_round(asset_decimals, Down))
+    info!("Extra balance needed: {}", extra_balance_needed);
+    let asset_decimals = get_asset_decimals(&asset_name);
+    let unround_amount = u256_to_decimal_with_prec(extra_balance_needed, asset_decimals)? * buffer;
+    Ok(unround_amount.with_scale_round(asset_decimals as i64, Down))
 }
 
 pub async fn sign_deposit(
@@ -210,7 +222,7 @@ async fn process_withdrawals_onchain(
 pub async fn process_withdrawals(tsa: &TSA<ProviderWithSigner>, asset_name: String) -> Result<()> {
     let subaccount_id: i64 = std::env::var("SUBACCOUNT_ID")?.parse()?;
     let lrt_balance = get_single_balance(subaccount_id, &asset_name).await?;
-    info!("Orderbook LRT balance for {}: {:?}", asset_name, lrt_balance);
+    info!("Orderbook LRT balance for {}: {}", asset_name, lrt_balance);
     if lrt_balance == BigDecimal::zero() {
         warn!("No spot balance found for {}", asset_name);
         process_withdrawals_onchain(tsa, asset_name).await?;
@@ -218,12 +230,12 @@ pub async fn process_withdrawals(tsa: &TSA<ProviderWithSigner>, asset_name: Stri
     }
 
     let want_to_withdraw = get_balance_to_withdraw(tsa, &asset_name).await?;
-    info!("Want to withdraw for {}: {:?}", asset_name, want_to_withdraw);
+    info!("Want to withdraw for {}: {}", asset_name, want_to_withdraw);
 
     let can_withdraw = want_to_withdraw.min(lrt_balance.clone());
     if can_withdraw <= BigDecimal::zero() {
         // vault could still have some stray balance it could use to process a few withdrawals
-        info!("Can withdraw for {:?} for {}", can_withdraw, asset_name);
+        info!("Can withdraw for {} for {}", can_withdraw, asset_name);
         process_withdrawals_onchain(tsa, asset_name).await?;
         return Ok(());
     }

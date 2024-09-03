@@ -23,6 +23,7 @@ pub struct LongPPParams {
     pub max_premium_to_strike_ratio: BigDecimal,
     pub target_premium_to_strike_ratio: BigDecimal,
     pub is_long: bool,
+    pub is_call: bool,
 
     pub spot_auction_delay_min: i64, // Min delay after expiry before starting spot auctions
     pub option_auction_delay_min: i64, // Min Delay after expiry before starting option auctions

@@ -19,6 +19,7 @@ pub fn get_asset_decimals(asset_name: &str) -> u32 {
     match asset_name {
         "USDC" => 6,
         "BTC" => 8,
+        "LBTC" => 8,
         _ => 18,
     }
 }

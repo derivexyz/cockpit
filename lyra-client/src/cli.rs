@@ -4,7 +4,7 @@ use crate::json_rpc::{http_rpc, Notification, WsClient, WsClientExt};
 use anyhow::Result;
 use bigdecimal::BigDecimal;
 use clap::{Args, Parser, Subcommand};
-use log::{error, info};
+use log::{error, info, warn};
 use orderbook_types::generated::channel_orderbook_instrument_name_group_depth::OrderbookInstrumentNameGroupDepthPublisherDataSchema;
 use orderbook_types::generated::private_get_subaccount::{
     PrivateGetSubaccount, PrivateGetSubaccountParamsSchema, PrivateGetSubaccountResponseSchema,
@@ -94,8 +94,15 @@ impl CliOrderbook {
                     let tick = format!("{: <10}", tick);
                     out.push_str(&format!("{} | {}\n", tick, tick_v[1]));
                 }
+                let time = chrono::Utc::now().timestamp_millis();
+                let latency = time - d.params.data.timestamp;
+                out.push_str(&format!("Latency: {}ms\n", latency));
                 out.push_str("~~~~~~~~~~~~~~~~~~~~");
                 info!("{}", out);
+                if latency > 1000 {
+                    warn!("Latency is high: {}", latency);
+                    panic!("Latency is high");
+                }
                 Ok(())
             })
             .await?;

@@ -9,6 +9,7 @@
   "max_premium_to_strike_ratio": "0.12",
   "target_premium_to_strike_ratio": "0.07",
   "is_long": false,
+  "is_call": true,
   "spot_auction_delay_min": 60,
   "option_auction_delay_min": 310,
   "option_auction_params": {
@@ -22,7 +23,7 @@
     "lot_size": "100",
     "lot_rounding": "50",
     "lot_init_sleep_sec": 15,
-    "auction_sec": 7200,
+    "auction_sec": 1,
     "collat_name": "WEETH",
     "quote_name": "EETH"
   },

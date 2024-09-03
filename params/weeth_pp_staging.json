@@ -9,6 +9,7 @@
   "max_premium_to_strike_ratio": "0.5",
   "target_premium_to_strike_ratio": "0.4",
   "is_long": true,
+  "is_call": true,
   "spot_auction_delay_min": 60,
   "option_auction_delay_min": 470,
   "option_auction_params": {

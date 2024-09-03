@@ -29,12 +29,12 @@ pub async fn select_new_spread(params: &LongPPParams) -> Result<Vec<LegUnpriced>
     let now = chrono::Utc::now().timestamp();
     let err = Error::msg("No options found within the LongPP params");
     let is_long = params.is_long;
-
+    let strike_dir = if params.is_call { BigDecimal::one() } else { -BigDecimal::one() };
     let expiry_options = get_expiry_options(
         &params.option_currency,
         params.expiry_sec(),
         params.min_expiry_sec(),
-        true,
+        params.is_call,
     )
     .await?;
 
@@ -56,7 +56,7 @@ pub async fn select_new_spread(params: &LongPPParams) -> Result<Vec<LegUnpriced>
         .iter_tickers()
         .filter_map(|ticker| {
             let details = ticker.option_details.as_ref().unwrap();
-            let other_strike = &details.strike + &params.strike_diff;
+            let other_strike = &details.strike + &params.strike_diff * &strike_dir;
             let other_ticker = strike_to_tickers.get(&other_strike);
             if other_ticker.is_none() {
                 info!("No ticker for strike {}", other_strike);
@@ -87,7 +87,10 @@ pub async fn select_new_spread(params: &LongPPParams) -> Result<Vec<LegUnpriced>
     let target_ratio = &params.target_premium_to_strike_ratio;
     let selected_spread = spreads.into_iter().min_by_key(|(_, r)| (r - target_ratio).abs());
     match selected_spread {
-        Some((spread, _)) => Ok(spread),
+        Some((mut spread, _)) => {
+            spread.sort_by(|a, b| a.instrument_name.cmp(&b.instrument_name));
+            Ok(spread)
+        }
         None => Err(err),
     }
 }
@@ -104,11 +107,6 @@ pub async fn maybe_select_from_positions(market: &MarketState) -> Result<Option<
         })
         .map(|p| p.instrument_name.clone())
         .collect();
-
-    // expect calls only
-    if option_names.clone().iter().any(|n| n.ends_with("-P")) {
-        return Err(Error::msg("Unexpected put option in open positions"));
-    }
 
     match option_names.len() {
         0 => Ok(None),
