@@ -1,7 +1,13 @@
+use crate::json_rpc::http_rpc;
 use anyhow::Result;
 use bigdecimal::{BigDecimal, RoundingMode};
 use ethers::prelude::{I256, U256};
+use orderbook_types::generated::public_get_transaction::{
+    PublicGetTransactionParamsSchema, PublicGetTransactionResponseSchema,
+    PublicGetTransactionResultSchema, Status,
+};
 use std::str::FromStr;
+use uuid::Uuid;
 
 pub fn decimal_to_u256(decimal: BigDecimal) -> Result<U256> {
     decimal_to_u256_with_prec(decimal, 18)
@@ -39,4 +45,25 @@ pub fn u256_to_decimal(u256: U256) -> Result<BigDecimal> {
 
 pub fn i256_to_decimal(i256: I256) -> Result<BigDecimal> {
     i256_to_decimal_with_prec(i256, 18)
+}
+
+pub async fn await_tx_settlement(transaction_id: Uuid) -> Result<PublicGetTransactionResultSchema> {
+    loop {
+        let tx_params = PublicGetTransactionParamsSchema { transaction_id };
+        let tx_res = http_rpc::<_, PublicGetTransactionResponseSchema>(
+            "public/get_transaction",
+            tx_params,
+            None,
+        )
+        .await?
+        .into_result()?;
+        match tx_res.result.status {
+            Status::Settled | Status::Reverted => {
+                return Ok(tx_res.result);
+            }
+            _ => {
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            }
+        }
+    }
 }

@@ -24,7 +24,10 @@ use orderbook_types::generated::private_cancel::{
     PrivateCancelParamsSchema, PrivateCancelResponseSchema,
 };
 use orderbook_types::generated::private_cancel_all::{
-    PrivateCancelAll, PrivateCancelAllParamsSchema, PrivateCancelAllResponseSchema,
+    PrivateCancelAllParamsSchema, PrivateCancelAllResponseSchema,
+};
+use orderbook_types::generated::private_cancel_by_instrument::{
+    PrivateCancelByInstrumentParamsSchema, PrivateCancelByInstrumentResponseSchema,
 };
 use orderbook_types::generated::private_deposit::PrivateDepositResponseSchema;
 use orderbook_types::generated::private_get_subaccount::MarginType;
@@ -34,15 +37,18 @@ use orderbook_types::generated::private_set_cancel_on_disconnect::{
 use orderbook_types::generated::private_withdraw::PrivateWithdrawResponseSchema;
 use orderbook_types::generated::public_login::PublicLoginResponseSchema;
 use orderbook_types::generated::subscribe::{SubscribeParamsSchema, SubscribeResponseSchema};
+use orderbook_types::types::liquidations::{
+    AuctionDetailsSchema, LiquidationParams, SendLiquidateResponse,
+};
 use orderbook_types::types::orders::{ReplaceResponse, SendOrderResponse};
 use orderbook_types::types::rfqs::{ExecuteQuoteParams, QuoteParams, QuoteResultPublic};
 use orderbook_types::types::tickers::InstrumentTicker;
 use orderbook_types::types::RPCErrorResponse;
 
 use crate::actions::{
-    new_deposit_params, new_execute_params, new_order_params, new_quote_params, new_replace_params,
-    new_withdraw_params, DepositParams, OrderArgs, OrderParams, QuoteArgs, ReplaceParams,
-    WithdrawParams,
+    new_deposit_params, new_execute_params, new_liquidate_params, new_order_params,
+    new_quote_params, new_replace_params, new_withdraw_params, DepositParams, OrderArgs,
+    OrderParams, QuoteArgs, ReplaceParams, WithdrawParams,
 };
 use crate::auth::{load_signer, sign_auth_msg};
 
@@ -152,10 +158,22 @@ where
         subaccount_id: i64,
         quote: &QuoteResultPublic,
     ) -> Result<Response<Value>>;
+    async fn send_liquidate(
+        &self,
+        subaccount_id: i64,
+        liquidated_id: i64,
+        percent_bid: BigDecimal,
+        details: &AuctionDetailsSchema,
+    ) -> Result<Response<SendLiquidateResponse>>;
     async fn cancel_all(
         &self,
         subaccount_id: i64,
     ) -> Result<Response<PrivateCancelAllResponseSchema>>;
+    async fn cancel_by_instrument(
+        &self,
+        subaccount_id: i64,
+        instrument_name: String,
+    ) -> Result<Response<PrivateCancelByInstrumentResponseSchema>>;
     async fn subscribe<Fut, Data>(
         &self,
         channels: Vec<String>,
@@ -296,12 +314,38 @@ impl WsClientExt for WsClient {
             WsClientState::new_signed_execute(self, tickers, subaccount_id, &quote).await?;
         self.send_rpc("private/execute_quote", execute_params).await
     }
+    async fn send_liquidate(
+        &self,
+        subaccount_id: i64,
+        liquidated_id: i64,
+        percent_bid: BigDecimal,
+        details: &AuctionDetailsSchema,
+    ) -> Result<Response<SendLiquidateResponse>> {
+        let liquidate_params = WsClientState::new_signed_liquidate(
+            self,
+            subaccount_id,
+            liquidated_id,
+            percent_bid,
+            details,
+        )
+        .await?;
+        self.send_rpc("private/liquidate", liquidate_params).await
+    }
     async fn cancel_all(
         &self,
         subaccount_id: i64,
     ) -> Result<Response<PrivateCancelAllResponseSchema>> {
         let cancel_params = PrivateCancelAllParamsSchema { subaccount_id };
         self.send_rpc("private/cancel_all", cancel_params).await
+    }
+    async fn cancel_by_instrument(
+        &self,
+        subaccount_id: i64,
+        instrument_name: String,
+    ) -> Result<Response<PrivateCancelByInstrumentResponseSchema>> {
+        let cancel_params =
+            PrivateCancelByInstrumentParamsSchema { subaccount_id, instrument_name };
+        self.send_rpc("private/cancel_by_instrument", cancel_params).await
     }
     async fn subscribe<Fut, Data>(
         &self,
@@ -436,6 +480,21 @@ impl WsClientState {
         let client_guard = client.lock().await;
         if let Some(signer) = &client_guard.signer {
             Ok(new_execute_params(signer, tickers, subaccount_id, &quote)?)
+        } else {
+            Err(Error::msg("Not logged in or signer not set"))
+        }
+    }
+
+    async fn new_signed_liquidate(
+        client: &WsClient,
+        subaccount_id: i64,
+        liquidated_id: i64,
+        percent_bid: BigDecimal,
+        details: &AuctionDetailsSchema,
+    ) -> Result<LiquidationParams> {
+        let client_guard = client.lock().await;
+        if let Some(signer) = &client_guard.signer {
+            Ok(new_liquidate_params(signer, subaccount_id, liquidated_id, percent_bid, details)?)
         } else {
             Err(Error::msg("Not logged in or signer not set"))
         }

@@ -72,7 +72,7 @@ impl OptionRFQParams {
         let market = &auction.market;
         let reader = market.read().await;
         let option_names = auction.instrument_names();
-        let ticker = reader.get_ticker(&option_names[0]).unwrap();
+        let ticker = reader.get_ticker(&option_names[0]).expect("Ticker not found or is stale");
         let sec_to_expiry = ticker.option_details.as_ref().unwrap().expiry - now;
         let spread_balance = match reader.get_position(&option_names[0]) {
             Some(pos) => pos.amount.clone().abs(),

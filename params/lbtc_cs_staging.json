@@ -3,7 +3,7 @@
   "vault_name": "LBTC_CS",
   "option_currency": "BTC",
   "expiry_days": 1,
-  "min_expiry_hours": 6,
+  "min_expiry_hours": 23,
   "strike_diff": "2000",
   "min_premium_to_strike_ratio": "0.02",
   "max_premium_to_strike_ratio": "0.12",
@@ -11,7 +11,7 @@
   "is_long": false,
   "is_call": true,
   "spot_auction_delay_min": 60,
-  "option_auction_delay_min": 540,
+  "option_auction_delay_min": 660,
   "option_auction_params": {
     "max_cost": "-20",
     "min_cost": "-2000",

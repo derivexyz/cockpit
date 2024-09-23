@@ -69,8 +69,17 @@ impl OrderStrategy for SpotAuctionParams {
             Ordering::Less | Ordering::Equal => (Direction::Sell, -amount),
             Ordering::Greater => (Direction::Buy, amount),
         };
-        let amount = amount
-            .with_scale_round(ticker.amount_step.fractional_digit_count(), RoundingMode::Down);
+
+        // when selling LRTs, ok to sell a tiny bit more to cover neg cash
+        // let mode = match direction {
+        //     Direction::Buy => RoundingMode::Down,
+        //     Direction::Sell => RoundingMode::Up,
+        // };
+        // todo want to use above logic but running into reverts due to spotTransactionLeniency
+        // need to do round followed by cap/floor at the 1.05 / 0.95
+        let mode = RoundingMode::Down;
+
+        let amount = amount.with_scale_round(ticker.amount_step.fractional_digit_count(), mode);
         if amount < ticker.minimum_amount.clone() {
             return Ok((Direction::Sell, zero));
         }

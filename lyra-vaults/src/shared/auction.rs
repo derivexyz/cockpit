@@ -183,8 +183,14 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
     }
 
     async fn cancel_all(&self) -> Result<()> {
-        let res =
-            self.auction.client.cancel_all(self.auction.subaccount_id).await?.into_result()?;
+        // Note: API migration,
+        // this used to call private/cancel_all but it no longer returns # of cancelled orders
+        let res = self
+            .auction
+            .client
+            .cancel_by_instrument(self.auction.subaccount_id, self.auction.instrument_name.clone())
+            .await?
+            .into_result()?;
         if res.result.cancelled_orders == 0 {
             warn!("LimitOrderAuction cancel_all failed to cancel any orders, likely mid fill");
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
