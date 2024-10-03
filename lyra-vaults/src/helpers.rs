@@ -103,7 +103,7 @@ pub async fn sync_subaccount(
 
     info!("Subaccount state refreshed");
     for instrument_name in instrument_names {
-        let trades = http_rpc::<_, GetTradesResponse>(
+        let trades = http_rpc::<_, Value>(
             "private/get_trade_history",
             GetTradesParams {
                 subaccount_id,
@@ -118,9 +118,17 @@ pub async fn sync_subaccount(
             Some(headers.clone()),
         )
         .await?;
+        info!("Trades");
+        info!("{:?}", trades);
         if let Response::Success(trades) = trades {
-            for trade in trades.result.trades {
-                writer.insert_trade(trade);
+            let trades = serde_json::from_value::<GetTradesResponse>(trades);
+            if let Ok(trades) = trades {
+                for trade in trades.result.trades {
+                    writer.insert_trade(trade);
+                }
+            } else {
+                error!("Failed to get trades with {:?}", trades);
+                return Err(Error::msg("Failed to deserialize trades"));
             }
         } else {
             error!("Failed to get trades with {:?}", trades);

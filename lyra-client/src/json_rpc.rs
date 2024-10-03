@@ -532,7 +532,8 @@ impl WsClientState {
             val = wait_handle => {
                 let val = val?;
                 info!("Received: {}", serde_json::to_string_pretty(&val).unwrap_or("could not serialize".into()));
-                Ok(serde_json::from_value::<Response<R>>(val)?)
+                let response: Result<Response<R>, _> = serde_path_to_error::deserialize(val);
+                Ok(response?)
             }
             _ = listen_handle => {
                 Err(Error::msg("LyraWsClient::listen() exited before receiving reply"))
@@ -609,7 +610,7 @@ impl WsClientState {
         loop {
             let mut client_guard = client.lock().await;
             for v in client_guard.notifications.drain(..) {
-                let notification = serde_json::from_value::<Data>(v);
+                let notification: Result<Data, _> = serde_path_to_error::deserialize(v);
                 match notification {
                     Ok(notification) => {
                         handler(notification).await?;
@@ -618,7 +619,7 @@ impl WsClientState {
                         // todo can consider to put the unhandled values back for other handlers
                         // to handle, but for now can assume the same client will not be used for
                         // multiple handlers at the same time
-                        error!("Error in serde_json::from_value::<Notification<Data>>: {:?}", e);
+                        error!("Error in serde_json::from_value::<Notification<Data>>: {}", e);
                     }
                 }
             }
@@ -695,6 +696,7 @@ where
     let response = client.post(url).json(&params).headers(headers).send().await?;
     let response_text = response.text().await?;
     debug!("HTTP Response: {response_text}");
-    let parsed_response: Response<R> = serde_json::from_str(&response_text)?;
-    Ok(parsed_response)
+    let jd = &mut serde_json::Deserializer::from_str(&response_text);
+    let parsed_response: Result<Response<R>, _> = serde_path_to_error::deserialize(jd);
+    Ok(parsed_response?)
 }

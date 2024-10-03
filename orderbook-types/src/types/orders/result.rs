@@ -142,7 +142,7 @@ pub struct ReplaceResponse {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GetTradesResult {
-    pub subaccount_id: i64,
+    pub subaccount_id: Option<i64>,
     pub trades: Vec<TradeResponse>,
     pub pagination: PaginationInfoSchema,
 }
