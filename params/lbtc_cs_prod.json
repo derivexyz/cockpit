@@ -20,10 +20,10 @@
     "premium_spread_per_min": 0.5,
     "sizing_type": "covered",
     "allowed_drawdown": "0",
-    "lot_size": "10",
-    "lot_rounding": "5",
+    "lot_size": "4",
+    "lot_rounding": "2",
     "lot_init_sleep_sec": 15,
-    "auction_sec": 1,
+    "auction_sec": 7200,
     "collat_name": "LBTC",
     "quote_name": "BTC"
   },
