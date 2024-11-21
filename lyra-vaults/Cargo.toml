@@ -20,7 +20,7 @@ serde_json = "1.0"
 rust_decimal = "1.33"
 rust_decimal_macros = "1.33"
 bigdecimal = { version = "0.4.2", features = ["serde"] }
-futures-util = "0.3.30"
+futures-util = "0.3.29"
 ethers = "2.0"
 chrono = "0.4.34"
 dotenv = "0.15.0"
