@@ -235,7 +235,7 @@ impl<S: RFQStrategy + Debug> RFQAuctionExecutor<S> {
             .await?
             .into_result()?;
         let lot = RFQLot::new(rfq.result, size);
-        info!("RFQAuctionExecutor new lot created: {:#?}", lot);
+        info!("RFQAuctionExecutor new lot created");
         let mut lots = self.auction.lots.lock().await;
         lots.push(lot);
         Ok(())

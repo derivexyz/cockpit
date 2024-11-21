@@ -89,7 +89,7 @@ pub struct InstrumentTicker {
     ///Scheduled deactivation time for instrument (if applicable)
     pub scheduled_deactivation: i64,
     ///Aggregate trading stats for the last 24 hours
-    /// TODO errors out right now due to null usd_change
+    /// TODO sometimes errors out right now due to null usd_change
     // pub stats: AggregateTradingStatsSchema,
     ///Percent of spot price fee rate for takers
     pub taker_fee_rate: bigdecimal::BigDecimal,
