@@ -1,4 +1,4 @@
-use crate::aws::get_secret;
+use crate::aws::{get_secret, maybe_get_secret};
 use dotenv::dotenv;
 use env_logger;
 use log::{info, warn};
@@ -50,4 +50,18 @@ pub async fn setup_env() {
         println!("No keys file found for env, expecting them to be in AWS");
     }
     env_logger::builder().format_timestamp_millis().init();
+}
+
+pub async fn setup_ws_endpoint() {
+    let mut pk_str = std::env::var("OWNER_PUBLIC_KEY");
+    if pk_str.is_err() {
+        info!("No owner in env, loading owner from AWS");
+        let env = std::env::var("ENV").expect("ENV must be set");
+        let aws_param_name = format!("/ws/{env}");
+        let maybe_dedicated_ws = maybe_get_secret(&aws_param_name, None).await;
+        if let Some(dedicated_ws) = maybe_dedicated_ws {
+            std::env::set_var("WEBSOCKET_ADDRESS", dedicated_ws);
+            return;
+        }
+    }
 }
