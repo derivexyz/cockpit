@@ -174,6 +174,12 @@ where
         subaccount_id: i64,
         instrument_name: String,
     ) -> Result<Response<PrivateCancelByInstrumentResponseSchema>>;
+    async fn cancel(
+        &self,
+        subaccount_id: i64,
+        instrument_name: String,
+        order_id: Uuid,
+    ) -> Result<Response<PrivateCancelResponseSchema>>;
     async fn subscribe<Fut, Data>(
         &self,
         channels: Vec<String>,
@@ -346,6 +352,15 @@ impl WsClientExt for WsClient {
         let cancel_params =
             PrivateCancelByInstrumentParamsSchema { subaccount_id, instrument_name };
         self.send_rpc("private/cancel_by_instrument", cancel_params).await
+    }
+    async fn cancel(
+        &self,
+        subaccount_id: i64,
+        instrument_name: String,
+        order_id: Uuid,
+    ) -> Result<Response<PrivateCancelResponseSchema>> {
+        let cancel_params = PrivateCancelParamsSchema { subaccount_id, instrument_name, order_id };
+        self.send_rpc("private/cancel", cancel_params).await
     }
     async fn subscribe<Fut, Data>(
         &self,
