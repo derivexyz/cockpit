@@ -29,6 +29,7 @@ use orderbook_types::generated::private_cancel_all::{
 use orderbook_types::generated::private_cancel_by_instrument::{
     PrivateCancelByInstrumentParamsSchema, PrivateCancelByInstrumentResponseSchema,
 };
+use orderbook_types::generated::private_cancel_by_nonce::PrivateCancelByNonceParamsSchema;
 use orderbook_types::generated::private_deposit::PrivateDepositResponseSchema;
 use orderbook_types::generated::private_get_subaccount::MarginType;
 use orderbook_types::generated::private_set_cancel_on_disconnect::{
@@ -112,6 +113,10 @@ where
     where
         P: Serialize + Debug + Clone,
         R: for<'de> Deserialize<'de> + Debug + Serialize + Clone;
+    async fn send_rpc_nowait<P>(&self, method: &str, params: P) -> Result<Uuid>
+    where
+        P: Serialize + Debug + Clone;
+    async fn await_rpc(&self, id: Uuid, timeout: u64) -> Result<Response<Value>>;
     async fn login(&self) -> Result<Response<PublicLoginResponseSchema>>;
     async fn enable_cancel_on_disconnect(
         &self,
@@ -139,6 +144,13 @@ where
         subaccount_id: i64,
         args: OrderArgs,
     ) -> Result<Response<SendOrderResponse>>;
+    /// returns (RPCid, nonce) for the created order
+    async fn send_order_nowait(
+        &self,
+        ticker: &InstrumentTicker,
+        subaccount_id: i64,
+        args: OrderArgs,
+    ) -> Result<(Uuid, i64)>;
     async fn send_replace(
         &self,
         ticker: &InstrumentTicker,
@@ -146,6 +158,13 @@ where
         to_cancel: Uuid,
         args: OrderArgs,
     ) -> Result<Response<ReplaceResponse>>;
+    async fn send_replace_by_nonce_nowait(
+        &self,
+        ticker: &InstrumentTicker,
+        subaccount_id: i64,
+        nonce_to_cancel: i64,
+        args: OrderArgs,
+    ) -> Result<(Uuid, i64)>;
     async fn send_quote(
         &self,
         tickers: &HashMap<String, InstrumentTicker>,
@@ -174,12 +193,29 @@ where
         subaccount_id: i64,
         instrument_name: String,
     ) -> Result<Response<PrivateCancelByInstrumentResponseSchema>>;
+    async fn cancel_by_instrument_nowait(
+        &self,
+        subaccount_id: i64,
+        instrument_name: String,
+    ) -> Result<Uuid>;
     async fn cancel(
         &self,
         subaccount_id: i64,
         instrument_name: String,
         order_id: Uuid,
     ) -> Result<Response<PrivateCancelResponseSchema>>;
+    async fn cancel_nowait(
+        &self,
+        subaccount_id: i64,
+        instrument_name: String,
+        order_id: Uuid,
+    ) -> Result<Uuid>;
+    async fn cancel_by_nonce_nowait(
+        &self,
+        subaccount_id: i64,
+        instrument_name: String,
+        nonce: i64,
+    ) -> Result<Uuid>;
     async fn subscribe<Fut, Data>(
         &self,
         channels: Vec<String>,
@@ -233,6 +269,20 @@ impl WsClientExt for WsClient {
         }
         res
     }
+    async fn send_rpc_nowait<P>(&self, method: &str, params: P) -> Result<Uuid>
+    where
+        P: Serialize + Debug + Clone,
+    {
+        WsClientState::send_to_socket(&self, method, params).await
+    }
+    async fn await_rpc(&self, id: Uuid, timeout: u64) -> Result<Response<Value>> {
+        let await_task = WsClientState::listen_and_wait_for(self, id);
+        let timeout_task = tokio::time::sleep(tokio::time::Duration::from_secs(timeout));
+        tokio::select! {
+            res = await_task => res,
+            _ = timeout_task => Err(Error::msg(format!("Timeout waiting for RPC response with id {}", id))),
+        }
+    }
     async fn login(&self) -> Result<Response<PublicLoginResponseSchema>> {
         let wallet = load_signer().await;
         let owner = std::env::var("OWNER_PUBLIC_KEY").expect("OWNER_PUBLIC_KEY must be set");
@@ -240,6 +290,11 @@ impl WsClientExt for WsClient {
         WsClientState::set_signer(self, wallet).await;
         WsClientState::set_owner(self, owner).await;
         self.send_rpc("public/login", login_params).await
+    }
+    async fn enable_cancel_on_disconnect(
+        &self,
+    ) -> Result<Response<PrivateSetCancelOnDisconnectResponseSchema>> {
+        self.set_cancel_on_disconnect(true).await
     }
     async fn set_cancel_on_disconnect(
         &self,
@@ -250,11 +305,6 @@ impl WsClientExt for WsClient {
             PrivateSetCancelOnDisconnectParamsSchema { enabled, wallet: self.get_owner().await },
         )
         .await
-    }
-    async fn enable_cancel_on_disconnect(
-        &self,
-    ) -> Result<Response<PrivateSetCancelOnDisconnectResponseSchema>> {
-        self.set_cancel_on_disconnect(true).await
     }
     async fn deposit(
         &self,
@@ -288,6 +338,18 @@ impl WsClientExt for WsClient {
             WsClientState::new_signed_order(self, ticker, subaccount_id, args).await?;
         self.send_rpc("private/order", order_params).await
     }
+    async fn send_order_nowait(
+        &self,
+        ticker: &InstrumentTicker,
+        subaccount_id: i64,
+        args: OrderArgs,
+    ) -> Result<(Uuid, i64)> {
+        let order_params =
+            WsClientState::new_signed_order(self, ticker, subaccount_id, args).await?;
+        let nonce = order_params.nonce;
+        let this_id = WsClientState::send_to_socket(self, "private/order", order_params).await?;
+        Ok((this_id, nonce))
+    }
     async fn send_replace(
         &self,
         ticker: &InstrumentTicker,
@@ -295,9 +357,37 @@ impl WsClientExt for WsClient {
         to_cancel: Uuid,
         args: OrderArgs,
     ) -> Result<Response<ReplaceResponse>> {
-        let replace_params =
-            WsClientState::new_signed_replace(self, ticker, subaccount_id, to_cancel, args).await?;
+        let replace_params = WsClientState::new_signed_replace(
+            self,
+            ticker,
+            subaccount_id,
+            Some(to_cancel),
+            None,
+            args,
+        )
+        .await?;
         self.send_rpc("private/replace", replace_params).await
+    }
+    async fn send_replace_by_nonce_nowait(
+        &self,
+        ticker: &InstrumentTicker,
+        subaccount_id: i64,
+        nonce_to_cancel: i64,
+        args: OrderArgs,
+    ) -> Result<(Uuid, i64)> {
+        let replace_params = WsClientState::new_signed_replace(
+            self,
+            ticker,
+            subaccount_id,
+            None,
+            Some(nonce_to_cancel),
+            args,
+        )
+        .await?;
+        let nonce = replace_params.nonce;
+        let this_id =
+            WsClientState::send_to_socket(self, "private/replace", replace_params).await?;
+        Ok((this_id, nonce))
     }
     /// todo return type to be proper type, lazy for now
     async fn send_quote(
@@ -353,6 +443,15 @@ impl WsClientExt for WsClient {
             PrivateCancelByInstrumentParamsSchema { subaccount_id, instrument_name };
         self.send_rpc("private/cancel_by_instrument", cancel_params).await
     }
+    async fn cancel_by_instrument_nowait(
+        &self,
+        subaccount_id: i64,
+        instrument_name: String,
+    ) -> Result<Uuid> {
+        let cancel_params =
+            PrivateCancelByInstrumentParamsSchema { subaccount_id, instrument_name };
+        WsClientState::send_to_socket(self, "private/cancel_by_instrument", cancel_params).await
+    }
     async fn cancel(
         &self,
         subaccount_id: i64,
@@ -361,6 +460,30 @@ impl WsClientExt for WsClient {
     ) -> Result<Response<PrivateCancelResponseSchema>> {
         let cancel_params = PrivateCancelParamsSchema { subaccount_id, instrument_name, order_id };
         self.send_rpc("private/cancel", cancel_params).await
+    }
+    async fn cancel_nowait(
+        &self,
+        subaccount_id: i64,
+        instrument_name: String,
+        order_id: Uuid,
+    ) -> Result<Uuid> {
+        let cancel_params = PrivateCancelParamsSchema { subaccount_id, instrument_name, order_id };
+        WsClientState::send_to_socket(self, "private/cancel", cancel_params).await
+    }
+    async fn cancel_by_nonce_nowait(
+        &self,
+        subaccount_id: i64,
+        instrument_name: String,
+        nonce: i64,
+    ) -> Result<Uuid> {
+        let owner = self.get_owner().await;
+        let cancel_params = PrivateCancelByNonceParamsSchema {
+            nonce,
+            subaccount_id,
+            wallet: owner,
+            instrument_name,
+        };
+        WsClientState::send_to_socket(self, "private/cancel_by_nonce", cancel_params).await
     }
     async fn subscribe<Fut, Data>(
         &self,
@@ -462,12 +585,13 @@ impl WsClientState {
         client: &WsClient,
         ticker: &InstrumentTicker,
         subaccount_id: i64,
-        to_cancel: Uuid,
+        to_cancel: Option<Uuid>,
+        nonce_to_cancel: Option<i64>,
         args: OrderArgs,
     ) -> Result<ReplaceParams> {
         let client_guard = client.lock().await;
         if let Some(signer) = &client_guard.signer {
-            Ok(new_replace_params(signer, ticker, subaccount_id, to_cancel, args)?)
+            Ok(new_replace_params(signer, ticker, subaccount_id, to_cancel, nonce_to_cancel, args)?)
         } else {
             Err(Error::msg("Not logged in or signer not set"))
         }
@@ -567,7 +691,7 @@ impl WsClientState {
                 }
             } else {
                 drop(client_guard);
-                tokio::time::sleep(tokio::time::Duration::from_micros(1000)).await;
+                tokio::time::sleep(tokio::time::Duration::from_micros(500)).await;
             }
         }
     }

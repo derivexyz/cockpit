@@ -86,7 +86,8 @@ pub fn new_replace_params(
     signer: &LocalWallet,
     ticker: &InstrumentTicker,
     subaccount_id: i64,
-    order_id_to_cancel: Uuid,
+    order_id_to_cancel: Option<Uuid>,
+    nonce_to_cancel: Option<i64>,
     args: OrderArgs,
 ) -> Result<ReplaceParams> {
     let trade_data = TradeData::new(
@@ -97,7 +98,7 @@ pub fn new_replace_params(
         args.direction.is_bid(),
     )?;
     let order_action = ActionData::new(trade_data, subaccount_id, signer.address())?;
-    order_action.to_replace_params(signer, ticker, order_id_to_cancel, args)
+    order_action.to_replace_params(signer, ticker, order_id_to_cancel, nonce_to_cancel, args)
 }
 
 impl ActionData {
@@ -134,7 +135,8 @@ impl ActionData {
         self,
         signer: &LocalWallet,
         ticker: &InstrumentTicker,
-        order_id_to_cancel: Uuid,
+        order_id_to_cancel: Option<Uuid>,
+        nonce_to_cancel: Option<i64>,
         args: OrderArgs,
     ) -> Result<ReplaceParams> {
         Ok(ReplaceParams {
@@ -158,8 +160,8 @@ impl ActionData {
             referral_code: "".to_string(),
             signature: signer.sign_hash(self.hash().into())?.to_string(),
             expected_filled_amount: None,
-            nonce_to_cancel: None,
-            order_id_to_cancel: Some(order_id_to_cancel),
+            nonce_to_cancel,
+            order_id_to_cancel,
         })
     }
 }

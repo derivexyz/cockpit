@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
-use serde::{Deserialize, Serialize};
 use bigdecimal;
+use serde::{Deserialize, Serialize};
 use uuid;
 ///Cancel an order with a given subaccount and a given nonce.
 ///
@@ -115,6 +115,8 @@ pub struct PrivateCancelByNonceParamsSchema {
     pub nonce: i64,
     ///Subaccount ID
     pub subaccount_id: i64,
+    pub wallet: String,
+    pub instrument_name: String,
 }
 impl From<&PrivateCancelByNonceParamsSchema> for PrivateCancelByNonceParamsSchema {
     fn from(value: &PrivateCancelByNonceParamsSchema) -> Self {
@@ -318,8 +320,7 @@ pub enum PrivateCancelByNonceResponseSchemaId {
     Variant0(String),
     Variant1(i64),
 }
-impl From<&PrivateCancelByNonceResponseSchemaId>
-for PrivateCancelByNonceResponseSchemaId {
+impl From<&PrivateCancelByNonceResponseSchemaId> for PrivateCancelByNonceResponseSchemaId {
     fn from(value: &PrivateCancelByNonceResponseSchemaId) -> Self {
         value.clone()
     }
