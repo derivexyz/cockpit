@@ -96,6 +96,12 @@ pub struct WsClientState {
 /// A "shareable" (thread safe) lyra websocket client.
 pub type WsClient = Arc<Mutex<WsClientState>>;
 
+impl Debug for WsClientState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WsClientState").finish()
+    }
+}
+
 /// An interface for the wrapped / shared lyra websocket client.
 #[allow(async_fn_in_trait)]
 pub trait WsClientExt
