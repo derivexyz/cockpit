@@ -277,7 +277,7 @@ impl WsClientExt for WsClient {
         WsClientState::send_to_socket(&self, method, params).await
     }
     async fn await_rpc(&self, id: Uuid) -> Result<Response<Value>> {
-        WsClientState::listen_and_wait_for(self, id)
+        WsClientState::listen_and_wait_for(self, id).await
     }
     async fn login(&self) -> Result<Response<PublicLoginResponseSchema>> {
         let wallet = load_signer().await;
