@@ -90,6 +90,7 @@ pub struct WsClientState {
     notifications: Vec<Value>,
     owner: String,
     signer: Option<LocalWallet>,
+    rpc_timeout: u64,
 }
 
 /// A "shareable" (thread safe) lyra websocket client.
@@ -116,7 +117,7 @@ where
     async fn send_rpc_nowait<P>(&self, method: &str, params: P) -> Result<Uuid>
     where
         P: Serialize + Debug + Clone;
-    async fn await_rpc(&self, id: Uuid, timeout: u64) -> Result<Response<Value>>;
+    async fn await_rpc(&self, id: Uuid) -> Result<Response<Value>>;
     async fn login(&self) -> Result<Response<PublicLoginResponseSchema>>;
     async fn enable_cancel_on_disconnect(
         &self,
@@ -275,13 +276,8 @@ impl WsClientExt for WsClient {
     {
         WsClientState::send_to_socket(&self, method, params).await
     }
-    async fn await_rpc(&self, id: Uuid, timeout: u64) -> Result<Response<Value>> {
-        let await_task = WsClientState::listen_and_wait_for(self, id);
-        let timeout_task = tokio::time::sleep(tokio::time::Duration::from_secs(timeout));
-        tokio::select! {
-            res = await_task => res,
-            _ = timeout_task => Err(Error::msg(format!("Timeout waiting for RPC response with id {}", id))),
-        }
+    async fn await_rpc(&self, id: Uuid) -> Result<Response<Value>> {
+        WsClientState::listen_and_wait_for(self, id)
     }
     async fn login(&self) -> Result<Response<PublicLoginResponseSchema>> {
         let wallet = load_signer().await;
@@ -518,12 +514,17 @@ impl WsClientState {
     async fn new() -> Result<Self> {
         let url = std::env::var("WEBSOCKET_ADDRESS").expect("WEBSOCKET_ADDRESS must be set");
         let (socket, _) = connect_async(&url).await?;
+        let timeout = std::env::var("RPC_TIMEOUT_SEC")
+            .unwrap_or("5".to_string())
+            .parse::<u64>()
+            .expect("RPC_TIMEOUT must be a valid number");
         info!("Connected to {}", &url);
         Ok(WsClientState {
             socket,
             messages: HashMap::new(),
             notifications: Vec::new(),
             owner: String::new(),
+            rpc_timeout: timeout,
             signer: None,
         })
     }
@@ -660,7 +661,8 @@ impl WsClientState {
         client_guard.socket.send(Message::Ping(Vec::new())).await?;
         Ok(())
     }
-
+    /// Listens for a response with the given id, and returns it.
+    /// Will timeout after RPC_TIMEOUT_SEC seconds and return a timeout error.
     async fn listen_and_wait_for<R>(client: &WsClient, id: Uuid) -> Result<Response<R>>
     where
         R: for<'de> Deserialize<'de>,
@@ -707,14 +709,14 @@ impl WsClientState {
         let start = Instant::now();
         loop {
             let mut client_guard = client.lock().await;
+            let timeout = client_guard.rpc_timeout;
             if let Some(json) = client_guard.messages.remove(&id) {
                 return Ok(json);
             } else {
                 drop(client_guard);
                 tokio::time::sleep(tokio::time::Duration::from_micros(100)).await;
             }
-            // TODO timeout env var or param
-            if start.elapsed().as_secs() > 5 {
+            if start.elapsed().as_secs() > timeout {
                 return Err(Error::msg(format!("Timeout waiting for msg id: {id}")));
             }
         }
