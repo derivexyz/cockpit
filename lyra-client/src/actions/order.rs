@@ -16,7 +16,7 @@ use orderbook_types::types::tickers::InstrumentTicker;
 use serde::Deserialize;
 use uuid::Uuid;
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct OrderArgs {
     pub amount: BigDecimal,
     pub limit_price: BigDecimal,
