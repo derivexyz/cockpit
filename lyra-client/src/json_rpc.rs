@@ -796,7 +796,7 @@ impl WsClientState {
             Message::Text(_) => {}
             Message::Binary(_) => {}
         }
-        let json = WsClientState::decode_to_value(msg)?;
+        let json = msg_to_value(msg)?;
         let id_value = json.get("id");
         // TODO max size for # of messages and notifications
         if let Some(id_value) = id_value {
@@ -814,14 +814,14 @@ impl WsClientState {
         }
         Ok(())
     }
+}
 
-    fn decode_to_value(msg: Message) -> Result<Value> {
-        let msg_text = msg.to_text()?;
-        let json = serde_json::from_str::<Value>(msg_text);
-        match json {
-            Ok(json) => Ok(json),
-            Err(e) => Err(Error::msg(format!("Error in serde_json::from_str::<Value>: {:?}", e))),
-        }
+pub fn msg_to_value(msg: Message) -> Result<Value> {
+    let msg_text = msg.to_text()?;
+    let json = serde_json::from_str::<Value>(msg_text);
+    match json {
+        Ok(json) => Ok(json),
+        Err(e) => Err(Error::msg(format!("Error in serde_json::from_str::<Value>: {:?}", e))),
     }
 }
 
