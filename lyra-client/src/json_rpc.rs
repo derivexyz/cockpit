@@ -55,7 +55,7 @@ use crate::auth::{load_signer, sign_auth_msg};
 
 type SocketError = tungstenite::error::Error;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Response<T> {
     Error(RPCErrorResponse),
@@ -71,7 +71,7 @@ impl<T> Response<T> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Notification<D> {
     // method is always "subscription"
     pub method: String,
