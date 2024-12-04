@@ -78,7 +78,7 @@ pub struct Notification<D> {
     pub params: NotificationParams<D>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NotificationParams<D> {
     pub channel: String,
     pub data: D,
