@@ -29,7 +29,9 @@ use orderbook_types::generated::private_cancel_all::{
 use orderbook_types::generated::private_cancel_by_instrument::{
     PrivateCancelByInstrumentParamsSchema, PrivateCancelByInstrumentResponseSchema,
 };
-use orderbook_types::generated::private_cancel_by_nonce::PrivateCancelByNonceParamsSchema;
+use orderbook_types::generated::private_cancel_by_nonce::{
+    PrivateCancelByNonceParamsSchema, PrivateCancelByNonceResponseSchema,
+};
 use orderbook_types::generated::private_deposit::PrivateDepositResponseSchema;
 use orderbook_types::generated::private_get_subaccount::MarginType;
 use orderbook_types::generated::private_set_cancel_on_disconnect::{
@@ -171,6 +173,15 @@ where
         subaccount_id: i64,
         nonce_to_cancel: i64,
         expected_filled_amount: Option<BigDecimal>,
+        args: OrderArgs,
+    ) -> Result<(Uuid, i64)>;
+    /// Cancels an order by nonce and, if successful, sends a new order
+    /// returns (RPCid, nonce) for the created order
+    async fn cancel_by_nonce_and_send_nowait(
+        &self,
+        ticker: &InstrumentTicker,
+        subaccount_id: i64,
+        nonce_to_cancel: i64,
         args: OrderArgs,
     ) -> Result<(Uuid, i64)>;
     async fn send_quote(
@@ -394,6 +405,26 @@ impl WsClientExt for WsClient {
         let this_id =
             WsClientState::send_to_socket(self, "private/replace", replace_params).await?;
         Ok((this_id, nonce))
+    }
+    async fn cancel_by_nonce_and_send_nowait(
+        &self,
+        ticker: &InstrumentTicker,
+        subaccount_id: i64,
+        nonce_to_cancel: i64,
+        args: OrderArgs,
+    ) -> Result<(Uuid, i64)> {
+        let cancel_params = PrivateCancelByNonceParamsSchema {
+            nonce: nonce_to_cancel,
+            subaccount_id,
+            wallet: self.get_owner().await,
+            instrument_name: ticker.instrument_name.clone(),
+        };
+        self.send_rpc::<_, PrivateCancelByNonceResponseSchema>(
+            "private/cancel_by_nonce",
+            cancel_params,
+        )
+        .await?;
+        self.send_order_nowait(ticker, subaccount_id, args).await
     }
     /// todo return type to be proper type, lazy for now
     async fn send_quote(
