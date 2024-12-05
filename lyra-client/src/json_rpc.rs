@@ -170,6 +170,7 @@ where
         ticker: &InstrumentTicker,
         subaccount_id: i64,
         nonce_to_cancel: i64,
+        expected_filled_amount: Option<BigDecimal>,
         args: OrderArgs,
     ) -> Result<(Uuid, i64)>;
     async fn send_quote(
@@ -365,6 +366,7 @@ impl WsClientExt for WsClient {
             subaccount_id,
             Some(to_cancel),
             None,
+            None,
             args,
         )
         .await?;
@@ -375,6 +377,7 @@ impl WsClientExt for WsClient {
         ticker: &InstrumentTicker,
         subaccount_id: i64,
         nonce_to_cancel: i64,
+        expected_filled_amount: Option<BigDecimal>,
         args: OrderArgs,
     ) -> Result<(Uuid, i64)> {
         let replace_params = WsClientState::new_signed_replace(
@@ -383,6 +386,7 @@ impl WsClientExt for WsClient {
             subaccount_id,
             None,
             Some(nonce_to_cancel),
+            expected_filled_amount,
             args,
         )
         .await?;
@@ -594,11 +598,20 @@ impl WsClientState {
         subaccount_id: i64,
         to_cancel: Option<Uuid>,
         nonce_to_cancel: Option<i64>,
+        expected_filled_amount: Option<BigDecimal>,
         args: OrderArgs,
     ) -> Result<ReplaceParams> {
         let client_guard = client.lock().await;
         if let Some(signer) = &client_guard.signer {
-            Ok(new_replace_params(signer, ticker, subaccount_id, to_cancel, nonce_to_cancel, args)?)
+            Ok(new_replace_params(
+                signer,
+                ticker,
+                subaccount_id,
+                to_cancel,
+                nonce_to_cancel,
+                expected_filled_amount,
+                args,
+            )?)
         } else {
             Err(Error::msg("Not logged in or signer not set"))
         }
