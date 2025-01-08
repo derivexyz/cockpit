@@ -243,6 +243,10 @@ where
     where
         Fut: Future<Output = Result<()>>,
         Data: for<'de> Deserialize<'de> + Debug;
+    /// resubscribes to the given channels
+    /// assumes that a subscribe() was called previously and that the new channels have the same
+    /// structure and handlers
+    async fn resubscribe(&self, channels: Vec<String>) -> Result<()>;
 }
 
 impl WsClientExt for WsClient {
@@ -541,6 +545,24 @@ impl WsClientExt for WsClient {
                     }
                 }
                 WsClientState::listen_forever(&self, handler).await
+            }
+            Ok(Response::Error(e)) => {
+                Err(Error::msg(format!("RPC error while subscribing: {:?}", e)))
+            }
+            Err(e) => Err(e),
+        }
+    }
+    async fn resubscribe(&self, channels: Vec<String>) -> Result<()> {
+        let sub_params = SubscribeParamsSchema { channels };
+        let sub_res = self.send_rpc::<_, SubscribeResponseSchema>("subscribe", sub_params).await;
+        match sub_res {
+            Ok(Response::Success(success)) => {
+                for (channel, status) in success.result.status.iter() {
+                    if status != "ok" && status != "already subscribed" {
+                        return Err(Error::msg(format!("Subscription error: {channel}")));
+                    }
+                }
+                Ok(())
             }
             Ok(Response::Error(e)) => {
                 Err(Error::msg(format!("RPC error while subscribing: {:?}", e)))

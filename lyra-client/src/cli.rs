@@ -435,6 +435,7 @@ impl CliRpc {
             client.login().await?.into_result()?;
             client.set_cancel_on_disconnect(false).await?.into_result()?;
         }
+        let start = chrono::Utc::now().timestamp_millis();
         let res = match args.method.as_str() {
             "private/order" => {
                 let order_args = serde_json::from_value::<OrderArgs>(params.clone())?;
@@ -531,6 +532,8 @@ impl CliRpc {
             Ok(r) => info!("{}", serde_json::to_string_pretty(&r)?),
             Err(e) => error!("Error: {:?}", e),
         };
+        let end = chrono::Utc::now().timestamp_millis();
+        info!("RPC time taken: {}ms", end - start);
         Ok(())
     }
 }
