@@ -457,7 +457,7 @@ for PublicGetSpotFeedHistoryResultSchema {
     },
     "timestamp": {
       "title": "timestamp",
-      "description": "Timestamp of when the spot price was recored into the database",
+      "description": "Timestamp of when the spot price was recorded into the database",
       "type": "integer"
     },
     "timestamp_bucket": {
