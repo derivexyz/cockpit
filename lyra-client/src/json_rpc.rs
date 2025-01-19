@@ -576,6 +576,9 @@ impl WsClientExt for WsClient {
 impl WsClientState {
     async fn new() -> Result<Self> {
         let url = std::env::var("WEBSOCKET_ADDRESS").expect("WEBSOCKET_ADDRESS must be set");
+        WsClientState::new_with_url(&url).await
+    }
+    async fn new_with_url(url: &str) -> Result<Self> {
         let (socket, _) = connect_async(&url).await?;
         let timeout = std::env::var("RPC_TIMEOUT_SEC")
             .unwrap_or("5".to_string())
