@@ -116,6 +116,8 @@ impl ActionData {
         ticker: &InstrumentTicker,
         args: OrderArgs,
     ) -> Result<OrderParams> {
+        let reject_millis = std::env::var("ORDER_REJECT_MS").unwrap_or("5000".to_string());
+        let reject_millis = reject_millis.parse::<i64>()?;
         Ok(OrderParams {
             instrument_name: ticker.instrument_name.clone(),
             subaccount_id: self.subaccount_id.as_u64() as i64,
@@ -128,7 +130,7 @@ impl ActionData {
             max_fee: ticker.get_max_fee(),
             label: args.label,
             nonce: self.nonce.as_u64() as i64,
-            reject_timestamp: (chrono::Utc::now() + chrono::Duration::seconds(5))
+            reject_timestamp: (chrono::Utc::now() + chrono::Duration::milliseconds(reject_millis))
                 .timestamp_millis(),
             signature_expiry_sec: self.expiry.as_u64() as i64,
             signer: hex::encode_prefixed(self.signer),
