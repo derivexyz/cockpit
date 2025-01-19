@@ -581,7 +581,7 @@ impl WsClientState {
             .unwrap_or("5".to_string())
             .parse::<u64>()
             .expect("RPC_TIMEOUT must be a valid number");
-        info!("Connected to {}", &url);
+        warn!("Connected to {}", &url);
         Ok(WsClientState {
             socket,
             messages: HashMap::new(),
