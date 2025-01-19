@@ -111,6 +111,7 @@ where
     Self: Sized,
 {
     async fn new_client() -> Result<Self>;
+    async fn new_client_with_url(url: &str) -> Result<Self>;
     async fn get_owner(&self) -> String;
     async fn get_signer(&self) -> String;
     async fn close(&self) -> Result<()>;
@@ -252,6 +253,10 @@ where
 impl WsClientExt for WsClient {
     async fn new_client() -> Result<Self> {
         let client = WsClientState::new().await?;
+        Ok(Arc::new(Mutex::new(client)))
+    }
+    async fn new_client_with_url(url: &str) -> Result<Self> {
+        let client = WsClientState::new_with_url(url).await?;
         Ok(Arc::new(Mutex::new(client)))
     }
     async fn get_owner(&self) -> String {
