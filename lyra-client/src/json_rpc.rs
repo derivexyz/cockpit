@@ -111,7 +111,7 @@ where
     Self: Sized,
 {
     async fn new_client() -> Result<Self>;
-    async fn new_client_with_url(url: &str) -> Result<Self>;
+    async fn new_client_with_url(url: String) -> Result<Self>;
     async fn get_owner(&self) -> String;
     async fn get_signer(&self) -> String;
     async fn close(&self) -> Result<()>;
@@ -255,7 +255,7 @@ impl WsClientExt for WsClient {
         let client = WsClientState::new().await?;
         Ok(Arc::new(Mutex::new(client)))
     }
-    async fn new_client_with_url(url: &str) -> Result<Self> {
+    async fn new_client_with_url(url: String) -> Result<Self> {
         let client = WsClientState::new_with_url(url).await?;
         Ok(Arc::new(Mutex::new(client)))
     }
@@ -581,15 +581,15 @@ impl WsClientExt for WsClient {
 impl WsClientState {
     async fn new() -> Result<Self> {
         let url = std::env::var("WEBSOCKET_ADDRESS").expect("WEBSOCKET_ADDRESS must be set");
-        WsClientState::new_with_url(&url).await
+        WsClientState::new_with_url(url).await
     }
-    async fn new_with_url(url: &str) -> Result<Self> {
-        let (socket, _) = connect_async(&url).await?;
+    async fn new_with_url(url: String) -> Result<Self> {
+        let (socket, _) = connect_async(url.clone()).await?;
         let timeout = std::env::var("RPC_TIMEOUT_SEC")
             .unwrap_or("5".to_string())
             .parse::<u64>()
             .expect("RPC_TIMEOUT must be a valid number");
-        warn!("Connected to {}", &url);
+        warn!("Connected to {}", url);
         Ok(WsClientState {
             socket,
             messages: HashMap::new(),
