@@ -5,7 +5,7 @@ use bigdecimal;
 use uuid;
 /**Transfer ERC20 assets from one subaccount to another (e.g. USDC or ETH).
 
-For transfering positions (e.g. options or perps), use `private/transfer_position` instead.*/
+For transferring positions (e.g. options or perps), use `private/transfer_position` instead.*/
 ///
 /// <details><summary>JSON schema</summary>
 ///
