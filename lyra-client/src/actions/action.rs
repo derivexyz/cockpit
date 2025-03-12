@@ -32,7 +32,6 @@ impl ActionData {
         let signature_expiry_sec = (now + chrono::Duration::seconds(600)).timestamp();
         (nonce, signature_expiry_sec)
     }
-
     pub fn new<T: AbiEncode + ModuleData>(
         module_data: T,
         subaccount_id: i64,
@@ -48,6 +47,13 @@ impl ActionData {
         let action_typehash =
             std::env::var("ACTION_TYPEHASH").expect("ACTION_TYPEHASH must be set");
         let action_typehash = hex::const_decode_to_array::<32>(action_typehash.as_bytes())?;
+
+        // note: if var not set, actions will use the signer of the ws connection sending order
+        // alternative signers are used in the vaults where signer = contract
+        let signer: Address = match std::env::var("SIGNER_PUBLIC_KEY") {
+            Ok(signer) => signer.parse()?,
+            Err(_) => signer_address.clone(),
+        };
         Ok(ActionData {
             action_typehash,
             subaccount_id: subaccount_id.into(),
@@ -56,7 +62,7 @@ impl ActionData {
             data: hashed_data,
             expiry: signature_expiry_sec.into(),
             owner: owner.parse()?,
-            signer: signer_address,
+            signer,
         })
     }
 
