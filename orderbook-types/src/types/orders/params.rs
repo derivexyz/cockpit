@@ -53,6 +53,8 @@ pub struct OrderParams {
     ///Time in force behaviour:<br />- `gtc`: good til cancelled (default)<br />- `post_only`: a limit order that will be rejected if it crosses any order in the book, i.e. acts as a taker order<br />- `fok`: fill or kill, will be rejected if it is not fully filled<br />- `ioc`: immediate or cancel, fill at best bid/ask (market) or at limit price (limit), the unfilled portion is cancelled<br />Note that the order will still expire on the `signature_expiry_sec` timestamp.
     #[serde(default = "defaults::order_params_time_in_force")]
     pub time_in_force: TimeInForce,
+    #[serde(default)]
+    pub is_atomic_signing: bool,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OrderRequest {
@@ -117,6 +119,8 @@ pub struct ReplaceParams {
     ///Time in force behaviour:<br />- `gtc`: good til cancelled (default)<br />- `post_only`: a limit order that will be rejected if it crosses any order in the book, i.e. acts as a taker order<br />- `fok`: fill or kill, will be rejected if it is not fully filled<br />- `ioc`: immediate or cancel, fill at best bid/ask (market) or at limit price (limit), the unfilled portion is cancelled<br />Note that the order will still expire on the `signature_expiry_sec` timestamp.
     #[serde(default = "defaults::order_params_time_in_force")]
     pub time_in_force: TimeInForce,
+    #[serde(default)]
+    pub is_atomic_signing: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

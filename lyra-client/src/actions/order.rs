@@ -118,6 +118,8 @@ impl ActionData {
     ) -> Result<OrderParams> {
         let reject_millis = std::env::var("ORDER_REJECT_MS").unwrap_or("5000".to_string());
         let reject_millis = reject_millis.parse::<i64>()?;
+        let is_atomic_signing =
+            (std::env::var("IS_ATOMIC_SIGNING").unwrap_or("false".to_string()) == "true");
         Ok(OrderParams {
             instrument_name: ticker.instrument_name.clone(),
             subaccount_id: self.subaccount_id.as_u64() as i64,
@@ -137,6 +139,7 @@ impl ActionData {
             reduce_only: false,
             replaced_order_id: None,
             referral_code: "".to_string(),
+            is_atomic_signing,
             signature: signer.sign_hash(self.hash().into())?.to_string(),
         })
     }
@@ -150,6 +153,10 @@ impl ActionData {
         expected_filled_amount: Option<BigDecimal>,
         args: OrderArgs,
     ) -> Result<ReplaceParams> {
+        let reject_millis = std::env::var("ORDER_REJECT_MS").unwrap_or("5000".to_string());
+        let reject_millis = reject_millis.parse::<i64>()?;
+        let is_atomic_signing =
+            (std::env::var("IS_ATOMIC_SIGNING").unwrap_or("false".to_string()) == "true");
         Ok(ReplaceParams {
             instrument_name: ticker.instrument_name.clone(),
             subaccount_id: self.subaccount_id.as_u64() as i64,
@@ -162,7 +169,7 @@ impl ActionData {
             max_fee: ticker.get_max_fee(),
             label: args.label,
             nonce: self.nonce.as_u64() as i64,
-            reject_timestamp: (chrono::Utc::now() + chrono::Duration::seconds(5))
+            reject_timestamp: (chrono::Utc::now() + chrono::Duration::milliseconds(reject_millis))
                 .timestamp_millis(),
             signature_expiry_sec: self.expiry.as_u64() as i64,
             signer: hex::encode_prefixed(self.signer),
@@ -173,6 +180,7 @@ impl ActionData {
             expected_filled_amount,
             nonce_to_cancel,
             order_id_to_cancel,
+            is_atomic_signing,
         })
     }
 }
