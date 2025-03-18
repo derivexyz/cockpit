@@ -13,6 +13,8 @@ abigen!(
     ]"#,
 );
 
+/// returns chainlink price from Base mainnet
+/// requires BASE_MAINNET_PROVIDER and BASE_{currency}_FEED to be set as env vars
 pub async fn get_chainlink_price(currency: &str) -> Result<BigDecimal> {
     let provider_url = std::env::var("BASE_MAINNET_PROVIDER")?;
     let oracle_addr_name = format!("BASE_{}_FEED", currency);

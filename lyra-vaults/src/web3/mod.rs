@@ -1,4 +1,5 @@
 pub mod actions;
+pub mod chainlink;
 pub mod contracts;
 pub mod events;
 pub mod scripts;
