@@ -50,6 +50,8 @@ pub enum CancelReason {
     SubaccountWithdrawn,
     #[serde(rename = "compliance")]
     Compliance,
+    #[serde(rename = "validation_failed")]
+    ValidationFailed,
 }
 impl From<&CancelReason> for CancelReason {
     fn from(value: &CancelReason) -> Self {
@@ -69,6 +71,7 @@ impl ToString for CancelReason {
             Self::SessionKeyDeregistered => "session_key_deregistered".to_string(),
             Self::SubaccountWithdrawn => "subaccount_withdrawn".to_string(),
             Self::Compliance => "compliance".to_string(),
+            Self::ValidationFailed => "validation_failed".to_string(),
         }
     }
 }
