@@ -219,7 +219,11 @@ async fn process_withdrawals_onchain(
     Ok(())
 }
 
-pub async fn process_withdrawals(tsa: &TSA<ProviderWithSigner>, asset_name: String) -> Result<()> {
+pub async fn process_withdrawals(
+    tsa: &TSA<ProviderWithSigner>,
+    asset_name: String,
+    limit: Option<BigDecimal>,
+) -> Result<()> {
     let subaccount_id: i64 = std::env::var("SUBACCOUNT_ID")?.parse()?;
     let lrt_balance = get_single_balance(subaccount_id, &asset_name).await?;
     info!("Orderbook LRT balance for {}: {}", asset_name, lrt_balance);
@@ -232,7 +236,8 @@ pub async fn process_withdrawals(tsa: &TSA<ProviderWithSigner>, asset_name: Stri
     let want_to_withdraw = get_balance_to_withdraw(tsa, &asset_name).await?;
     info!("Want to withdraw for {}: {}", asset_name, want_to_withdraw);
 
-    let can_withdraw = want_to_withdraw.min(lrt_balance.clone());
+    let limit = limit.unwrap_or(lrt_balance.clone()).min(lrt_balance);
+    let can_withdraw = want_to_withdraw.min(limit);
     if can_withdraw <= BigDecimal::zero() {
         // vault could still have some stray balance it could use to process a few withdrawals
         info!("Can withdraw for {} for {}", can_withdraw, asset_name);

@@ -117,7 +117,7 @@ impl ExecutorStage for TSACollateralOnly {
         // todo might wanna rename the env to COLLATERAL_NAME for clarity
         let asset_name = std::env::var("SPOT_NAME").unwrap();
         process_deposits_once(&self.tsa, asset_name.clone()).await?;
-        process_withdrawals(&self.tsa, asset_name.clone()).await?;
+        process_withdrawals(&self.tsa, asset_name.clone(), None).await?;
         process_deposits_once(&self.tsa, asset_name.clone()).await?;
         Ok(())
     }
