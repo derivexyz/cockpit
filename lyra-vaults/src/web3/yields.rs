@@ -40,6 +40,7 @@ pub async fn get_price_at_timestamp(base: &str, quote: &str, timestamp: i64) -> 
         ("SUSDE", "USDE") => get_susde_price_at_timestamp(timestamp).await,
         ("WEETH", "EETH") => get_eeth_rate_at_timestamp(timestamp).await,
         ("EETH", "USDC") => get_eth_price_at_timestamp(timestamp).await,
+        ("LBTC", "BTC") => get_lbtc_rate_at_timestamp(timestamp).await,
         ("USDE", "USDC") => Ok(BigDecimal::one()),
         _ => Err(Error::msg(format!("Pair {}-{} not supported", base, quote))),
     }
@@ -99,6 +100,22 @@ async fn get_eeth_rate_at_timestamp(timestamp: i64) -> Result<BigDecimal> {
     let block = get_block(timestamp, &contract.client()).await?;
     let rate = contract.get_rate().block(block).call().await?;
     u256_to_decimal(rate)
+}
+
+async fn get_lbtc_rate_at_timestamp(timestamp: i64) -> Result<BigDecimal> {
+    let now = chrono::Utc::now().timestamp();
+    if (timestamp - now).abs() > 30 {
+        return Err(Error::msg("Historical LBTC rate currently not supported"));
+    }
+    // call https://mainnet.prod.lombard.finance/api/v1/exchange/rate/1?amount=1
+    // get back output in the form {"amount_out":"1"}
+    // return 1 / amount_out
+    let url = "https://mainnet.prod.lombard.finance/api/v1/exchange/rate/1?amount=1";
+    let response = http_get(url.to_string()).await?;
+    let amount_out = response["amount_out"].as_str();
+    let amount_out = amount_out.ok_or(Error::msg("amount_out not found in response"))?;
+    let rate = BigDecimal::one() / BigDecimal::from_str(amount_out)?;
+    Ok(rate)
 }
 
 async fn get_eth_price_at_timestamp(timestamp: i64) -> Result<BigDecimal> {
