@@ -138,7 +138,7 @@ impl ActionData {
             signer: hex::encode_prefixed(self.signer),
             reduce_only: false,
             replaced_order_id: None,
-            referral_code: "".to_string(),
+            referral_code: "COCKPIT".to_string(),
             is_atomic_signing,
             signature: signer.sign_hash(self.hash().into())?.to_string(),
         })
@@ -175,7 +175,7 @@ impl ActionData {
             signer: hex::encode_prefixed(self.signer),
             reduce_only: false,
             replaced_order_id: None,
-            referral_code: "".to_string(),
+            referral_code: "COCKPIT".to_string(),
             signature: signer.sign_hash(self.hash().into())?.to_string(),
             expected_filled_amount,
             nonce_to_cancel,
