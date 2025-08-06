@@ -1,25 +1,11 @@
+use anyhow::format_err;
 use anyhow::{Error, Result};
 use bigdecimal::BigDecimal;
 use ethers::prelude::{LocalWallet, Signer};
 use ethers::utils::hex;
+use futures::channel;
 use futures_util::{FutureExt, SinkExt, StreamExt};
 use log::{debug, error, info, warn};
-use reqwest::{header::HeaderMap, Client};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-use serde_json::Value;
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::future::Future;
-use std::sync::Arc;
-use tokio::net::TcpStream;
-use tokio::sync::Mutex;
-use tokio::time::Instant;
-use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::WebSocketStream;
-use tokio_tungstenite::{connect_async, tungstenite, MaybeTlsStream};
-use uuid::Uuid;
-
 use orderbook_types::generated::private_cancel::{
     PrivateCancelParamsSchema, PrivateCancelResponseSchema,
 };
@@ -47,6 +33,23 @@ use orderbook_types::types::orders::{ReplaceResponse, SendOrderResponse};
 use orderbook_types::types::rfqs::{ExecuteQuoteParams, QuoteParams, QuoteResultPublic};
 use orderbook_types::types::tickers::InstrumentTicker;
 use orderbook_types::types::RPCErrorResponse;
+use reqwest::{header::HeaderMap, Client};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use serde_json::Value;
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::future::Future;
+use std::sync::mpsc::Receiver;
+use std::sync::Arc;
+use tokio::net::TcpStream;
+use tokio::sync::oneshot::channel;
+use tokio::sync::Mutex;
+use tokio::time::Instant;
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::WebSocketStream;
+use tokio_tungstenite::{connect_async, tungstenite, MaybeTlsStream};
+use uuid::Uuid;
 
 use crate::actions::{
     new_deposit_params, new_execute_params, new_liquidate_params, new_order_params,
@@ -88,7 +91,8 @@ pub struct NotificationParams<D> {
 
 pub struct WsClientState {
     socket: WebSocketStream<MaybeTlsStream<TcpStream>>,
-    messages: HashMap<Uuid, Value>,
+    receivers: HashMap<Uuid, channel::oneshot::Receiver<Value>>,
+    senders: HashMap<Uuid, channel::oneshot::Sender<Value>>,
     notifications: Vec<Value>,
     owner: String,
     signer: Option<LocalWallet>,
@@ -592,7 +596,8 @@ impl WsClientState {
         warn!("Connected to {}", url);
         Ok(WsClientState {
             socket,
-            messages: HashMap::new(),
+            senders: HashMap::new(),
+            receivers: HashMap::new(),
             notifications: Vec::new(),
             owner: String::new(),
             rpc_timeout: timeout,
@@ -732,6 +737,9 @@ impl WsClientState {
         });
         let item = Message::Text(payload.to_string());
         let mut client_guard = client.lock().await;
+        let (tx, rx) = channel::oneshot::channel::<Value>();
+        client_guard.senders.insert(this_id, tx);
+        client_guard.receivers.insert(this_id, rx);
         client_guard.socket.send(item).await?;
         Ok(this_id)
     }
@@ -747,18 +755,35 @@ impl WsClientState {
     where
         R: for<'de> Deserialize<'de>,
     {
-        let wait_handle = WsClientState::wait_for(client.clone(), id);
+        let (rx, timeout) = {
+            let mut client_guard = client.lock().await;
+            let timeout = client_guard.rpc_timeout;
+            if let Some(rx) = client_guard.receivers.remove(&id) {
+                (rx, timeout)
+            } else {
+                return Err(Error::msg(format!("No receiver for id: {}", id)));
+            }
+        };
         let listen_handle = WsClientState::listen(client.clone());
+        let timeout_handle = tokio::time::sleep(tokio::time::Duration::from_secs(timeout));
         tokio::select! {
-            val = wait_handle => {
+            val = rx => {
                 let val = val?;
                 info!("Received: {}", serde_json::to_string_pretty(&val).unwrap_or("could not serialize".into()));
                 let response: Result<Response<R>, _> = serde_path_to_error::deserialize(val);
                 Ok(response?)
             }
             _ = listen_handle => {
+                let mut client_guard = client.lock().await;
+                client_guard.senders.remove(&id);
                 Err(Error::msg("LyraWsClient::listen() exited before receiving reply"))
             }
+            _ = timeout_handle => {
+                // remove tx if it is present
+                let mut client_guard = client.lock().await;
+                client_guard.senders.remove(&id);
+                Err(Error::msg(format!("Timeout waiting for response for id: {}", id)))
+        }
         }
     }
 
@@ -782,23 +807,6 @@ impl WsClientState {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(interval_sec)).await;
             WsClientState::ping(&client).await?
-        }
-    }
-
-    async fn wait_for(client: WsClient, id: Uuid) -> Result<Value> {
-        let start = Instant::now();
-        loop {
-            let mut client_guard = client.lock().await;
-            let timeout = client_guard.rpc_timeout;
-            if let Some(json) = client_guard.messages.remove(&id) {
-                return Ok(json);
-            } else {
-                drop(client_guard);
-                tokio::time::sleep(tokio::time::Duration::from_micros(100)).await;
-            }
-            if start.elapsed().as_secs() > timeout {
-                return Err(Error::msg(format!("Timeout waiting for msg id: {id}")));
-            }
         }
     }
 
@@ -875,7 +883,14 @@ impl WsClientState {
         // TODO max size for # of messages and notifications
         if let Some(id_value) = id_value {
             let id = Uuid::deserialize(id_value)?;
-            state.messages.insert(id, json);
+            let tx = state.senders.remove(&id);
+            let sent = match tx {
+                Some(tx) => tx.send(json),
+                None => Err(json!({"noid": id.to_string()})),
+            };
+            if let Err(e) = sent {
+                error!("Error sending response for id {}: {:?}", id, e);
+            }
         } else {
             let channel = &json["params"]["channel"];
             let channel = channel.as_str();
