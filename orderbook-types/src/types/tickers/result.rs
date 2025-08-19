@@ -33,7 +33,7 @@ impl From<&AggregateTradingStatsSchema> for AggregateTradingStatsSchema {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct InstrumentTicker {
     ///Minimum valid increment of order amount
     pub amount_step: bigdecimal::BigDecimal,
@@ -234,7 +234,7 @@ impl InstrumentTicker {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct InstrumentData {
     ///Minimum valid increment of order amount
     pub amount_step: bigdecimal::BigDecimal,

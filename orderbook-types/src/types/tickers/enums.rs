@@ -59,6 +59,12 @@ impl std::convert::TryFrom<String> for InstrumentType {
     }
 }
 
+impl Default for InstrumentType {
+    fn default() -> Self {
+        Self::Erc20
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum TickerInterval {
     #[serde(rename = "100")]
