@@ -45,12 +45,11 @@ impl OptionContract {
 
         let d1 = d1(vol, self.strike, fwd, tau);
         let d2 = d2(d1, vol, tau);
-        let price = if self.is_call {
+        if self.is_call {
             fwd * normcdf(d1) - self.strike * normcdf(d2)
         } else {
             self.strike * normcdf(-d2) - fwd * normcdf(-d1)
-        };
-        price
+        }
     }
 
     pub fn delta(&self, fwd: f64, vol: f64) -> f64 {
@@ -64,5 +63,23 @@ impl OptionContract {
         } else {
             normcdf(d1) - 1.0
         }
+    }
+
+    pub fn vega(&self, fwd: f64, vol: f64) -> f64 {
+        let tau = self.expiry_sec / SEC_PER_YEAR;
+        if tau <= 0.0 {
+            return 0.0;
+        }
+        let d1 = d1(vol, self.strike, fwd, tau);
+        fwd * normpdf(d1) * tau.sqrt()
+    }
+
+    pub fn gamma(&self, fwd: f64, vol: f64) -> f64 {
+        let tau = self.expiry_sec / SEC_PER_YEAR;
+        if tau <= 0.0 {
+            return 0.0;
+        }
+        let d1 = d1(vol, self.strike, fwd, tau);
+        normpdf(d1) / (fwd * vol * tau.sqrt())
     }
 }
