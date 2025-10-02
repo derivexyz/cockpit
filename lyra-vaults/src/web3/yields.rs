@@ -111,7 +111,13 @@ async fn get_lbtc_rate_at_timestamp(timestamp: i64) -> Result<BigDecimal> {
     // get back output in the form {"amount_out":"1"}
     // return 1 / amount_out
     let url = "https://mainnet.prod.lombard.finance/api/v1/exchange/rate/1?amount=1";
-    let response = http_get(url.to_string()).await?;
+    let response = http_get(url.to_string()).await;
+    if response.is_err() {
+        // NOTE LBTC won't be != 1.0 for a while and their api is flaky
+        error!("Error fetching LBTC rate: {:?}, returning ONE", response.err());
+        return Ok(BigDecimal::one());
+    };
+    let response = response?;
     let amount_out = response["amount_out"].as_str();
     let amount_out = amount_out.ok_or(Error::msg("amount_out not found in response"))?;
     let rate = BigDecimal::one() / BigDecimal::from_str(amount_out)?;
