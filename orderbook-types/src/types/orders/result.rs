@@ -97,6 +97,7 @@ pub struct TradeResponse {
     pub trade_amount: bigdecimal::BigDecimal,
     ///Fee for this trade
     pub trade_fee: bigdecimal::BigDecimal,
+    pub expected_rebate: bigdecimal::BigDecimal,
     ///Trade ID
     pub trade_id: String,
     ///Price at which the trade was filled
