@@ -3,7 +3,7 @@ Defines core shared state of the market.
 Public and private modules define logic for ws subscriptions that update the shared state.
 */
 use bigdecimal::{BigDecimal, Zero};
-use log::info;
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -15,6 +15,7 @@ use lyra_client::actions::{Direction, OrderResponse, OrderStatus};
 use orderbook_types::generated::channel_orderbook_instrument_name_group_depth::OrderbookInstrumentNameGroupDepthPublisherDataSchema;
 use orderbook_types::types::orders::{TradeResponse, TxStatus};
 use orderbook_types::types::tickers::result::InstrumentTicker;
+use orderbook_types::types::tickers::{InstrumentData, InstrumentSlimTicker};
 
 pub type OrderbookData = OrderbookInstrumentNameGroupDepthPublisherDataSchema;
 
@@ -29,6 +30,7 @@ pub type MarketState = Arc<RwLock<MarketData>>;
 
 pub struct MarketData {
     tickers: HashMap<String, InstrumentTicker>,
+    instruments: HashMap<String, InstrumentData>,
     orderbooks: HashMap<String, OrderbookData>,
     positions: HashMap<String, Balance>,
     orders: HashMap<String, HashMap<String, OrderResponse>>,
@@ -41,6 +43,7 @@ impl MarketData {
     pub fn new() -> Self {
         MarketData {
             tickers: HashMap::new(),
+            instruments: HashMap::new(),
             orderbooks: HashMap::new(),
             positions: HashMap::new(),
             orders: HashMap::new(),
@@ -77,8 +80,26 @@ impl MarketData {
     pub fn insert_ticker(&mut self, ticker: InstrumentTicker) {
         self.tickers.insert(ticker.instrument_name.clone(), ticker);
     }
+    pub fn insert_ticker_slim(&mut self, ticker: InstrumentSlimTicker, name: String) {
+        let instrument = self.instruments.get(&name);
+        if instrument.is_none() {
+            warn!("No instrument data for ticker {}", name);
+            return;
+        }
+        let instrument = instrument.unwrap();
+        let full_ticker = InstrumentTicker::from_slim_and_data(ticker, instrument);
+        self.insert_ticker(full_ticker);
+    }
     pub fn iter_tickers(&self) -> impl Iterator<Item = &InstrumentTicker> {
         self.tickers.values()
+    }
+    pub fn insert_instrument(&mut self, instrument: InstrumentData) {
+        self.instruments.insert(instrument.instrument_name.clone(), instrument);
+    }
+    pub fn insert_instruments(&mut self, instruments: Vec<InstrumentData>) {
+        for instrument in instruments {
+            self.insert_instrument(instrument);
+        }
     }
     pub fn get_position(&self, instrument_name: &str) -> Option<&Balance> {
         self.positions.get(instrument_name)

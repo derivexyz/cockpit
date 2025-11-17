@@ -1,5 +1,6 @@
 use crate::helpers::{
-    sleep_till, subscribe_subaccount, subscribe_tickers, sync_subaccount, TickerInterval,
+    fetch_instrument, sleep_till, subscribe_subaccount, subscribe_tickers, sync_subaccount,
+    TickerInterval,
 };
 use crate::market::{new_market_state, MarketState};
 use crate::shared::stages::ExecutorStage;
@@ -101,14 +102,11 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
     pub async fn run_market(&self) -> Result<()> {
         let market = &self.auction.market;
         let sync_instruments = vec![self.auction.instrument_name.clone()];
+        let instrument = fetch_instrument(&self.auction.instrument_name).await?;
         sync_subaccount(market.clone(), self.auction.subaccount_id, sync_instruments).await?;
-
         let subacc_sub = subscribe_subaccount(market.clone(), self.auction.subaccount_id);
-        let ticker_sub = subscribe_tickers(
-            market.clone(),
-            vec![self.auction.instrument_name.clone()],
-            TickerInterval::_100Ms,
-        );
+        let ticker_sub =
+            subscribe_tickers(market.clone(), vec![instrument], TickerInterval::_100Ms);
 
         let res = select! {
             _ = ticker_sub => {Err(Error::msg("Market subscription exited early"))},

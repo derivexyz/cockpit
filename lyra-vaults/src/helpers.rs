@@ -23,13 +23,14 @@ use orderbook_types::types::orders::{
     GetTradesParams, GetTradesResponse, OrderNotificationData, OrderResponse,
     TradeNotificationData, TxStatus,
 };
+use orderbook_types::types::tickers::{
+    InstrumentData, InstrumentResponse, TickerSlimNotificationData,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::select;
 
-const SPOT_QUERY_BUFFER_SEC: i64 = 60 * 60; // 1 hour
-
-type TickerMsg = Notification<TickerNotificationData>;
+type TickerSlimMsg = Notification<TickerSlimNotificationData>;
 
 #[derive(Copy, Clone)]
 pub enum TickerInterval {
@@ -39,18 +40,26 @@ pub enum TickerInterval {
 
 pub async fn subscribe_tickers(
     market: MarketState,
-    instrument_names: Vec<String>,
+    instruments: Vec<InstrumentData>,
     interval: TickerInterval,
 ) -> Result<()> {
+    let instrument_names =
+        instruments.iter().map(|inst| inst.instrument_name.clone()).collect::<Vec<String>>();
     let channels: Vec<String> = instrument_names
         .iter()
-        .map(|instrument_name| format!("ticker.{}.{}", instrument_name, interval as u32))
+        .map(|instrument_name| format!("ticker_slim.{}.{}", instrument_name, interval as u32))
         .collect();
+    let mut writer = market.write().await;
+    writer.insert_instruments(instruments);
+    drop(writer);
     let client = WsClient::new_client().await?;
     info!("Subscribing to tickers: {:?}", channels);
     client
-        .subscribe(channels, |msg: TickerMsg| async {
-            market.write().await.insert_ticker(msg.params.data.instrument_ticker);
+        .subscribe(channels, |msg: TickerSlimMsg| async {
+            let ticker = msg.params.data.instrument_ticker;
+            let channel = msg.params.channel;
+            let name = channel.split('.').nth(1).expect("Invalid channel format").to_string();
+            market.write().await.insert_ticker_slim(ticker, name);
             Ok(())
         })
         .await?;
@@ -139,18 +148,6 @@ pub async fn sync_subaccount(
     Ok(())
 }
 
-pub async fn fetch_ticker(market: MarketState, instrument_name: &str) -> Result<()> {
-    let ticker = http_rpc::<_, TickerResponse>(
-        "public/get_ticker",
-        json!({ "instrument_name": instrument_name }),
-        None,
-    )
-    .await?
-    .into_result()?;
-    market.write().await.insert_ticker(ticker.result);
-    Ok(())
-}
-
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
 pub enum SubaccountSubscriberData {
@@ -226,8 +223,8 @@ pub async fn get_single_balance(subaccount_id: i64, asset_name: &str) -> Result<
 }
 
 pub async fn get_option_expiry(instrument_name: &str) -> Result<i64> {
-    let ticker = http_rpc::<_, TickerResponse>(
-        "public/get_ticker",
+    let ticker = http_rpc::<_, InstrumentResponse>(
+        "public/get_instrument",
         json!({ "instrument_name": instrument_name }),
         None,
     )
@@ -236,12 +233,33 @@ pub async fn get_option_expiry(instrument_name: &str) -> Result<i64> {
     Ok(ticker.result.option_details.unwrap().expiry)
 }
 
+pub async fn fetch_instrument(instrument_name: &str) -> Result<InstrumentData> {
+    let instrument = http_rpc::<_, InstrumentResponse>(
+        "public/get_instrument",
+        json!({ "instrument_name": instrument_name }),
+        None,
+    )
+    .await?
+    .into_result()?;
+    Ok(instrument.result)
+}
+
+pub async fn fetch_instruments(instrument_names: &Vec<String>) -> Result<Vec<InstrumentData>> {
+    let mut out = vec![];
+    for name in instrument_names {
+        let instrument = fetch_instrument(name).await?;
+        out.push(instrument);
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    }
+    Ok(out)
+}
+
 pub async fn get_expiry_options(
     currency: &str,
     max_expiry_sec: i64,
     min_expiry_sec: i64,
     is_call: bool,
-) -> Result<Vec<String>> {
+) -> Result<Vec<InstrumentData>> {
     let now = Utc::now().timestamp();
     let options_res = http_rpc::<_, InstrumentsResponse>(
         "public/get_instruments",
@@ -270,9 +288,9 @@ pub async fn get_expiry_options(
         None => return Err(err),
     };
 
-    let expiry_options: Vec<String> = options_iter
+    let expiry_options: Vec<InstrumentData> = options_iter
         .filter(|r| r.option_details.as_ref().unwrap().expiry == expiry)
-        .map(|r| r.instrument_name.clone())
+        .map(|r| r.clone())
         .collect();
 
     Ok(expiry_options)

@@ -1,5 +1,6 @@
 use crate::helpers::{
-    sleep_till, subscribe_subaccount, subscribe_tickers, sync_subaccount, TickerInterval,
+    fetch_instrument, fetch_instruments, sleep_till, subscribe_subaccount, subscribe_tickers,
+    sync_subaccount, TickerInterval,
 };
 use crate::market::{new_market_state, MarketState};
 use crate::web3::{get_tsa_contract, sign_execute_quote, sign_order, ProviderWithSigner, TSA};
@@ -190,8 +191,10 @@ pub struct RFQAuctionExecutor<S: RFQStrategy + Debug> {
 impl<S: RFQStrategy + Debug> RFQAuctionExecutor<S> {
     pub async fn run_market(&self) -> Result<()> {
         let market = &self.auction.market;
-        let instruments = self.auction.instrument_names();
-        sync_subaccount(market.clone(), self.auction.subaccount_id, instruments.clone()).await?;
+        let instrument_names = self.auction.instrument_names();
+        let instruments = fetch_instruments(&instrument_names).await?;
+        sync_subaccount(market.clone(), self.auction.subaccount_id, instrument_names.clone())
+            .await?;
 
         let subacc_sub = subscribe_subaccount(market.clone(), self.auction.subaccount_id);
         let ticker_sub = subscribe_tickers(market.clone(), instruments, TickerInterval::_100Ms);

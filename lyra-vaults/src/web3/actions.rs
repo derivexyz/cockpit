@@ -1,4 +1,4 @@
-use crate::helpers::{fetch_ticker, get_single_balance, sync_subaccount};
+use crate::helpers::{get_single_balance, sync_subaccount};
 use crate::market::new_market_state;
 pub use crate::web3::contracts::{
     get_provider_with_signer, get_tsa_contract, ProviderWithSigner, ERC20, TSA,

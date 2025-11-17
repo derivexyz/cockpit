@@ -1,4 +1,4 @@
-use crate::helpers::{fetch_ticker, get_option_expiry, sleep_till, sync_subaccount};
+use crate::helpers::{get_option_expiry, sleep_till, sync_subaccount};
 use crate::longpp::params::LongPPParams;
 use crate::longpp::selector::{maybe_select_from_positions, select_new_spread};
 use crate::longpp::stages::LongPPExecutorStage;

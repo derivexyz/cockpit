@@ -1,4 +1,4 @@
-use crate::helpers::{fetch_ticker, get_option_expiry, sync_subaccount};
+use crate::helpers::{get_option_expiry, sync_subaccount};
 use crate::lrtc::params::LRTCParams;
 use crate::lrtc::selector::{maybe_select_from_positions, select_new_option};
 use crate::lrtc::stages::LRTCExecutorStage;
@@ -50,12 +50,7 @@ impl LRTCExecutor {
             return Ok(Self { params, stage });
         }
         let option_name = option_name.unwrap();
-
-        fetch_ticker(market.clone(), &option_name).await?;
-        let reader = market.read().await;
-        let option_expiry =
-            reader.get_ticker(&option_name).unwrap().option_details.as_ref().unwrap().expiry;
-
+        let option_expiry = get_option_expiry(&option_name).await?;
         // in case of an executor restart during an auction, we will continue the auction
         // if it is likely to still be ongoing
         let now = chrono::Utc::now().timestamp();

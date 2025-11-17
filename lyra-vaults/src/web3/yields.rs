@@ -130,9 +130,9 @@ async fn get_eth_price_at_timestamp(timestamp: i64) -> Result<BigDecimal> {
         return Err(Error::msg("Historical ETH price currently not supported"));
     }
 
-    let url = "https://api.lyra.finance/public/get_ticker?instrument_name=ETH-PERP";
+    let url = "https://api.lyra.finance/public/get_tickers?currency=ETH&instrument_type=perp";
     let response = http_get(url.to_string()).await?;
-    let index = response["result"]["index_price"].as_str();
+    let index = response["result"]["tickers"]["ETH-PERP"]["I"].as_str();
     let index = index.ok_or(Error::msg("Index price not found in ticker"))?;
     let price = BigDecimal::from_str(index)?;
     Ok(price)
