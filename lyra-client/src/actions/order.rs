@@ -38,6 +38,16 @@ pub struct TradeData {
     is_bid: bool,
 }
 
+pub fn get_reject_millis(time_in_force: &TimeInForce) -> Result<i64> {
+    let reject_millis = std::env::var("ORDER_REJECT_MS").unwrap_or("5000".to_string());
+    let taker_speedbump = std::env::var("TAKER_SPEEDBUMP_MS").unwrap_or("150".to_string());
+    let reject_millis = match time_in_force {
+        TimeInForce::PostOnly => reject_millis.parse::<i64>()?,
+        _ => reject_millis.parse::<i64>()? + taker_speedbump.parse::<i64>()?,
+    };
+    Ok(reject_millis)
+}
+
 impl TradeData {
     pub fn new(
         ticker: &InstrumentTicker,
@@ -116,8 +126,7 @@ impl ActionData {
         ticker: &InstrumentTicker,
         args: OrderArgs,
     ) -> Result<OrderParams> {
-        let reject_millis = std::env::var("ORDER_REJECT_MS").unwrap_or("5000".to_string());
-        let reject_millis = reject_millis.parse::<i64>()?;
+        let reject_millis = get_reject_millis(&args.time_in_force)?;
         let is_atomic_signing =
             (std::env::var("IS_ATOMIC_SIGNING").unwrap_or("false".to_string()) == "true");
         Ok(OrderParams {
@@ -153,8 +162,7 @@ impl ActionData {
         expected_filled_amount: Option<BigDecimal>,
         args: OrderArgs,
     ) -> Result<ReplaceParams> {
-        let reject_millis = std::env::var("ORDER_REJECT_MS").unwrap_or("5000".to_string());
-        let reject_millis = reject_millis.parse::<i64>()?;
+        let reject_millis = get_reject_millis(&args.time_in_force)?;
         let is_atomic_signing =
             (std::env::var("IS_ATOMIC_SIGNING").unwrap_or("false".to_string()) == "true");
         Ok(ReplaceParams {
