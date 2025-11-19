@@ -28,6 +28,7 @@ pub fn get_manager_address(asset_name: &str, margin_type: MarginType) -> String 
     let manager_prefix = match margin_type {
         MarginType::Pm => asset_name.to_uppercase() + "_PMRM",
         MarginType::Sm => "SRM".to_string(),
+        MarginType::Pm2 => asset_name.to_uppercase() + "_PMRM2",
     };
     let manager_env = format!("{}_ADDRESS", manager_prefix);
     std::env::var(manager_env.clone()).expect(&format!("{} must be set", manager_env))

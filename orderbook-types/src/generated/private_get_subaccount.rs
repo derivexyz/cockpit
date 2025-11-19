@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
-use serde::{Deserialize, Serialize};
 use bigdecimal;
+use serde::{Deserialize, Serialize};
 use uuid;
 ///Type of asset collateral (currently always `erc20`)
 ///
@@ -20,18 +20,7 @@ use uuid;
 }*/
 /// ```
 /// </details>
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Deserialize,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum AssetType {
     #[serde(rename = "erc20")]
     Erc20,
@@ -107,18 +96,7 @@ impl std::convert::TryFrom<String> for AssetType {
 }*/
 /// ```
 /// </details>
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Deserialize,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum CancelReason {
     #[serde(rename = "")]
     X,
@@ -330,18 +308,7 @@ impl From<&CollateralResponseSchema> for CollateralResponseSchema {
 }*/
 /// ```
 /// </details>
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Deserialize,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum Direction {
     #[serde(rename = "buy")]
     Buy,
@@ -406,18 +373,7 @@ impl std::convert::TryFrom<String> for Direction {
 }*/
 /// ```
 /// </details>
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Deserialize,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum InstrumentType {
     #[serde(rename = "erc20")]
     Erc20,
@@ -485,23 +441,14 @@ impl std::convert::TryFrom<String> for InstrumentType {
 }*/
 /// ```
 /// </details>
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Deserialize,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum MarginType {
     #[serde(rename = "PM")]
     Pm,
     #[serde(rename = "SM")]
     Sm,
+    #[serde(rename = "PM2")]
+    Pm2,
 }
 impl From<&MarginType> for MarginType {
     fn from(value: &MarginType) -> Self {
@@ -513,6 +460,7 @@ impl ToString for MarginType {
         match *self {
             Self::Pm => "PM".to_string(),
             Self::Sm => "SM".to_string(),
+            Self::Pm2 => "PM2".to_string(),
         }
     }
 }
@@ -522,6 +470,7 @@ impl std::str::FromStr for MarginType {
         match value {
             "PM" => Ok(Self::Pm),
             "SM" => Ok(Self::Sm),
+            "PM2" => Ok(Self::Pm2),
             _ => Err("invalid value"),
         }
     }
@@ -834,18 +783,7 @@ impl From<&OrderResponseSchema> for OrderResponseSchema {
 }*/
 /// ```
 /// </details>
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Deserialize,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum OrderStatus {
     #[serde(rename = "open")]
     Open,
@@ -921,18 +859,7 @@ impl std::convert::TryFrom<String> for OrderStatus {
 }*/
 /// ```
 /// </details>
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Deserialize,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum OrderType {
     #[serde(rename = "limit")]
     Limit,
@@ -1517,8 +1444,7 @@ pub enum PrivateGetSubaccountResponseSchemaId {
     Variant0(String),
     Variant1(i64),
 }
-impl From<&PrivateGetSubaccountResponseSchemaId>
-for PrivateGetSubaccountResponseSchemaId {
+impl From<&PrivateGetSubaccountResponseSchemaId> for PrivateGetSubaccountResponseSchemaId {
     fn from(value: &PrivateGetSubaccountResponseSchemaId) -> Self {
         value.clone()
     }
@@ -1784,18 +1710,7 @@ impl From<&PrivateGetSubaccountResultSchema> for PrivateGetSubaccountResultSchem
 }*/
 /// ```
 /// </details>
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Deserialize,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum TimeInForce {
     #[serde(rename = "gtc")]
     Gtc,
