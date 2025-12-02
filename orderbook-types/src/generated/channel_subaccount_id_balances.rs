@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
-use serde::{Deserialize, Serialize};
 use bigdecimal;
+use serde::{Deserialize, Serialize};
 use uuid;
 ///BalanceUpdateSchema
 ///
@@ -193,7 +193,8 @@ pub struct SubaccountIdBalancesNotificationParamsSchema {
     pub data: Vec<BalanceUpdateSchema>,
 }
 impl From<&SubaccountIdBalancesNotificationParamsSchema>
-for SubaccountIdBalancesNotificationParamsSchema {
+    for SubaccountIdBalancesNotificationParamsSchema
+{
     fn from(value: &SubaccountIdBalancesNotificationParamsSchema) -> Self {
         value.clone()
     }
@@ -230,8 +231,7 @@ pub struct SubaccountIdBalancesNotificationSchema {
     pub method: String,
     pub params: SubaccountIdBalancesNotificationParamsSchema,
 }
-impl From<&SubaccountIdBalancesNotificationSchema>
-for SubaccountIdBalancesNotificationSchema {
+impl From<&SubaccountIdBalancesNotificationSchema> for SubaccountIdBalancesNotificationSchema {
     fn from(value: &SubaccountIdBalancesNotificationSchema) -> Self {
         value.clone()
     }
@@ -300,18 +300,7 @@ impl From<&SubaccountIdBalancesPubSubSchema> for SubaccountIdBalancesPubSubSchem
 }*/
 /// ```
 /// </details>
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Deserialize,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Serialize
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum UpdateType {
     #[serde(rename = "trade")]
     Trade,
@@ -337,6 +326,8 @@ pub enum UpdateType {
     InterestAccrual,
     #[serde(rename = "onchain_revert")]
     OnchainRevert,
+    #[serde(rename = "double_revert")]
+    DoubleRevert,
 }
 impl From<&UpdateType> for UpdateType {
     fn from(value: &UpdateType) -> Self {
@@ -358,6 +349,7 @@ impl ToString for UpdateType {
             Self::OptionSettlement => "option_settlement".to_string(),
             Self::InterestAccrual => "interest_accrual".to_string(),
             Self::OnchainRevert => "onchain_revert".to_string(),
+            Self::DoubleRevert => "double_revert".to_string(),
         }
     }
 }
@@ -377,6 +369,7 @@ impl std::str::FromStr for UpdateType {
             "option_settlement" => Ok(Self::OptionSettlement),
             "interest_accrual" => Ok(Self::InterestAccrual),
             "onchain_revert" => Ok(Self::OnchainRevert),
+            "double_revert" => Ok(Self::DoubleRevert),
             _ => Err("invalid value"),
         }
     }
