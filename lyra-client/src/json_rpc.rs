@@ -9,9 +9,7 @@ use log::{debug, error, info, warn};
 use orderbook_types::generated::private_cancel::{
     PrivateCancelParamsSchema, PrivateCancelResponseSchema,
 };
-use orderbook_types::generated::private_cancel_all::{
-    PrivateCancelAllParamsSchema, PrivateCancelAllResponseSchema,
-};
+use orderbook_types::generated::private_cancel_all::PrivateCancelAllParamsSchema;
 use orderbook_types::generated::private_cancel_by_instrument::{
     PrivateCancelByInstrumentParamsSchema, PrivateCancelByInstrumentResponseSchema,
 };
@@ -208,10 +206,7 @@ where
         percent_bid: BigDecimal,
         details: &AuctionDetailsSchema,
     ) -> Result<Response<SendLiquidateResponse>>;
-    async fn cancel_all(
-        &self,
-        subaccount_id: i64,
-    ) -> Result<Response<PrivateCancelAllResponseSchema>>;
+    async fn cancel_all(&self, subaccount_id: i64) -> Result<Response<Value>>;
     async fn cancel_by_instrument(
         &self,
         subaccount_id: i64,
@@ -477,10 +472,7 @@ impl WsClientExt for WsClient {
         .await?;
         self.send_rpc("private/liquidate", liquidate_params).await
     }
-    async fn cancel_all(
-        &self,
-        subaccount_id: i64,
-    ) -> Result<Response<PrivateCancelAllResponseSchema>> {
+    async fn cancel_all(&self, subaccount_id: i64) -> Result<Response<Value>> {
         let cancel_params = PrivateCancelAllParamsSchema { subaccount_id };
         self.send_rpc("private/cancel_all", cancel_params).await
     }
