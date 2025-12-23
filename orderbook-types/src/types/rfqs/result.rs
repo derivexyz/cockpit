@@ -2,9 +2,8 @@ pub use crate::types::rfqs::enums::{
     CancelReason, Direction, LiquidityRole, OrderStatus, TxStatus,
 };
 pub use crate::types::rfqs::params::LegPriced;
-use crate::types::rfqs::LegUnpriced;
+pub use crate::types::rfqs::LegUnpriced;
 pub use crate::types::shared::PaginationInfoSchema;
-use crate::types::tickers::InstrumentTicker;
 use crate::types::RPCId;
 use bigdecimal::BigDecimal;
 use serde::{Deserialize, Serialize};
@@ -129,4 +128,65 @@ impl From<&PollQuotesResult> for PollQuotesResult {
 pub struct PollQuotesResponse {
     pub id: RPCId,
     pub result: PollQuotesResult,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RfqResultPublicSchema {
+    ///Cancel reason, if any
+    pub cancel_reason: CancelReason,
+    ///Creation timestamp in ms since Unix epoch
+    pub creation_timestamp: i64,
+    ///Last update timestamp in ms since Unix epoch
+    pub last_update_timestamp: i64,
+    ///RFQ legs
+    pub legs: Vec<LegUnpriced>,
+    ///RFQ ID
+    pub rfq_id: uuid::Uuid,
+    ///Status
+    pub status: OrderStatus,
+    ///Subaccount ID
+    pub subaccount_id: i64,
+    ///RFQ expiry timestamp in ms since Unix epoch
+    pub valid_until: i64,
+    ///Direction at which the RFQ was filled (only if filled)
+    pub filled_direction: Option<Direction>,
+    ///Total cost for the RFQ (only if filled)
+    pub total_cost: Option<bigdecimal::BigDecimal>,
+    ///Step size for partial fills (default: 1)
+    pub partial_fill_step: bigdecimal::BigDecimal,
+    ///Percentage of the RFQ that has been filled, from 0 to 1.
+    pub filled_pct: bigdecimal::BigDecimal,
+    ///Average taker fill rate, from 0 to 1. Returns null for users with insufficient RFQ history.
+    pub fill_rate: Option<bigdecimal::BigDecimal>,
+    ///Taker fill rate, weighted towards the recent several days of activity, from 0 to 1. Returns null for users with insufficient recent RFQ history.
+    pub recent_fill_rate: Option<bigdecimal::BigDecimal>,
+}
+
+impl From<&RfqResultPublicSchema> for RfqResultPublicSchema {
+    fn from(value: &RfqResultPublicSchema) -> Self {
+        value.clone()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct WalletRfqsNotificationParamsSchema {
+    ///Subscribed channel name
+    pub channel: String,
+    pub data: Vec<RfqResultPublicSchema>,
+}
+impl From<&WalletRfqsNotificationParamsSchema> for WalletRfqsNotificationParamsSchema {
+    fn from(value: &WalletRfqsNotificationParamsSchema) -> Self {
+        value.clone()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct WalletRfqsNotificationSchema {
+    pub method: String,
+    pub params: WalletRfqsNotificationParamsSchema,
+}
+impl From<&WalletRfqsNotificationSchema> for WalletRfqsNotificationSchema {
+    fn from(value: &WalletRfqsNotificationSchema) -> Self {
+        value.clone()
+    }
 }
