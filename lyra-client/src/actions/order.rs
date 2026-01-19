@@ -129,6 +129,8 @@ impl ActionData {
         let reject_millis = get_reject_millis(&args.time_in_force)?;
         let is_atomic_signing =
             (std::env::var("IS_ATOMIC_SIGNING").unwrap_or("false".to_string()) == "true");
+        let reject_post_only =
+            std::env::var("REJECT_POST_ONLY").unwrap_or("true".to_string()) == "true";
         Ok(OrderParams {
             instrument_name: ticker.instrument_name.clone(),
             subaccount_id: self.subaccount_id.as_u64() as i64,
@@ -149,6 +151,7 @@ impl ActionData {
             replaced_order_id: None,
             referral_code: "COCKPIT".to_string(),
             is_atomic_signing,
+            reject_post_only,
             signature: signer.sign_hash(self.hash().into())?.to_string(),
         })
     }
@@ -165,6 +168,8 @@ impl ActionData {
         let reject_millis = get_reject_millis(&args.time_in_force)?;
         let is_atomic_signing =
             (std::env::var("IS_ATOMIC_SIGNING").unwrap_or("false".to_string()) == "true");
+        let reject_post_only =
+            std::env::var("REJECT_POST_ONLY").unwrap_or("true".to_string()) == "true";
         Ok(ReplaceParams {
             instrument_name: ticker.instrument_name.clone(),
             subaccount_id: self.subaccount_id.as_u64() as i64,
@@ -189,6 +194,7 @@ impl ActionData {
             nonce_to_cancel,
             order_id_to_cancel,
             is_atomic_signing,
+            reject_post_only,
         })
     }
 }

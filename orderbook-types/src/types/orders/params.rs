@@ -7,6 +7,11 @@ use crate::types::shared::RPCId;
 use bigdecimal;
 use serde::{Deserialize, Serialize};
 use uuid;
+
+pub fn bool_true() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OrderParams {
     ///Order amount in units of the base
@@ -55,6 +60,8 @@ pub struct OrderParams {
     pub time_in_force: TimeInForce,
     #[serde(default)]
     pub is_atomic_signing: bool,
+    #[serde(default = "bool_true")]
+    pub reject_post_only: bool,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OrderRequest {
@@ -121,6 +128,8 @@ pub struct ReplaceParams {
     pub time_in_force: TimeInForce,
     #[serde(default)]
     pub is_atomic_signing: bool,
+    #[serde(default = "bool_true")]
+    pub reject_post_only: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
