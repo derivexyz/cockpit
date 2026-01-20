@@ -349,7 +349,9 @@ impl From<&TickerSlimNotificationData> for TickerSlimNotificationData {
 impl InstrumentTicker {
     pub fn get_max_fee(&self) -> BigDecimal {
         let max_base_fee = &self.base_fee / &self.minimum_amount;
-        let max_fee = BigDecimal::from(3) * &self.taker_fee_rate * &self.index_price + max_base_fee;
+        let use_mark = self.mark_price > self.index_price;
+        let idx = if use_mark { &self.mark_price } else { &self.index_price };
+        let max_fee = BigDecimal::from(3) * &self.taker_fee_rate * idx + max_base_fee;
         max_fee.with_scale_round(6, bigdecimal::RoundingMode::Up)
     }
     pub fn get_unit_fee(&self, role: LiquidityRole) -> BigDecimal {
