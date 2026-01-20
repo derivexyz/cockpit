@@ -82,4 +82,14 @@ impl OptionContract {
         let d1 = d1(vol, self.strike, fwd, tau);
         normpdf(d1) / (fwd * vol * tau.sqrt())
     }
+
+    // note no discounting here, can add those terms later via (-r * premium)
+    pub fn theta(&self, fwd: f64, vol: f64) -> f64 {
+        let tau = self.expiry_sec / SEC_PER_YEAR;
+        if tau <= 0.0 {
+            return 0.0;
+        }
+        let d1 = d1(vol, self.strike, fwd, tau);
+        -fwd * normpdf(d1) * vol / (2.0 * tau.sqrt())
+    }
 }
