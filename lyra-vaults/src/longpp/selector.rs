@@ -6,6 +6,7 @@ use bigdecimal::{BigDecimal, Zero};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use bigdecimal::One;
 use log::{debug, error, info, warn};
 use lyra_client::auth::{load_signer, sign_auth_header};
 use lyra_client::json_rpc::{http_rpc, Notification, Response, WsClient, WsClientExt};
@@ -14,7 +15,6 @@ use orderbook_types::types::rfqs::LegUnpriced;
 use orderbook_types::types::tickers::result::{
     InstrumentTicker, InstrumentsResponse, OptionType, TickerNotificationData,
 };
-use rust_decimal::prelude::One;
 use serde_json::{json, Value};
 use tokio::select;
 
