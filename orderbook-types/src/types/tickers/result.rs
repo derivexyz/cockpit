@@ -68,6 +68,7 @@ pub struct InstrumentSlimTicker {
     /// Creation timestamp of the snapshot in milliseconds
     #[serde(rename = "t")]
     pub timestamp: i64,
+    pub stats: AggregateTradingStatsSlim,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
@@ -127,6 +128,40 @@ impl From<OptionPricingSlimSchema> for OptionPricingSchema {
 impl From<&OptionPricingSlimSchema> for OptionPricingSchema {
     fn from(value: &OptionPricingSlimSchema) -> Self {
         value.clone().into()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+pub struct AggregateTradingStatsSlim {
+    /// Number of contracts traded during last 24 hours
+    #[serde(rename = "c")]
+    pub contract_volume: BigDecimal,
+    /// Notional volume traded during last 24 hours
+    #[serde(rename = "v")]
+    pub notional_volume: BigDecimal,
+    /// Premium volume traded during last 24 hours
+    #[serde(rename = "pr")]
+    pub premium_volume: BigDecimal,
+    /// Number of trades during last 24h
+    #[serde(rename = "n")]
+    pub num_trades: i64,
+    /// Current total open interest
+    #[serde(rename = "oi")]
+    pub open_interest: BigDecimal,
+    /// Highest trade price during last 24h
+    #[serde(rename = "h")]
+    pub high: BigDecimal,
+    /// Lowest trade price during last 24h
+    #[serde(rename = "l")]
+    pub low: BigDecimal,
+    /// Options: 24hr percent change in premium; Perps: 24hr percent change in mark price
+    #[serde(rename = "p")]
+    pub percent_change: BigDecimal,
+}
+
+impl From<&AggregateTradingStatsSlim> for AggregateTradingStatsSlim {
+    fn from(value: &AggregateTradingStatsSlim) -> Self {
+        value.clone()
     }
 }
 
@@ -191,7 +226,9 @@ pub struct InstrumentTicker {
     pub tick_size: bigdecimal::BigDecimal,
     ///Timestamp of the ticker feed snapshot
     pub timestamp: i64,
+    pub stats: AggregateTradingStatsSlim,
 }
+
 impl From<&InstrumentTicker> for InstrumentTicker {
     fn from(value: &InstrumentTicker) -> Self {
         value.clone()
@@ -397,6 +434,7 @@ impl InstrumentTicker {
             taker_fee_rate: data.taker_fee_rate.clone(),
             tick_size: data.tick_size.clone(),
             timestamp: slim.timestamp,
+            stats: slim.stats,
         }
     }
 }
