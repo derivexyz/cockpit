@@ -1,3 +1,4 @@
+use crate::types::orders::{OrderResponse, TradeResponse};
 pub use crate::types::rfqs::enums::{
     CancelReason, Direction, LiquidityRole, OrderStatus, TxStatus,
 };
@@ -176,7 +177,7 @@ impl From<&RfqResultPublicSchema> for RfqResultPublicSchema {
 pub struct WalletRfqsNotificationParamsSchema {
     ///Subscribed channel name
     pub channel: String,
-    pub data: Vec<RfqResultPublicSchema>,
+    pub data: RfqNotificationData,
 }
 impl From<&WalletRfqsNotificationParamsSchema> for WalletRfqsNotificationParamsSchema {
     fn from(value: &WalletRfqsNotificationParamsSchema) -> Self {
@@ -261,7 +262,7 @@ pub struct SubaccountIdQuotesNotificationParamsSchema {
     /// Subscribed channel name
     pub channel: String,
     /// Quote result data
-    pub data: Vec<QuoteResultSchema>,
+    pub data: QuoteNotificationData,
 }
 
 impl From<&SubaccountIdQuotesNotificationParamsSchema>
@@ -309,3 +310,5 @@ pub struct ReplaceQuoteResponse {
     pub result: ReplaceQuoteResult,
 }
 
+pub type RfqNotificationData = Vec<RfqResultPublicSchema>;
+pub type QuoteNotificationData = Vec<QuoteResultSchema>;
