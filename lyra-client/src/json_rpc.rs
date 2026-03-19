@@ -10,6 +10,9 @@ use orderbook_types::generated::private_cancel::{
     PrivateCancelParamsSchema, PrivateCancelResponseSchema,
 };
 use orderbook_types::generated::private_cancel_all::PrivateCancelAllParamsSchema;
+use orderbook_types::generated::private_cancel_batch_quotes::{
+    PrivateCancelBatchQuotesParamsSchema, PrivateCancelBatchQuotesResponseSchema,
+};
 use orderbook_types::generated::private_cancel_by_instrument::{
     PrivateCancelByInstrumentParamsSchema, PrivateCancelByInstrumentResponseSchema,
 };
@@ -259,6 +262,22 @@ where
         subaccount_id: i64,
         instrument_name: String,
         nonce: i64,
+    ) -> Result<Uuid>;
+    async fn cancel_quotes(
+        &self,
+        subaccount_id: i64,
+        rfq_id: Option<Uuid>,
+        nonce: Option<i64>,
+        label: Option<String>,
+        quote_id: Option<Uuid>,
+    ) -> Result<Response<PrivateCancelBatchQuotesResponseSchema>>;
+    async fn cancel_quotes_nowait(
+        &self,
+        subaccount_id: i64,
+        rfq_id: Option<Uuid>,
+        nonce: Option<i64>,
+        label: Option<String>,
+        quote_id: Option<Uuid>,
     ) -> Result<Uuid>;
     async fn subscribe<Fut, Data>(
         &self,
@@ -606,6 +625,40 @@ impl WsClientExt for WsClient {
             instrument_name,
         };
         WsClientState::send_to_socket(self, "private/cancel_by_nonce", cancel_params).await
+    }
+    async fn cancel_quotes(
+        &self,
+        subaccount_id: i64,
+        rfq_id: Option<Uuid>,
+        nonce: Option<i64>,
+        label: Option<String>,
+        quote_id: Option<Uuid>,
+    ) -> Result<Response<PrivateCancelBatchQuotesResponseSchema>> {
+        let cancel_params = PrivateCancelBatchQuotesParamsSchema {
+            subaccount_id,
+            rfq_id,
+            nonce,
+            label,
+            quote_id,
+        };
+        self.send_rpc("private/cancel_batch_quotes", cancel_params).await
+    }
+    async fn cancel_quotes_nowait(
+        &self,
+        subaccount_id: i64,
+        rfq_id: Option<Uuid>,
+        nonce: Option<i64>,
+        label: Option<String>,
+        quote_id: Option<Uuid>,
+    ) -> Result<Uuid> {
+        let cancel_params = PrivateCancelBatchQuotesParamsSchema {
+            subaccount_id,
+            rfq_id,
+            nonce,
+            label,
+            quote_id,
+        };
+        WsClientState::send_to_socket(self, "private/cancel_batch_quotes", cancel_params).await
     }
     async fn subscribe<Fut, Data>(
         &self,
