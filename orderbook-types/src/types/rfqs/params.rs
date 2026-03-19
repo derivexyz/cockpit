@@ -131,3 +131,44 @@ impl From<&ExecuteQuoteParams> for ExecuteQuoteParams {
         value.clone()
     }
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ReplaceQuoteParams {
+    ///Quote direction, `buy` means trading each leg at its direction, `sell` means trading each leg in the opposite direction.
+    pub direction: Direction,
+    ///Optional user-defined label for the quote
+    #[serde(default)]
+    pub label: String,
+    ///Quote legs
+    pub legs: Vec<LegPriced>,
+    ///Max fee ($ for the full trade). Request will be rejected if the supplied max fee is below the estimated fee for this trade.
+    pub max_fee: bigdecimal::BigDecimal,
+    ///Whether the quote is tagged for market maker protections (default false)
+    #[serde(default)]
+    pub mmp: bool,
+    ///Unique nonce defined as a concatenated `UTC timestamp in ms` and `random number up to 6 digits` (e.g. 1695836058725001, where 001 is the random number)
+    pub nonce: i64,
+    ///Cancel quote by nonce (choose either quote_id or nonce).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nonce_to_cancel: Option<i64>,
+    ///Cancel quote by quote_id (choose either quote_id or nonce).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quote_id_to_cancel: Option<uuid::Uuid>,
+    ///RFQ ID the quote is for
+    pub rfq_id: uuid::Uuid,
+    ///Ethereum signature of the quote
+    pub signature: String,
+    ///Unix timestamp in seconds. Expiry MUST be at least 310 seconds from now.
+    pub signature_expiry_sec: i64,
+    ///Owner wallet address or registered session key that signed the quote
+    pub signer: String,
+    ///Subaccount ID
+    pub subaccount_id: i64,
+}
+
+impl From<&ReplaceQuoteParams> for ReplaceQuoteParams {
+    fn from(value: &ReplaceQuoteParams) -> Self {
+        value.clone()
+    }
+}
+

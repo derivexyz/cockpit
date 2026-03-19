@@ -16,7 +16,7 @@ pub use orderbook_types::types::orders::{
 };
 use orderbook_types::types::rfqs::QuoteParams;
 pub use orderbook_types::types::rfqs::{
-    ExecuteQuoteParams, LegPriced, LegUnpriced, QuoteResultPublic, RfqParams,
+    ExecuteQuoteParams, LegPriced, LegUnpriced, QuoteResultPublic, ReplaceQuoteParams, RfqParams,
 };
 use orderbook_types::types::tickers::InstrumentTicker;
 use serde::Deserialize;
@@ -149,6 +149,25 @@ pub fn new_quote_params(
     quote_action.to_quote_params(signer, &tickers, args)
 }
 
+pub fn new_replace_quote_params(
+    signer: &LocalWallet,
+    tickers: &HashMap<String, InstrumentTicker>,
+    subaccount_id: i64,
+    quote_id_to_cancel: Option<Uuid>,
+    nonce_to_cancel: Option<i64>,
+    args: QuoteArgs,
+) -> Result<ReplaceQuoteParams> {
+    let quote_data = QuoteData::from_legs(&args.legs, args.direction, &tickers)?;
+    let quote_action = ActionData::new(quote_data, subaccount_id, signer.address())?;
+    quote_action.to_replace_quote_params(
+        signer,
+        &tickers,
+        quote_id_to_cancel,
+        nonce_to_cancel,
+        args,
+    )
+}
+
 pub fn new_execute_params(
     signer: &LocalWallet,
     tickers: &HashMap<String, InstrumentTicker>,
@@ -178,7 +197,7 @@ impl ActionData {
             nonce: self.nonce.as_u64() as i64,
             signature_expiry_sec: self.expiry.as_u64() as i64,
             signer: hex::encode_prefixed(self.signer),
-            mmp: false,
+            mmp: true,
             rfq_id: args.rfq_id,
             signature: signer.sign_hash(self.hash().into())?.to_string(),
         })
@@ -202,6 +221,31 @@ impl ActionData {
             signature_expiry_sec: self.expiry.as_u64() as i64,
             signer: hex::encode_prefixed(self.signer),
             signature: signer.sign_hash(self.hash().into())?.to_string(),
+        })
+    }
+    pub fn to_replace_quote_params(
+        self,
+        signer: &LocalWallet,
+        tickers: &HashMap<String, InstrumentTicker>,
+        quote_id_to_cancel: Option<Uuid>,
+        nonce_to_cancel: Option<i64>,
+        args: QuoteArgs,
+    ) -> Result<ReplaceQuoteParams> {
+        let max_fee = get_rfq_max_fee(&args.legs, tickers);
+        Ok(ReplaceQuoteParams {
+            subaccount_id: self.subaccount_id.as_u64() as i64,
+            direction: args.direction,
+            label: "".to_string(),
+            legs: args.legs,
+            max_fee,
+            nonce: self.nonce.as_u64() as i64,
+            signature_expiry_sec: self.expiry.as_u64() as i64,
+            signer: hex::encode_prefixed(self.signer),
+            mmp: true,
+            rfq_id: args.rfq_id,
+            signature: signer.sign_hash(self.hash().into())?.to_string(),
+            quote_id_to_cancel,
+            nonce_to_cancel,
         })
     }
 }

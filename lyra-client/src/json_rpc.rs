@@ -28,7 +28,9 @@ use orderbook_types::types::liquidations::{
     AuctionDetailsSchema, LiquidationParams, SendLiquidateResponse,
 };
 use orderbook_types::types::orders::{ReplaceResponse, SendOrderResponse};
-use orderbook_types::types::rfqs::{ExecuteQuoteParams, QuoteParams, QuoteResultPublic};
+use orderbook_types::types::rfqs::{
+    ExecuteQuoteParams, QuoteParams, QuoteResultPublic, ReplaceQuoteResponse,
+};
 use orderbook_types::types::tickers::InstrumentTicker;
 use orderbook_types::types::RPCErrorResponse;
 use reqwest::{header::HeaderMap, Client};
@@ -51,8 +53,8 @@ use uuid::Uuid;
 
 use crate::actions::{
     new_deposit_params, new_execute_params, new_liquidate_params, new_order_params,
-    new_quote_params, new_replace_params, new_withdraw_params, DepositParams, OrderArgs,
-    OrderParams, QuoteArgs, ReplaceParams, WithdrawParams,
+    new_quote_params, new_replace_params, new_replace_quote_params, new_withdraw_params,
+    DepositParams, OrderArgs, OrderParams, QuoteArgs, ReplaceParams, WithdrawParams,
 };
 use crate::auth::{load_signer, sign_auth_msg};
 
@@ -193,6 +195,29 @@ where
         subaccount_id: i64,
         args: QuoteArgs,
     ) -> Result<Response<Value>>;
+    /// returns (RPCid, nonce) for the created quote
+    async fn send_quote_nowait(
+        &self,
+        tickers: &HashMap<String, InstrumentTicker>,
+        subaccount_id: i64,
+        args: QuoteArgs,
+    ) -> Result<(Uuid, i64)>;
+    async fn send_replace_quote(
+        &self,
+        tickers: &HashMap<String, InstrumentTicker>,
+        subaccount_id: i64,
+        quote_id_to_cancel: Option<Uuid>,
+        nonce_to_cancel: Option<i64>,
+        args: QuoteArgs,
+    ) -> Result<Response<ReplaceQuoteResponse>>;
+    async fn send_replace_quote_nowait(
+        &self,
+        tickers: &HashMap<String, InstrumentTicker>,
+        subaccount_id: i64,
+        quote_id_to_cancel: Option<Uuid>,
+        nonce_to_cancel: Option<i64>,
+        args: QuoteArgs,
+    ) -> Result<(Uuid, i64)>;
     async fn send_execute(
         &self,
         tickers: &HashMap<String, InstrumentTicker>,
@@ -445,6 +470,61 @@ impl WsClientExt for WsClient {
             WsClientState::new_signed_quote(self, tickers, subaccount_id, args).await?;
         self.send_rpc("private/send_quote", quote_params).await
     }
+    async fn send_quote_nowait(
+        &self,
+        tickers: &HashMap<String, InstrumentTicker>,
+        subaccount_id: i64,
+        args: QuoteArgs,
+    ) -> Result<(Uuid, i64)> {
+        let quote_params =
+            WsClientState::new_signed_quote(self, tickers, subaccount_id, args).await?;
+        let nonce = quote_params.nonce;
+        let this_id =
+            WsClientState::send_to_socket(self, "private/send_quote", quote_params).await?;
+        Ok((this_id, nonce))
+    }
+    async fn send_replace_quote(
+        &self,
+        tickers: &HashMap<String, InstrumentTicker>,
+        subaccount_id: i64,
+        quote_id_to_cancel: Option<Uuid>,
+        nonce_to_cancel: Option<i64>,
+        args: QuoteArgs,
+    ) -> Result<Response<ReplaceQuoteResponse>> {
+        let replace_quote_params = WsClientState::new_signed_replace_quote(
+            self,
+            tickers,
+            subaccount_id,
+            quote_id_to_cancel,
+            nonce_to_cancel,
+            args,
+        )
+        .await?;
+        self.send_rpc("private/replace_quote", replace_quote_params).await
+    }
+    async fn send_replace_quote_nowait(
+        &self,
+        tickers: &HashMap<String, InstrumentTicker>,
+        subaccount_id: i64,
+        quote_id_to_cancel: Option<Uuid>,
+        nonce_to_cancel: Option<i64>,
+        args: QuoteArgs,
+    ) -> Result<(Uuid, i64)> {
+        let replace_quote_params = WsClientState::new_signed_replace_quote(
+            self,
+            tickers,
+            subaccount_id,
+            quote_id_to_cancel,
+            nonce_to_cancel,
+            args,
+        )
+        .await?;
+        let nonce = replace_quote_params.nonce;
+        let this_id =
+            WsClientState::send_to_socket(self, "private/replace_quote", replace_quote_params)
+                .await?;
+        Ok((this_id, nonce))
+    }
     async fn send_execute(
         &self,
         tickers: &HashMap<String, InstrumentTicker>,
@@ -684,6 +764,28 @@ impl WsClientState {
         let client_guard = client.lock().await;
         if let Some(signer) = &client_guard.signer {
             Ok(new_quote_params(signer, tickers, subaccount_id, args)?)
+        } else {
+            Err(Error::msg("Not logged in or signer not set"))
+        }
+    }
+    async fn new_signed_replace_quote(
+        client: &WsClient,
+        tickers: &HashMap<String, InstrumentTicker>,
+        subaccount_id: i64,
+        quote_id_to_cancel: Option<Uuid>,
+        nonce_to_cancel: Option<i64>,
+        args: QuoteArgs,
+    ) -> Result<orderbook_types::types::rfqs::ReplaceQuoteParams> {
+        let client_guard = client.lock().await;
+        if let Some(signer) = &client_guard.signer {
+            Ok(new_replace_quote_params(
+                signer,
+                tickers,
+                subaccount_id,
+                quote_id_to_cancel,
+                nonce_to_cancel,
+                args,
+            )?)
         } else {
             Err(Error::msg("Not logged in or signer not set"))
         }

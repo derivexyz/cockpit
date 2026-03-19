@@ -4,6 +4,7 @@ pub use crate::types::rfqs::enums::{
 pub use crate::types::rfqs::params::LegPriced;
 pub use crate::types::rfqs::LegUnpriced;
 pub use crate::types::shared::PaginationInfoSchema;
+use crate::types::shared::RPCError;
 use crate::types::RPCId;
 use bigdecimal::BigDecimal;
 use serde::{Deserialize, Serialize};
@@ -72,6 +73,9 @@ pub struct QuoteResultPublic {
     pub creation_timestamp: i64,
     ///Quote direction
     pub direction: Direction,
+    ///Percentage of the RFQ that this quote would fill, from 0 to 1.
+    #[serde(default)]
+    pub fill_pct: BigDecimal,
     ///Last update timestamp in ms since Unix epoch
     pub last_update_timestamp: i64,
     ///Quote legs
@@ -190,3 +194,118 @@ impl From<&WalletRfqsNotificationSchema> for WalletRfqsNotificationSchema {
         value.clone()
     }
 }
+
+/// Quote result for subaccount_id.quotes channel notification
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct QuoteResultSchema {
+    /// Cancel reason, if any
+    pub cancel_reason: CancelReason,
+    /// Creation timestamp in ms since Unix epoch
+    pub creation_timestamp: i64,
+    /// Quote direction
+    pub direction: Direction,
+    /// Fee paid for this quote (if executed)
+    pub fee: BigDecimal,
+    /// Percentage of the RFQ that this quote would fill, from 0 to 1.
+    #[serde(default)]
+    pub fill_pct: BigDecimal,
+    /// User-defined label, if any
+    #[serde(default)]
+    pub label: String,
+    /// Last update timestamp in ms since Unix epoch
+    pub last_update_timestamp: i64,
+    /// Quote legs
+    pub legs: Vec<LegPriced>,
+    /// Hash of the legs of the best quote to be signed by the taker.
+    pub legs_hash: String,
+    /// Liquidity role
+    pub liquidity_role: LiquidityRole,
+    /// Signed max fee
+    pub max_fee: BigDecimal,
+    /// Whether the quote is tagged for market maker protections (default false)
+    #[serde(default)]
+    pub mmp: bool,
+    /// Nonce
+    pub nonce: i64,
+    /// Quote ID
+    pub quote_id: uuid::Uuid,
+    /// RFQ ID
+    pub rfq_id: uuid::Uuid,
+    /// Etherium signature of the quote
+    pub signature: String,
+    /// Unix timestamp in seconds
+    pub signature_expiry_sec: i64,
+    /// Owner wallet address or registered session key that signed the quote
+    pub signer: String,
+    /// Status
+    pub status: OrderStatus,
+    /// Subaccount ID
+    pub subaccount_id: i64,
+    /// Blockchain transaction hash (only for executed quotes)
+    #[serde(default)]
+    pub tx_hash: Option<String>,
+    /// Blockchain transaction status (only for executed quotes)
+    #[serde(default)]
+    pub tx_status: Option<TxStatus>,
+}
+
+impl From<&QuoteResultSchema> for QuoteResultSchema {
+    fn from(value: &QuoteResultSchema) -> Self {
+        value.clone()
+    }
+}
+
+/// Notification params for subaccount_id.quotes channel
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SubaccountIdQuotesNotificationParamsSchema {
+    /// Subscribed channel name
+    pub channel: String,
+    /// Quote result data
+    pub data: Vec<QuoteResultSchema>,
+}
+
+impl From<&SubaccountIdQuotesNotificationParamsSchema>
+    for SubaccountIdQuotesNotificationParamsSchema
+{
+    fn from(value: &SubaccountIdQuotesNotificationParamsSchema) -> Self {
+        value.clone()
+    }
+}
+
+/// Notification schema for subaccount_id.quotes channel
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SubaccountIdQuotesNotificationSchema {
+    pub method: String,
+    pub params: SubaccountIdQuotesNotificationParamsSchema,
+}
+
+impl From<&SubaccountIdQuotesNotificationSchema> for SubaccountIdQuotesNotificationSchema {
+    fn from(value: &SubaccountIdQuotesNotificationSchema) -> Self {
+        value.clone()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ReplaceQuoteResult {
+    ///Quote that was cancelled
+    pub cancelled_quote: QuoteResultSchema,
+    ///Optional. Returns error during new quote creation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub create_quote_error: Option<RPCError>,
+    ///New quote that was created
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quote: Option<QuoteResultSchema>,
+}
+
+impl From<&ReplaceQuoteResult> for ReplaceQuoteResult {
+    fn from(value: &ReplaceQuoteResult) -> Self {
+        value.clone()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ReplaceQuoteResponse {
+    pub id: RPCId,
+    pub result: ReplaceQuoteResult,
+}
+
