@@ -135,6 +135,7 @@ impl ModuleData for ExecuteData {
 pub struct QuoteArgs {
     pub rfq_id: Uuid,
     pub direction: Direction,
+    pub label: String,
     pub legs: Vec<LegPriced>,
 }
 
@@ -191,7 +192,7 @@ impl ActionData {
         Ok(QuoteParams {
             subaccount_id: self.subaccount_id.as_u64() as i64,
             direction: args.direction,
-            label: "".to_string(),
+            label: args.label,
             legs: args.legs,
             max_fee,
             nonce: self.nonce.as_u64() as i64,
@@ -235,7 +236,7 @@ impl ActionData {
         Ok(ReplaceQuoteParams {
             subaccount_id: self.subaccount_id.as_u64() as i64,
             direction: args.direction,
-            label: "".to_string(),
+            label: args.label,
             legs: args.legs,
             max_fee,
             nonce: self.nonce.as_u64() as i64,
