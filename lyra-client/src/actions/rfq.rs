@@ -131,7 +131,7 @@ impl ModuleData for ExecuteData {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct QuoteArgs {
     pub rfq_id: Uuid,
     pub direction: Direction,
