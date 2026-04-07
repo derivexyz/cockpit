@@ -165,6 +165,9 @@ pub struct RfqResultPublicSchema {
     pub fill_rate: Option<bigdecimal::BigDecimal>,
     ///Taker fill rate, weighted towards the recent several days of activity, from 0 to 1. Returns null for users with insufficient recent RFQ history.
     pub recent_fill_rate: Option<bigdecimal::BigDecimal>,
+    ///Wallet address of the RFQ sender
+    #[serde(default)]
+    pub wallet: String,
 }
 
 impl From<&RfqResultPublicSchema> for RfqResultPublicSchema {
@@ -205,11 +208,17 @@ pub struct QuoteResultSchema {
     pub creation_timestamp: i64,
     /// Quote direction
     pub direction: Direction,
+    /// Extra fee in USDC added by the referring client (included in quote fee)
+    #[serde(default)]
+    pub extra_fee: BigDecimal,
     /// Fee paid for this quote (if executed)
     pub fee: BigDecimal,
     /// Percentage of the RFQ that this quote would fill, from 0 to 1.
     #[serde(default)]
     pub fill_pct: BigDecimal,
+    /// Whether the order was generated through `private/transfer_position`
+    #[serde(default)]
+    pub is_transfer: bool,
     /// User-defined label, if any
     #[serde(default)]
     pub label: String,
@@ -312,3 +321,44 @@ pub struct ReplaceQuoteResponse {
 
 pub type RfqNotificationData = Vec<RfqResultPublicSchema>;
 pub type QuoteNotificationData = Vec<QuoteResultSchema>;
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PollRfqsResult {
+    /// Pagination info
+    pub pagination: PaginationInfoSchema,
+    /// RFQs matching filter criteria
+    pub rfqs: Vec<RfqResultPublicSchema>,
+}
+
+impl From<&PollRfqsResult> for PollRfqsResult {
+    fn from(value: &PollRfqsResult) -> Self {
+        value.clone()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PollRfqsResponse {
+    pub id: RPCId,
+    pub result: PollRfqsResult,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct GetQuotesResult {
+    /// Pagination info
+    pub pagination: PaginationInfoSchema,
+    /// Quotes matching filter criteria
+    pub quotes: Vec<QuoteResultSchema>,
+}
+
+impl From<&GetQuotesResult> for GetQuotesResult {
+    fn from(value: &GetQuotesResult) -> Self {
+        value.clone()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct GetQuotesResponse {
+    pub id: RPCId,
+    pub result: GetQuotesResult,
+}
+

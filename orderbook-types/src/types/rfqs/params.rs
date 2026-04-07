@@ -1,4 +1,6 @@
 pub use crate::types::rfqs::enums::Direction;
+pub use crate::types::rfqs::enums::OrderStatus;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -168,6 +170,72 @@ pub struct ReplaceQuoteParams {
 
 impl From<&ReplaceQuoteParams> for ReplaceQuoteParams {
     fn from(value: &ReplaceQuoteParams) -> Self {
+        value.clone()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PollRfqsParams {
+    /// Earliest `last_update_timestamp` to filter by (in ms since Unix epoch). If not provided, defaults to 0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_timestamp: Option<i64>,
+    /// Page number of results to return (default 1, returns last if above `num_pages`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<i64>,
+    /// Number of results per page (default 100, max 1000)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<i64>,
+    /// RFQ ID filter, if applicable
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rfq_id: Option<uuid::Uuid>,
+    /// Filter returned RFQs by rfq requestor subaccount
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rfq_subaccount_id: Option<i64>,
+    /// RFQ status filter, if applicable
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<OrderStatus>,
+    /// Subaccount ID for auth purposes, returned data will be scoped to this subaccount.
+    pub subaccount_id: i64,
+    /// Latest `last_update_timestamp` to filter by (in ms since Unix epoch). If not provided, defaults to returning all data up to current time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_timestamp: Option<i64>,
+}
+
+impl From<&PollRfqsParams> for PollRfqsParams {
+    fn from(value: &PollRfqsParams) -> Self {
+        value.clone()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct GetQuotesParams {
+    /// Earliest timestamp to filter by (in ms since Unix epoch). If not provided, defaults to 0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_timestamp: Option<i64>,
+    /// Page number of results to return (default 1, returns last if above `num_pages`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<i64>,
+    /// Number of results per page (default 100, max 1000)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<i64>,
+    /// Quote ID filter, if applicable
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quote_id: Option<uuid::Uuid>,
+    /// RFQ ID filter, if applicable
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rfq_id: Option<uuid::Uuid>,
+    /// Quote status filter, if applicable
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<OrderStatus>,
+    /// Subaccount ID for auth purposes, returned data will be scoped to this subaccount.
+    pub subaccount_id: i64,
+    /// Latest timestamp to filter by (in ms since Unix epoch). If not provided, defaults to returning all data up to current time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_timestamp: Option<i64>,
+}
+
+impl From<&GetQuotesParams> for GetQuotesParams {
+    fn from(value: &GetQuotesParams) -> Self {
         value.clone()
     }
 }
