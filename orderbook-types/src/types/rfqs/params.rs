@@ -21,6 +21,9 @@ impl LegUnpriced {
     pub fn sort(mut legs: Vec<Self>) {
         legs.sort_by(|a, b| a.instrument_name.cmp(&b.instrument_name));
     }
+    pub fn signed_amount(&self) -> bigdecimal::BigDecimal {
+        self.direction.sign() * &self.amount
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -42,6 +45,9 @@ impl From<&LegPriced> for LegPriced {
 impl LegPriced {
     pub fn sort(mut legs: Vec<Self>) {
         legs.sort_by(|a, b| a.instrument_name.cmp(&b.instrument_name));
+    }
+    pub fn signed_amount(&self) -> bigdecimal::BigDecimal {
+        self.direction.sign() * &self.amount
     }
 }
 
@@ -239,4 +245,3 @@ impl From<&GetQuotesParams> for GetQuotesParams {
         value.clone()
     }
 }
-
