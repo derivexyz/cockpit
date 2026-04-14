@@ -49,6 +49,14 @@ impl LegPriced {
     pub fn signed_amount(&self) -> bigdecimal::BigDecimal {
         self.direction.sign() * &self.amount
     }
+    pub fn from_unpriced(leg: &LegUnpriced, price: bigdecimal::BigDecimal) -> Self {
+        LegPriced {
+            amount: leg.amount.clone(),
+            direction: leg.direction,
+            instrument_name: leg.instrument_name.clone(),
+            price,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

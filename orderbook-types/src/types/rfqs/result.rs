@@ -33,6 +33,10 @@ pub struct RFQResultPrivate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filled_direction: Option<Direction>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reducing_direction: Option<Direction>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_direction: Option<Direction>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_cost: Option<bigdecimal::BigDecimal>,
 }
 
@@ -155,6 +159,8 @@ pub struct RfqResultPublicSchema {
     pub valid_until: i64,
     ///Direction at which the RFQ was filled (only if filled)
     pub filled_direction: Option<Direction>,
+    pub reducing_direction: Option<Direction>,
+    pub preferred_direction: Option<Direction>,
     ///Total cost for the RFQ (only if filled)
     pub total_cost: Option<bigdecimal::BigDecimal>,
     ///Step size for partial fills (default: 1)
@@ -361,4 +367,3 @@ pub struct GetQuotesResponse {
     pub id: RPCId,
     pub result: GetQuotesResult,
 }
-
