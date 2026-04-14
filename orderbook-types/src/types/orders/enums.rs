@@ -148,6 +148,12 @@ impl Direction {
             Self::Sell => BigDecimal::from(-1),
         }
     }
+    pub fn sign_f64(&self) -> f64 {
+        match self {
+            Self::Buy => 1.0,
+            Self::Sell => -1.0,
+        }
+    }
     pub fn is_bid(&self) -> bool {
         match self {
             Self::Buy => true,
