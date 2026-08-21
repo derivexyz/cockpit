@@ -9,16 +9,16 @@ use crate::web3::{
     ProviderWithSigner, TSA,
 };
 use anyhow::{Error, Result};
+use async_trait::async_trait;
 use bigdecimal::{BigDecimal, Zero};
 use log::{error, info, warn};
 use lyra_client::json_rpc::{WsClient, WsClientExt};
 use std::fmt::Debug;
 use tokio::select;
 
-pub trait ExecutorStage
-where
-    Self: Debug,
-{
+/// A dynamically dispatchable, reconnecting unit of vault execution.
+#[async_trait]
+pub trait ExecutorStage: Debug + Send + Sync {
     async fn run(&self) -> anyhow::Result<()>;
     async fn reconnect(&mut self) -> anyhow::Result<()>;
     async fn reconnect_with_backoff(&mut self) -> anyhow::Result<()> {
@@ -46,6 +46,7 @@ where
     }
 }
 
+#[async_trait]
 impl<S: OrderStrategy + Debug> ExecutorStage for LimitOrderAuctionExecutor<S> {
     async fn run(&self) -> anyhow::Result<()> {
         let market_task = self.run_market();
@@ -67,6 +68,7 @@ impl<S: OrderStrategy + Debug> ExecutorStage for LimitOrderAuctionExecutor<S> {
     }
 }
 
+#[async_trait]
 impl<S: RFQStrategy + Debug> ExecutorStage for RFQAuctionExecutor<S> {
     async fn run(&self) -> Result<()> {
         let remain_sec = self.auction.remain_sec();
@@ -112,6 +114,7 @@ impl TSACollateralOnly {
     }
 }
 
+#[async_trait]
 impl ExecutorStage for TSACollateralOnly {
     async fn run(&self) -> Result<()> {
         // todo might wanna rename the env to COLLATERAL_NAME for clarity
@@ -183,6 +186,7 @@ impl TSAWaitForSettlement {
     }
 }
 
+#[async_trait]
 impl ExecutorStage for TSAWaitForSettlement {
     async fn run(&self) -> Result<()> {
         let wait_task = self.wait_for_auction();

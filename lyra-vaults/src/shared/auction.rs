@@ -6,6 +6,7 @@ use crate::market::{new_market_state, MarketState};
 use crate::shared::stages::ExecutorStage;
 use crate::web3::actions::{get_tsa_contract, sign_order, ProviderWithSigner, TSA};
 use anyhow::{Error, Result};
+use async_trait::async_trait;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
 use core::fmt;
 use ethers::prelude::Middleware;
@@ -19,7 +20,8 @@ use std::fmt::Debug;
 use std::str::FromStr;
 use tokio::select;
 
-pub trait OrderStrategy {
+#[async_trait]
+pub trait OrderStrategy: Send + Sync {
     async fn get_desired_price(&self, auction: &LimitOrderAuction) -> Result<BigDecimal>;
     /// Returns the amount to trade and the direction to trade in
     /// Auction stops IF AND ONLY IF the amount returned is zero
@@ -132,7 +134,14 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
     /// Executes an option auction. Assumes market is already running and has correct state.
     pub async fn run_auction(&self) -> Result<()> {
         self.wait_for_ticker().await;
+        self.cancel_all().await?;
+
         loop {
+            if self.auction.remain_sec() <= 0 {
+                self.cancel_all().await?;
+                return Ok(());
+            }
+
             let desired_price = self.strategy.get_desired_price(&self.auction).await?;
             if self.needs_update(&desired_price).await? {
                 let amount = self.update_order(&desired_price).await?;

@@ -86,6 +86,7 @@ pub async fn sync_subaccount(
             return Err(Error::msg("Failed to get subaccount"));
         }
         Response::Success(subacc) => {
+            writer.clear_subaccount();
             let now = Utc::now().timestamp_millis();
             for position in subacc.result.positions {
                 writer.insert_position(Balance {

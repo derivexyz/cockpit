@@ -5,6 +5,7 @@ use crate::helpers::{
 use crate::market::{new_market_state, MarketState};
 use crate::web3::{get_tsa_contract, sign_execute_quote, sign_order, ProviderWithSigner, TSA};
 use anyhow::{Error, Result};
+use async_trait::async_trait;
 use bigdecimal::{BigDecimal, Zero};
 use core::fmt;
 use ethers::prelude::Middleware;
@@ -36,7 +37,8 @@ use tokio::sync::Mutex;
 const POLL_INTERVAL_MS: u64 = 500;
 const BASE_FREEZE_SEC: i64 = 4;
 
-pub trait RFQStrategy {
+#[async_trait]
+pub trait RFQStrategy: Send + Sync {
     /// Implement specific pricing logic for specific spreads (e.g. for long calls spreads, etc.)
     async fn get_desired_unit_cost(
         &self,

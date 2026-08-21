@@ -96,6 +96,9 @@ impl MarketData {
     pub fn insert_instrument(&mut self, instrument: InstrumentData) {
         self.instruments.insert(instrument.instrument_name.clone(), instrument);
     }
+    pub fn iter_instruments(&self) -> impl Iterator<Item = &InstrumentData> {
+        self.instruments.values()
+    }
     pub fn insert_instruments(&mut self, instruments: Vec<InstrumentData>) {
         for instrument in instruments {
             self.insert_instrument(instrument);
@@ -109,6 +112,10 @@ impl MarketData {
     }
     pub fn insert_position(&mut self, position: Balance) {
         self.positions.insert(position.instrument_name.clone(), position);
+    }
+    pub fn clear_subaccount(&mut self) {
+        self.positions.clear();
+        self.orders.clear();
     }
     pub fn iter_positions(&self) -> impl Iterator<Item = &Balance> {
         self.positions.values()
