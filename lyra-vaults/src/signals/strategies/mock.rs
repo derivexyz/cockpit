@@ -354,7 +354,22 @@ impl SignalStrategy for MockCCParams {
                 None => return Ok(Box::new(NoopStage)),
             }
         };
+        // decide the size before building an auction: an auction logs in and subscribes, which
+        // is wasted every decision that turns out to have nothing to trade
+        let strategy = MockCCOrderStrategy { params: self.clone(), order };
+        let amount = {
+            let ticker = reader
+                .get_ticker(&instrument_name)
+                .ok_or_else(|| Error::msg(format!("no live ticker for {instrument_name}")))?;
+            let position = reader.get_amount(&instrument_name);
+            strategy.desired_amount(ticker, &position).1
+        };
         drop(reader);
+
+        if amount.is_zero() {
+            info!("MockCC has nothing to trade on {}, holding", instrument_name);
+            return Ok(Box::new(NoopStage));
+        }
 
         let auction = LimitOrderAuction::new(
             instrument_name,
@@ -363,10 +378,7 @@ impl SignalStrategy for MockCCParams {
             self.price_change_tolerance.clone(),
         )
         .await?;
-        Ok(Box::new(LimitOrderAuctionExecutor {
-            auction,
-            strategy: MockCCOrderStrategy { params: self.clone(), order },
-        }))
+        Ok(Box::new(LimitOrderAuctionExecutor { auction, strategy }))
     }
 }
 
@@ -659,6 +671,30 @@ mod tests {
             current_call_position(&market, "BTC").unwrap(),
             Some(("BTC-20260101-100000-C".to_owned(), decimal("-3")))
         );
+    }
+
+    /// Building an auction needs env and a ws client, so a decision that reaches one panics here:
+    /// this passing is the assertion that an at-target decision never gets that far.
+    #[tokio::test]
+    async fn on_signal_is_a_noop_when_already_at_target() {
+        let market = new_market_state();
+        let name = "ETH-20260828-2500-C";
+        let ticker = option_ticker(name, "ETH", 2_000_000_000, OptionType::C, "0.10", true);
+        // index 2000 against a 10000 target notional, i.e. 5 contracts
+        let target = params().target_contracts(&ticker).unwrap();
+        assert_eq!(target, decimal("5.0"));
+
+        let mut writer = market.write().await;
+        writer.insert_ticker(ticker);
+        writer.insert_position(Balance {
+            instrument_name: name.to_owned(),
+            amount: -target,
+            timestamp: 0,
+        });
+        drop(writer);
+
+        let mut stage = params().get_action(&market, vec![true]).await.unwrap();
+        stage.run_with_reconnect().await.unwrap();
     }
 
     #[tokio::test]

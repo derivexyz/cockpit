@@ -3,35 +3,28 @@
 //! The mock vault has no TSA: its subaccount is owned by the session key's owner wallet and
 //! every action is signed by the session key itself via the regular API flow.
 //!
-//! [StrategyRunner] expects its caller to own market synchronization and readiness, so this
-//! module maintains the market state the mock strategy decides on (subaccount positions plus
-//! the tickers of the currently eligible calls) while the runner drives the decisions.
+//! [StrategyRunner] expects its caller to own market synchronization and readiness. Decisions
+//! are hourly, so rather than holding subscriptions open between them, each decision refreshes
+//! the market on demand: positions over REST, then a ticker subscription held only long enough
+//! for every eligible call to go live. The auction the decision selects opens its own
+//! subscriptions for the one instrument it trades, and lives as long as it needs to.
 
-use crate::helpers::{
-    get_expiry_options, subscribe_subaccount, subscribe_tickers, sync_subaccount, TickerInterval,
-};
+use crate::helpers::{get_expiry_options, subscribe_tickers, sync_subaccount, TickerInterval};
 use crate::market::{new_market_state, MarketState};
 use crate::signals::strategies::mock::{mock_signals, MockCCParams, MOCK_SIGNAL_POLL_INTERVAL};
 use crate::signals::StrategyRunner;
-use anyhow::{bail, Result};
+use anyhow::{bail, Error, Result};
 use log::{error, info, warn};
 use serde::Deserialize;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::select;
-use tokio::sync::RwLock;
 
-/// How often the eligible calls are re-fetched and re-subscribed to, so expiry rolls get picked up.
-const TICKER_REFRESH_SEC: u64 = 900;
-/// Backoff before a failed subscription or decision loop is restarted.
+/// Backoff before a failed decision loop is restarted.
 const RETRY_SEC: u64 = 15;
-/// How long a decision waits for the tickers of every subscribed call to arrive.
+/// How long a decision waits for the tickers of every eligible call to go live.
 const TICKER_WAIT_SEC: u64 = 60;
 /// Poll interval of that wait.
-const TICKER_WAIT_POLL_MS: u64 = 250;
-
-/// The calls currently subscribed to, i.e. the ones a decision can select from.
-type Candidates = Arc<RwLock<Vec<String>>>;
+const TICKER_WAIT_POLL_MS: u64 = 100;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MockCCVaultParams {
@@ -64,7 +57,6 @@ pub struct MockCCExecutor {
     params: MockCCVaultParams,
     subaccount_id: i64,
     market: MarketState,
-    candidates: Candidates,
 }
 
 impl MockCCExecutor {
@@ -75,94 +67,32 @@ impl MockCCExecutor {
             bail!("set a valid subaccount_id in the {} vault params", params.vault_name);
         }
         let market = new_market_state();
+        // fail fast on a bad subaccount or bad credentials rather than at the first decision
         sync_subaccount(market.clone(), subaccount_id, vec![]).await?;
-        let candidates = Arc::new(RwLock::new(vec![]));
-        Ok(Self { params, subaccount_id, market, candidates })
-    }
-
-    pub async fn run(&self) -> Result<()> {
-        let market_task = self.run_market();
-        let decision_task = self.run_decisions();
-        select! {
-            res = market_task => res,
-            res = decision_task => res,
-        }
-    }
-
-    /// Keeps the market state coherent for the decision loop. Both subscriptions are restarted
-    /// on failure, so this only returns on a fatal (e.g. misconfigured params) error.
-    async fn run_market(&self) -> Result<()> {
-        let subacc_sub = self.subscribe_subaccount_forever();
-        let ticker_sub = self.subscribe_tickers_forever();
-        select! {
-            res = subacc_sub => res,
-            res = ticker_sub => res,
-        }
-    }
-
-    async fn subscribe_subaccount_forever(&self) -> Result<()> {
-        loop {
-            let res = subscribe_subaccount(self.market.clone(), self.subaccount_id).await;
-            warn!("MockCC subaccount subscription exited with {:#?}, resubscribing", res);
-            tokio::time::sleep(Duration::from_secs(RETRY_SEC)).await;
-            // positions may have moved (e.g. settlement) while disconnected
-            if let Err(e) = sync_subaccount(self.market.clone(), self.subaccount_id, vec![]).await {
-                warn!("MockCC subaccount re-sync failed with {:#?}", e);
-            }
-        }
-    }
-
-    async fn subscribe_tickers_forever(&self) -> Result<()> {
-        let strategy = &self.params.strategy_params;
-        let expiry_sec = strategy.expiry_sec()?;
-        let min_expiry_sec = strategy.min_expiry_sec()?;
-        loop {
-            let currency = &strategy.option_currency;
-            let options = get_expiry_options(currency, expiry_sec, min_expiry_sec, true).await;
-            match options {
-                Ok(options) => {
-                    info!("MockCC subscribing to {} eligible {} calls", options.len(), currency);
-                    let names =
-                        options.iter().map(|o| o.instrument_name.clone()).collect::<Vec<_>>();
-                    *self.candidates.write().await = names;
-                    let sub =
-                        subscribe_tickers(self.market.clone(), options, TickerInterval::_1000Ms);
-                    let refresh = tokio::time::sleep(Duration::from_secs(TICKER_REFRESH_SEC));
-                    select! {
-                        res = sub => {
-                            warn!("MockCC ticker subscription exited with {:#?}", res);
-                            tokio::time::sleep(Duration::from_secs(RETRY_SEC)).await;
-                        },
-                        _ = refresh => {},
-                    }
-                }
-                Err(e) => {
-                    warn!("MockCC failed to fetch the eligible calls with {:#?}", e);
-                    tokio::time::sleep(Duration::from_secs(RETRY_SEC)).await;
-                }
-            }
-        }
+        Ok(Self { params, subaccount_id, market })
     }
 
     /// Runs the mock signal decisions, restarting the runner if it exits with an error.
     ///
-    /// Every decision is gated on the tickers of all subscribed calls having arrived: selection
-    /// compares deltas across strikes, so deciding on a partially warmed set picks whichever
-    /// strike happened to tick first rather than the one nearest the target delta.
-    async fn run_decisions(&self) -> Result<()> {
+    /// The market is refreshed as part of loading the signals, i.e. immediately before the
+    /// strategy reads it. Every eligible call must be live before deciding: selection compares
+    /// deltas across strikes, so a partially warmed set picks whichever strike ticked first
+    /// rather than the one nearest the target delta.
+    pub async fn run(&self) -> Result<()> {
         let strategy = self.params.strategy_params.clone();
-        let mut runner = StrategyRunner::new(strategy, self.market.clone())?;
+        let mut runner = StrategyRunner::new(strategy.clone(), self.market.clone())?;
         let interval = self.params.decision_interval();
         info!("MockCC decisions every {} sec", interval.as_secs());
         loop {
             let market = self.market.clone();
-            let candidates = self.candidates.clone();
+            let strategy = strategy.clone();
+            let subaccount_id = self.subaccount_id;
             let res = runner
                 .run(interval, move |decision_at| {
                     let market = market.clone();
-                    let candidates = candidates.clone();
+                    let strategy = strategy.clone();
                     async move {
-                        wait_for_tickers(&market, &candidates).await;
+                        refresh_market(&market, subaccount_id, &strategy).await?;
                         mock_signals(decision_at).await
                     }
                 })
@@ -173,21 +103,53 @@ impl MockCCExecutor {
     }
 }
 
-/// Waits until every subscribed call has been received at least once. Times out with a warning
-/// rather than an error: an instrument whose feed never arrives should not block the vault, and
-/// the selector ignores stale tickers anyway.
-async fn wait_for_tickers(market: &MarketState, candidates: &Candidates) {
+/// Brings the market up to date for one decision, then drops the ticker subscription.
+///
+/// Positions come over REST: between decisions there is nothing to react to, so a standing
+/// subaccount subscription would only stream updates nobody reads. Note the auction that a
+/// decision selects does subscribe to the subaccount for its own duration.
+async fn refresh_market(
+    market: &MarketState,
+    subaccount_id: i64,
+    strategy: &MockCCParams,
+) -> Result<()> {
+    sync_subaccount(market.clone(), subaccount_id, vec![]).await?;
+
+    let currency = &strategy.option_currency;
+    let options =
+        get_expiry_options(currency, strategy.expiry_sec()?, strategy.min_expiry_sec()?, true)
+            .await?;
+    let names = options.iter().map(|o| o.instrument_name.clone()).collect::<Vec<_>>();
+    info!("MockCC subscribing to {} eligible {} calls", names.len(), currency);
+
+    // the fastest interval: the subscription is held only until the tickers land, and the
+    // sooner they all do, the smaller the chance an early one goes stale before the decision
+    let sub = subscribe_tickers(market.clone(), options, TickerInterval::_100Ms);
+    let ready = wait_for_tickers(market, &names);
+    select! {
+        res = sub => Err(Error::msg(format!("ticker subscription exited early with {:#?}", res))),
+        _ = ready => Ok(()),
+    }
+    // the subscription is dropped here, closing its connection until the next decision
+}
+
+/// Waits until every eligible call has a live ticker. Times out with a warning rather than an
+/// error: an instrument whose feed never arrives should not block the vault, and the selector
+/// ignores stale tickers anyway.
+///
+/// Freshness (rather than mere presence) is what makes an on-demand subscription safe: it holds
+/// until all of the tickers are live at the same moment, so none of them can have gone stale by
+/// the time the strategy compares them.
+async fn wait_for_tickers(market: &MarketState, names: &Vec<String>) {
     let started = tokio::time::Instant::now();
     let timeout = Duration::from_secs(TICKER_WAIT_SEC);
     loop {
-        let names = candidates.read().await.clone();
         let missing = {
             let reader = market.read().await;
-            let tickers = reader.get_tickers();
-            names.iter().filter(|name| !tickers.contains_key(*name)).count()
+            names.iter().filter(|name| reader.get_ticker(name).is_none()).count()
         };
         if !names.is_empty() && missing == 0 {
-            info!("MockCC tickers ready for all {} subscribed calls", names.len());
+            info!("MockCC tickers live for all {} eligible calls", names.len());
             return;
         }
         if started.elapsed() >= timeout {
