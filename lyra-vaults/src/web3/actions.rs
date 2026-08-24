@@ -1,7 +1,8 @@
 use crate::helpers::{get_single_balance, sync_subaccount};
 use crate::market::new_market_state;
 pub use crate::web3::contracts::{
-    get_provider_with_signer, get_tsa_contract, ProviderWithSigner, ERC20, TSA,
+    get_provider_with_signer, get_tsa_contract, maybe_get_tsa_contract, ProviderWithSigner, ERC20,
+    TSA,
 };
 use crate::web3::{process_deposit_events, MAX_TO_PROCESS_PER_CALL};
 use crate::web3::{tsa, GAS_FACTOR};
@@ -82,10 +83,18 @@ pub async fn sign_action<T: AbiEncode + ModuleData + Clone>(
     Ok(action_data)
 }
 
+/// Returns the vault's subaccount id, read from the TSA contract if the vault has one.
+/// Vaults without a TSA must supply it via `{VAULT_NAME}_SUBACCOUNT_ID` or `SUBACCOUNT_ID`.
 pub async fn get_subaccount_id(vault_name: &String) -> Result<i64> {
-    let tsa = get_tsa_contract(vault_name, "SESSION").await?;
-    let subaccount_id = tsa.sub_account().call().await?;
-    Ok(subaccount_id.as_u64() as i64)
+    if let Some(tsa) = maybe_get_tsa_contract(vault_name, "SESSION").await? {
+        let subaccount_id = tsa.sub_account().call().await?;
+        return Ok(subaccount_id.as_u64() as i64);
+    }
+    let env_name = format!("{vault_name}_SUBACCOUNT_ID");
+    let subaccount_id = std::env::var(&env_name)
+        .or_else(|_| std::env::var("SUBACCOUNT_ID"))
+        .map_err(|_| Error::msg(format!("Set {env_name} for a vault without a TSA")))?;
+    Ok(subaccount_id.parse()?)
 }
 
 pub async fn get_erc20_balance_of_tsa(

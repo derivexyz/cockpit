@@ -93,6 +93,12 @@ impl MarketData {
     pub fn iter_tickers(&self) -> impl Iterator<Item = &InstrumentTicker> {
         self.tickers.values()
     }
+    /// Tickers that are still being updated, i.e. excluding any instrument whose feed went stale.
+    /// Prefer this over [Self::iter_tickers] whenever the values (e.g. greeks) drive a decision.
+    pub fn iter_fresh_tickers(&self) -> impl Iterator<Item = &InstrumentTicker> {
+        let now = chrono::Utc::now().timestamp_millis();
+        self.tickers.values().filter(move |t| now - t.timestamp <= STALENESS_MS)
+    }
     pub fn insert_instrument(&mut self, instrument: InstrumentData) {
         self.instruments.insert(instrument.instrument_name.clone(), instrument);
     }

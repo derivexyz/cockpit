@@ -4,12 +4,11 @@ use crate::helpers::{
 };
 use crate::market::{new_market_state, MarketState};
 use crate::shared::stages::ExecutorStage;
-use crate::web3::actions::{get_tsa_contract, sign_order, ProviderWithSigner, TSA};
+use crate::web3::signer::VaultSigner;
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
 use core::fmt;
-use ethers::prelude::Middleware;
 use log::{info, warn};
 use lyra_client::actions::{Direction, OrderArgs, OrderType, TimeInForce};
 use lyra_client::json_rpc::{WsClient, WsClientExt};
@@ -38,7 +37,7 @@ pub struct LimitOrderAuction {
     pub subaccount_id: i64,
     pub market: MarketState,
     pub client: WsClient,
-    pub tsa: TSA<ProviderWithSigner>,
+    pub signer: VaultSigner,
     pub start_timestamp_sec: i64,
 
     // Params
@@ -64,12 +63,12 @@ impl LimitOrderAuction {
         let client = WsClient::new_client().await?;
         client.login().await?;
         client.enable_cancel_on_disconnect().await?;
-        let tsa = get_tsa_contract(&vault_name, "SESSION").await?;
+        let signer = VaultSigner::new(&vault_name).await?;
         Ok(LimitOrderAuction {
             subaccount_id,
             market,
             client,
-            tsa,
+            signer,
             start_timestamp_sec,
             instrument_name,
             auction_sec,
@@ -245,10 +244,7 @@ impl<S: OrderStrategy + Debug> LimitOrderAuctionExecutor<S> {
             .clone();
         drop(reader);
 
-        let provider = self.auction.tsa.client();
-        let signer = provider.inner().signer();
-        let action_data = sign_order(&self.auction.tsa, &ticker, &order_args).await?;
-        let order_params = action_data.to_order_params(&signer, &ticker, order_args)?;
+        let order_params = self.auction.signer.order_params(&ticker, order_args).await?;
         let res = self.auction.client.send_rpc::<_, Value>("private/order", order_params).await?;
         res.into_result()?;
         Ok(amount)

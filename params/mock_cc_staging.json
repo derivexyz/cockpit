@@ -1,0 +1,20 @@
+{
+  "env": "staging",
+  "vault_name": "MOCK_CC",
+  "subaccount_id": 142807,
+  "key_name": "mm-acc",
+  "decision_interval_sec": 3600,
+  "strategy_params": {
+    "option_currency": "ETH",
+    "expiry_days": 9,
+    "min_expiry_hours": 24,
+    "target_delta": "0.1",
+    "max_delta": "0.15",
+    "target_notional": "10000",
+    "max_iv_spread": 0.2,
+    "init_iv_spread": 0.0,
+    "iv_spread_per_min": 0.005,
+    "auction_sec": 3600,
+    "price_change_tolerance": "0.1"
+  }
+}
