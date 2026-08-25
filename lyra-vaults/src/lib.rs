@@ -1,3 +1,4 @@
+pub mod clickhouse;
 pub mod helpers;
 mod longpp;
 mod lrtc;
