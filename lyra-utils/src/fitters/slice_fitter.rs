@@ -1,5 +1,5 @@
 use crate::fitters::svi::{SVIJWParams, SVIRawParams};
-use crate::fitters::SEC_PER_YEAR;
+use crate::SEC_PER_YEAR;
 use anyhow::{anyhow, bail, Result};
 use argmin::core::{
     observers::{Observe, ObserverMode},

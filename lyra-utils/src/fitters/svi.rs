@@ -293,7 +293,7 @@ pub fn svi_to_vol(
 
 #[cfg(test)]
 mod tests {
-    use crate::fitters::SEC_PER_YEAR;
+    use crate::SEC_PER_YEAR;
     use crate::black76::OptionContract;
 
     fn assert_jw_approx(original: &SVIJWParams, recovered: &SVIJWParams, tol: f64) {
