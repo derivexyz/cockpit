@@ -7,6 +7,7 @@ use lyra_client::actions::Direction;
 use lyra_utils::black76::OptionContract;
 use orderbook_types::types::tickers::OptionType;
 
+#[async_trait::async_trait]
 impl OrderStrategy for OptionAuctionParams {
     async fn get_desired_price(&self, auction: &LimitOrderAuction) -> Result<BigDecimal> {
         let market = &auction.market;

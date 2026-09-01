@@ -5,20 +5,20 @@ use crate::market::new_market_state;
 use crate::shared::auction::{LimitOrderAuctionExecutor, OrderStrategy};
 use crate::shared::rfq::{RFQAuctionExecutor, RFQStrategy};
 use crate::web3::{
-    get_tsa_contract, process_deposits_forever, process_deposits_once, process_withdrawals,
+    maybe_get_tsa_contract, process_deposits_forever, process_deposits_once, process_withdrawals,
     ProviderWithSigner, TSA,
 };
 use anyhow::{Error, Result};
+use async_trait::async_trait;
 use bigdecimal::{BigDecimal, Zero};
 use log::{error, info, warn};
 use lyra_client::json_rpc::{WsClient, WsClientExt};
 use std::fmt::Debug;
 use tokio::select;
 
-pub trait ExecutorStage
-where
-    Self: Debug,
-{
+/// A dynamically dispatchable, reconnecting unit of vault execution.
+#[async_trait]
+pub trait ExecutorStage: Debug + Send + Sync {
     async fn run(&self) -> anyhow::Result<()>;
     async fn reconnect(&mut self) -> anyhow::Result<()>;
     async fn reconnect_with_backoff(&mut self) -> anyhow::Result<()> {
@@ -46,6 +46,7 @@ where
     }
 }
 
+#[async_trait]
 impl<S: OrderStrategy + Debug> ExecutorStage for LimitOrderAuctionExecutor<S> {
     async fn run(&self) -> anyhow::Result<()> {
         let market_task = self.run_market();
@@ -67,6 +68,7 @@ impl<S: OrderStrategy + Debug> ExecutorStage for LimitOrderAuctionExecutor<S> {
     }
 }
 
+#[async_trait]
 impl<S: RFQStrategy + Debug> ExecutorStage for RFQAuctionExecutor<S> {
     async fn run(&self) -> Result<()> {
         let remain_sec = self.auction.remain_sec();
@@ -96,34 +98,40 @@ impl<S: RFQStrategy + Debug> ExecutorStage for RFQAuctionExecutor<S> {
 /// - This stage will process withdrawals for the spot asset.
 /// - Will keep reconnecting in case of any errors raised during process_withdrawals.
 /// - Will stop when total pending withdrawals are 0.
+/// - Is a no-op for vaults without a TSA, as there is no contract holding deposits / withdrawals.
 /// - TODO Note that there are also some edge cases when some stray USDC was not fully sold off and
 /// withdrawals are so large that the vault has not enough LRT balance to cover it.
 #[derive(Debug)]
 pub struct TSACollateralOnly {
-    pub tsa: TSA<ProviderWithSigner>,
+    pub tsa: Option<TSA<ProviderWithSigner>>,
 }
 
 impl TSACollateralOnly {
     pub async fn new() -> Result<Self> {
         info!("Starting TSASpotOnly Stage");
         let vault_name = std::env::var("VAULT_NAME").unwrap();
-        let tsa = get_tsa_contract(&vault_name, "SESSION").await?;
+        let tsa = maybe_get_tsa_contract(&vault_name, "SESSION").await?;
         Ok(Self { tsa })
     }
 }
 
+#[async_trait]
 impl ExecutorStage for TSACollateralOnly {
     async fn run(&self) -> Result<()> {
+        let Some(tsa) = &self.tsa else {
+            info!("No TSA for the vault, skipping deposit / withdrawal processing");
+            return Ok(());
+        };
         // todo might wanna rename the env to COLLATERAL_NAME for clarity
         let asset_name = std::env::var("SPOT_NAME").unwrap();
-        process_deposits_once(&self.tsa, asset_name.clone()).await?;
-        process_withdrawals(&self.tsa, asset_name.clone(), None).await?;
-        process_deposits_once(&self.tsa, asset_name.clone()).await?;
+        process_deposits_once(tsa, asset_name.clone()).await?;
+        process_withdrawals(tsa, asset_name.clone(), None).await?;
+        process_deposits_once(tsa, asset_name.clone()).await?;
         Ok(())
     }
     async fn reconnect(&mut self) -> Result<()> {
         let vault_name = std::env::var("VAULT_NAME").unwrap();
-        self.tsa = get_tsa_contract(&vault_name, "SESSION").await?;
+        self.tsa = maybe_get_tsa_contract(&vault_name, "SESSION").await?;
         Ok(())
     }
 }
@@ -133,7 +141,7 @@ impl ExecutorStage for TSACollateralOnly {
 #[derive(Debug)]
 pub struct TSAWaitForSettlement {
     pub subaccount_id: i64,
-    pub tsa: TSA<ProviderWithSigner>,
+    pub tsa: Option<TSA<ProviderWithSigner>>,
     pub option_names: Vec<String>,
     pub option_expiry: i64,
     pub delay_min: i64,
@@ -143,7 +151,7 @@ impl TSAWaitForSettlement {
     pub async fn new(delay_min: i64, option_names: Vec<String>) -> Result<Self> {
         let subaccount_id = std::env::var("SUBACCOUNT_ID").unwrap().parse().unwrap();
         let vault_name = std::env::var("VAULT_NAME").unwrap();
-        let tsa = get_tsa_contract(&vault_name, "SESSION").await?;
+        let tsa = maybe_get_tsa_contract(&vault_name, "SESSION").await?;
         let option_expiry = get_option_expiry(&option_names[0]).await?;
         Ok(Self { subaccount_id, tsa, option_names, option_expiry, delay_min })
     }
@@ -183,11 +191,16 @@ impl TSAWaitForSettlement {
     }
 }
 
+#[async_trait]
 impl ExecutorStage for TSAWaitForSettlement {
     async fn run(&self) -> Result<()> {
         let wait_task = self.wait_for_auction();
+        let Some(tsa) = &self.tsa else {
+            // no contract to process deposits for, just wait for the settlement
+            return wait_task.await;
+        };
         let asset_name = std::env::var("SPOT_NAME").unwrap();
-        let deposit_task = process_deposits_forever(&self.tsa, asset_name);
+        let deposit_task = process_deposits_forever(tsa, asset_name);
         select! {
             w = wait_task => w,
             d = deposit_task => {
@@ -198,7 +211,7 @@ impl ExecutorStage for TSAWaitForSettlement {
     }
     async fn reconnect(&mut self) -> anyhow::Result<()> {
         let vault_name = std::env::var("VAULT_NAME").unwrap();
-        self.tsa = get_tsa_contract(&vault_name, "SESSION").await?;
+        self.tsa = maybe_get_tsa_contract(&vault_name, "SESSION").await?;
         Ok(())
     }
 }

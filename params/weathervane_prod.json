@@ -1,0 +1,33 @@
+{
+  "env": "prod",
+  "vault_name": "WEATHERVANE",
+  "subaccount_id": 70859,
+  "key_name": "acc-1",
+  "decision_interval_sec": 3600,
+  "strategy_params": {
+    "option_currency": "ETH",
+    "leg": {
+      "spot_currency": "WEETH",
+      "notional_ratio": "1.0",
+      "max_contracts": "10",
+      "target_delta": "0.05",
+      "max_delta_dev": "0.04",
+      "max_mark_dev": "0.6",
+      "tenor_target_days": 7.0,
+      "tenor_band_days": 3.0
+    },
+    "auction_cfg": {
+      "init_iv_spread": 0.0,
+      "iv_spread_per_min": 0.01,
+      "max_iv_spread": 0.2,
+      "auction_sec": 900,
+      "price_change_tolerance": "0.1"
+    },
+    "gate": {
+      "option_currency": "ETH",
+      "bull_threshold_pct": 5.0,
+      "bear_threshold_pct": -5.0,
+      "persist_hours": 6
+    }
+  }
+}
