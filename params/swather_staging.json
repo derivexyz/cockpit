@@ -1,0 +1,37 @@
+{
+  "env": "staging",
+  "vault_name": "SWATHER",
+  "subaccount_id": 142807,
+  "key_name": "mm-acc",
+  "decision_interval_sec": 3600,
+  "strategy_params": {
+    "option_currency": "ETH",
+    "leg": {
+      "spot_currency": "LBTC",
+      "notional_ratio": "1.0",
+      "max_contracts": "0.5",
+      "target_delta": "0.1",
+      "max_delta_dev": "0.1",
+      "max_mark_dev": "0.25",
+      "tenor_target_days": 7.0,
+      "tenor_band_days": 3.0
+    },
+    "auction_cfg": {
+      "init_iv_spread": 0.0,
+      "iv_spread_per_min": 0.005,
+      "max_iv_spread": 0.2,
+      "auction_sec": 1800,
+      "price_change_tolerance": "0.1"
+    },
+    "min_hold_days": 3.0,
+    "min_hold_days_long_dated": 5.0,
+    "long_dated_dte": 14.0,
+    "no_close_below_dte": 1.0,
+    "gate": {
+      "option_currency": "ETH",
+      "iv_rank_floor": 40.0,
+      "mom_max_pct": 5.0,
+      "minhold_hours": 72
+    }
+  }
+}
