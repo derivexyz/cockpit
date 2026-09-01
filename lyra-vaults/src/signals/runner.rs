@@ -2,7 +2,7 @@ use crate::market::MarketState;
 use crate::signals::SignalStrategy;
 use anyhow::{bail, Context, Result};
 use std::future::Future;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub struct CycleReport {
@@ -100,7 +100,7 @@ where
 
     async fn wait_for_next_decision(&self, decision_interval: Duration) -> Result<i64> {
         loop {
-            let now = utc_now_seconds()?;
+            let now = chrono::Utc::now().timestamp();
             let decision_at = decision_slot(now, decision_interval)?;
             if self.last_decision_at < decision_at {
                 return Ok(decision_at);
@@ -137,19 +137,14 @@ fn duration_until_next_slot(now: i64, interval: Duration) -> Result<Duration> {
         .context("decision interval cannot be represented as a sleep duration")?;
     Ok(Duration::from_secs(wait_seconds))
 }
-
-fn utc_now_seconds() -> Result<i64> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock is before the Unix epoch")?;
-    i64::try_from(now.as_secs()).context("UTC timestamp is too large to represent in seconds")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::market::new_market_state;
     use crate::shared::stages::ExecutorStage;
+    use crate::market::MarketData;
+    use crate::signals::{Candidates, Selector};
+    use orderbook_types::types::rfqs::LegUnpriced;
     use std::collections::VecDeque;
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
@@ -198,6 +193,7 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
     struct SwitchingStrategy {
         selections: Arc<AtomicUsize>,
         signal_on_runs: Arc<AtomicUsize>,
@@ -205,9 +201,27 @@ mod tests {
     }
 
     #[async_trait::async_trait]
+    impl Selector for SwitchingStrategy {
+        fn candidates(&self) -> Result<Candidates> {
+            panic!("the runner does not subscribe: its caller owns the market")
+        }
+        fn select_structure(
+            &self,
+            _market: &MarketData,
+            _decision_at: i64,
+        ) -> Result<Vec<LegUnpriced>> {
+            panic!("this strategy selects nothing")
+        }
+    }
+
+    #[async_trait::async_trait]
     impl SignalStrategy for SwitchingStrategy {
         fn name(&self) -> &str {
             "switching-strategy"
+        }
+
+        async fn signals(&self, _decision_at: i64) -> Result<Vec<bool>> {
+            panic!("the runner takes its signals from the loader it is passed")
         }
 
         async fn get_action(

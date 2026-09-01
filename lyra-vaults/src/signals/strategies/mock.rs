@@ -1,7 +1,7 @@
 use crate::market::{MarketData, MarketState};
 use crate::shared::auction::{LimitOrderAuction, LimitOrderAuctionExecutor, OrderStrategy};
 use crate::shared::stages::ExecutorStage;
-use crate::signals::{Selector, SignalStrategy};
+use crate::signals::{Candidates, NoopStage, Selector, SignalStrategy};
 use anyhow::{bail, Context, Error, Result};
 use bigdecimal::{BigDecimal, FromPrimitive, RoundingMode, ToPrimitive, Zero};
 use log::{info, warn};
@@ -11,7 +11,7 @@ use orderbook_types::types::rfqs::LegUnpriced;
 use orderbook_types::types::tickers::result::InstrumentTicker;
 use orderbook_types::types::tickers::OptionType;
 use serde::Deserialize;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 pub const MOCK_SIGNAL_POLL_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
@@ -127,26 +127,17 @@ impl MockCCParams {
 }
 
 impl Selector for MockCCParams {
-    fn select_structure(&self, market: &MarketData, decision_at: i64) -> Result<Vec<LegUnpriced>> {
-        let min_expiry = decision_at
-            .checked_add(self.min_expiry_sec()?)
-            .context("minimum expiry timestamp overflowed")?;
-        let max_expiry = decision_at
-            .checked_add(self.expiry_sec()?)
-            .context("maximum expiry timestamp overflowed")?;
+    fn candidates(&self) -> Result<Candidates> {
+        Ok(Candidates {
+            currency: self.option_currency.clone(),
+            min_expiry_sec: self.min_expiry_sec()?,
+            max_expiry_sec: self.expiry_sec()?,
+            option_types: vec![OptionType::C],
+        })
+    }
 
-        // fresh tickers only: a stale delta would silently misprice the selection
-        let eligible = market
-            .iter_fresh_tickers()
-            .filter(|ticker| ticker.is_active && ticker.base_currency == self.option_currency)
-            .filter(|ticker| {
-                ticker.option_details.as_ref().is_some_and(|details| {
-                    details.option_type == OptionType::C
-                        && details.expiry > min_expiry
-                        && details.expiry < max_expiry
-                })
-            })
-            .collect::<Vec<_>>();
+    fn select_structure(&self, market: &MarketData, decision_at: i64) -> Result<Vec<LegUnpriced>> {
+        let eligible = self.eligible(market, decision_at)?;
 
         let selected_expiry = eligible
             .iter()
@@ -253,7 +244,7 @@ impl OrderStrategy for MockCCOrderStrategy {
             ticker,
             self.order.direction(),
             auction.start_timestamp_sec,
-            utc_now_seconds()?,
+            chrono::Utc::now().timestamp(),
         )
     }
 
@@ -275,24 +266,14 @@ impl OrderStrategy for MockCCOrderStrategy {
     }
 }
 
-#[derive(Debug)]
-struct NoopStage;
-
-#[async_trait::async_trait]
-impl ExecutorStage for NoopStage {
-    async fn run(&self) -> Result<()> {
-        Ok(())
-    }
-
-    async fn reconnect(&mut self) -> Result<()> {
-        Ok(())
-    }
-}
-
 #[async_trait::async_trait]
 impl SignalStrategy for MockCCParams {
     fn name(&self) -> &str {
         "mock-covered-call"
+    }
+
+    async fn signals(&self, decision_at: i64) -> Result<Vec<bool>> {
+        mock_signals(decision_at).await
     }
 
     async fn get_action(
@@ -305,7 +286,7 @@ impl SignalStrategy for MockCCParams {
         }
 
         let sell_call = signals.iter().all(|signal| *signal);
-        let now = utc_now_seconds()?;
+        let now = chrono::Utc::now().timestamp();
         let reader = market.read().await;
         let current_call = current_call_position(&reader, &self.option_currency)?;
 
@@ -412,14 +393,6 @@ fn is_tradeable_call(ticker: &InstrumentTicker, option_currency: &str, now: i64)
             .as_ref()
             .is_some_and(|details| details.option_type == OptionType::C && details.expiry > now)
 }
-
-fn utc_now_seconds() -> Result<i64> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock is before the Unix epoch")?;
-    i64::try_from(now.as_secs()).context("UTC timestamp is too large to represent in seconds")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

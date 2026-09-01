@@ -255,6 +255,49 @@ pub async fn fetch_instruments(instrument_names: &Vec<String>) -> Result<Vec<Ins
     Ok(out)
 }
 
+/// Every listed option of `currency` whose time to expiry falls inside
+/// `[min_expiry_sec, max_expiry_sec]` inclusive, of any of `option_types`.
+///
+/// Unlike [get_expiry_options] this keeps every expiry in the window rather than collapsing to
+/// the latest one, which is what a strategy selecting the tenor NEAREST a target needs.
+pub async fn get_window_options(
+    currency: &str,
+    min_expiry_sec: i64,
+    max_expiry_sec: i64,
+    option_types: &[OptionType],
+) -> Result<Vec<InstrumentData>> {
+    let now = Utc::now().timestamp();
+    let options = http_rpc::<_, InstrumentsResponse>(
+        "public/get_instruments",
+        json!({"currency": currency, "instrument_type": "option", "expired": false}),
+        None,
+    )
+    .await?
+    .into_result()?
+    .result;
+
+    let in_window: Vec<InstrumentData> = options
+        .into_iter()
+        .filter(|option| {
+            option.is_active
+                && option.option_details.as_ref().is_some_and(|details| {
+                    let tenor = details.expiry - now;
+                    option_types.contains(&details.option_type)
+                        && tenor >= min_expiry_sec
+                        && tenor <= max_expiry_sec
+                })
+        })
+        .collect();
+
+    if in_window.is_empty() {
+        return Err(Error::msg(format!(
+            "no active {currency} {option_types:?} within {}-{} sec to expiry",
+            min_expiry_sec, max_expiry_sec
+        )));
+    }
+    Ok(in_window)
+}
+
 pub async fn get_expiry_options(
     currency: &str,
     max_expiry_sec: i64,

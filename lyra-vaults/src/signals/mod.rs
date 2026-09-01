@@ -11,12 +11,14 @@
 //! implementation) does not belong in this module.
 
 pub mod mock_vault;
+pub mod vault;
 mod runner;
 mod selector;
 pub mod strategies;
 mod strategy;
 
 pub use mock_vault::*;
+pub use vault::*;
 pub use runner::*;
 pub use selector::*;
 pub use strategy::*;
