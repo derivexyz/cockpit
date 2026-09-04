@@ -8,6 +8,7 @@ use crate::web3::{
     maybe_get_tsa_contract, process_deposits_forever, process_deposits_once, process_withdrawals,
     ProviderWithSigner, TSA,
 };
+use crate::web3::{process_full_withdrawal, SUNSET_CCYS};
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use bigdecimal::{BigDecimal, Zero};
@@ -124,9 +125,15 @@ impl ExecutorStage for TSACollateralOnly {
         };
         // todo might wanna rename the env to COLLATERAL_NAME for clarity
         let asset_name = std::env::var("SPOT_NAME").unwrap();
-        process_deposits_once(tsa, asset_name.clone()).await?;
-        process_withdrawals(tsa, asset_name.clone(), None).await?;
-        process_deposits_once(tsa, asset_name.clone()).await?;
+
+        if SUNSET_CCYS.contains(&asset_name.as_str()) {
+            process_full_withdrawal(tsa, asset_name.clone()).await?;
+            return Ok(());
+        } else {
+            process_deposits_once(tsa, asset_name.clone()).await?;
+            process_withdrawals(tsa, asset_name.clone(), None).await?;
+            process_deposits_once(tsa, asset_name.clone()).await?;
+        }
         Ok(())
     }
     async fn reconnect(&mut self) -> Result<()> {
@@ -200,6 +207,11 @@ impl ExecutorStage for TSAWaitForSettlement {
             return wait_task.await;
         };
         let asset_name = std::env::var("SPOT_NAME").unwrap();
+        if SUNSET_CCYS.contains(&asset_name.as_str()) {
+            process_full_withdrawal(tsa, asset_name.clone()).await?;
+            return wait_task.await;
+        }
+
         let deposit_task = process_deposits_forever(tsa, asset_name);
         select! {
             w = wait_task => w,

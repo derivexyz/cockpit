@@ -51,6 +51,8 @@ use uuid::Uuid;
 const BLOCK_SEC: u64 = 2;
 const WITHDRAW_BUFFER_FACTOR: &str = "1.01";
 
+pub const SUNSET_CCYS: [&str; 2] = ["RSETH", "RSWETH"];
+
 pub async fn sign_action<T: AbiEncode + ModuleData + Clone>(
     tsa: &TSA<ProviderWithSigner>,
     data: T,
@@ -225,6 +227,31 @@ async fn process_withdrawals_onchain(
         let tx = tsa.client().get_transaction(receipt.transaction_hash).await?;
         info!("Sent tx: {}\n", serde_json::to_string(&tx)?);
     }
+    Ok(())
+}
+
+pub async fn process_full_withdrawal(
+    tsa: &TSA<ProviderWithSigner>,
+    asset_name: String,
+) -> Result<()> {
+    let subaccount_id: i64 = std::env::var("SUBACCOUNT_ID")?.parse()?;
+    let lrt_balance = get_single_balance(subaccount_id, &asset_name).await?;
+    if lrt_balance == BigDecimal::zero() {
+        warn!("No spot balance found for {}", asset_name);
+        return Ok(());
+    }
+
+    let action_data = sign_withdrawal(&tsa, &asset_name, &lrt_balance).await?;
+    let session_signer = load_signer_by_name("SESSION").await;
+    let headers = sign_auth_header(&session_signer).await;
+    let withdrawal =
+        action_data.to_withdraw_params(&session_signer, lrt_balance, asset_name.clone())?;
+    let withdrawal_res =
+        http_rpc::<_, PrivateWithdrawResponseSchema>("private/withdraw", withdrawal, Some(headers))
+            .await?
+            .into_result()?;
+    info!("Withdrawal response: {:?}", withdrawal_res);
+    await_tx_settlement(withdrawal_res.result.transaction_id).await?;
     Ok(())
 }
 
