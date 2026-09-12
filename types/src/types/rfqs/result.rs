@@ -1,6 +1,5 @@
-use crate::types::orders::{OrderResponse, TradeResponse};
 pub use crate::types::rfqs::enums::{
-    CancelReason, Direction, LiquidityRole, OrderStatus, TxStatus,
+    BatchStatus, CancelReason, Direction, LiquidityRole, RFQStatus,
 };
 pub use crate::types::rfqs::params::LegPriced;
 pub use crate::types::rfqs::LegUnpriced;
@@ -23,19 +22,20 @@ pub struct RFQResultPrivate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_total_cost: Option<bigdecimal::BigDecimal>,
     pub subaccount_id: i64,
-    pub status: OrderStatus,
+    pub status: RFQStatus,
+    #[serde(default)]
     pub cancel_reason: CancelReason,
     pub creation_timestamp: i64,
     pub last_update_timestamp: i64,
     pub valid_until: i64,
+    #[serde(default)]
+    pub filled_pct: bigdecimal::BigDecimal,
+    #[serde(default)]
+    pub partial_fill_step: bigdecimal::BigDecimal,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub counterparties: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filled_direction: Option<Direction>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reducing_direction: Option<Direction>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preferred_direction: Option<Direction>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_cost: Option<bigdecimal::BigDecimal>,
 }
@@ -93,15 +93,11 @@ pub struct QuoteResultPublic {
     pub quote_id: uuid::Uuid,
     ///RFQ ID
     pub rfq_id: uuid::Uuid,
-    ///Status
-    pub status: OrderStatus,
-    ///Subaccount ID
+    /// Status
+    pub status: RFQStatus,
+    /// Subaccount ID
     pub subaccount_id: i64,
-    ///Blockchain transaction hash (only for executed quotes)
-    pub tx_hash: Option<String>,
-    ///Blockchain transaction status (only for executed quotes)
-    pub tx_status: Option<TxStatus>,
-    ///Wallet of the sender
+    /// Wallet of the sender
     pub wallet: String,
 }
 impl From<&QuoteResultPublic> for QuoteResultPublic {
@@ -151,17 +147,15 @@ pub struct RfqResultPublicSchema {
     pub legs: Vec<LegUnpriced>,
     ///RFQ ID
     pub rfq_id: uuid::Uuid,
-    ///Status
-    pub status: OrderStatus,
-    ///Subaccount ID
+    /// Status
+    pub status: RFQStatus,
+    /// Subaccount ID
     pub subaccount_id: i64,
-    ///RFQ expiry timestamp in ms since Unix epoch
+    /// RFQ expiry timestamp in ms since Unix epoch
     pub valid_until: i64,
-    ///Direction at which the RFQ was filled (only if filled)
+    /// Direction at which the RFQ was filled (only if filled)
     pub filled_direction: Option<Direction>,
-    pub reducing_direction: Option<Direction>,
-    pub preferred_direction: Option<Direction>,
-    ///Total cost for the RFQ (only if filled)
+    /// Total cost for the RFQ (only if filled)
     pub total_cost: Option<bigdecimal::BigDecimal>,
     ///Step size for partial fills (default: 1)
     pub partial_fill_step: bigdecimal::BigDecimal,
@@ -242,27 +236,31 @@ pub struct QuoteResultSchema {
     #[serde(default)]
     pub mmp: bool,
     /// Nonce
+    #[serde(with = "crate::types::shared::serde_nonce")]
     pub nonce: i64,
     /// Quote ID
     pub quote_id: uuid::Uuid,
     /// RFQ ID
     pub rfq_id: uuid::Uuid,
-    /// Etherium signature of the quote
+    /// Ethereum signature of the quote (omitted on some public poll quotes)
+    #[serde(default)]
     pub signature: String,
     /// Unix timestamp in seconds
+    #[serde(default)]
     pub signature_expiry_sec: i64,
     /// Owner wallet address or registered session key that signed the quote
+    #[serde(default)]
     pub signer: String,
     /// Status
-    pub status: OrderStatus,
+    pub status: RFQStatus,
     /// Subaccount ID
     pub subaccount_id: i64,
     /// Blockchain transaction hash (only for executed quotes)
     #[serde(default)]
     pub tx_hash: Option<String>,
-    /// Blockchain transaction status (only for executed quotes)
+    /// Batch lifecycle status (only for executed quotes)
     #[serde(default)]
-    pub tx_status: Option<TxStatus>,
+    pub batch_status: Option<BatchStatus>,
 }
 
 impl From<&QuoteResultSchema> for QuoteResultSchema {

@@ -1,6 +1,19 @@
 use serde::{Deserialize, Serialize};
 
-pub use crate::types::orders::enums::{Direction, LiquidityRole, OrderStatus, TxStatus};
+pub use crate::types::orders::enums::{BatchStatus, Direction, LiquidityRole};
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum RFQStatus {
+    #[serde(rename = "open")]
+    Open,
+    #[serde(rename = "filled")]
+    Filled,
+    #[serde(rename = "cancelled")]
+    Cancelled,
+    #[serde(rename = "expired")]
+    Expired,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum CancelReason {
     #[serde(rename = "")]
@@ -23,6 +36,13 @@ pub enum CancelReason {
     RfqNoLongerOpen,
     #[serde(rename = "compliance")]
     Compliance,
+    #[serde(rename = "validation_failed")]
+    ValidationFailed,
+}
+impl Default for CancelReason {
+    fn default() -> Self {
+        Self::X
+    }
 }
 impl From<&CancelReason> for CancelReason {
     fn from(value: &CancelReason) -> Self {
@@ -42,6 +62,7 @@ impl ToString for CancelReason {
             Self::SubaccountWithdrawn => "subaccount_withdrawn".to_string(),
             Self::RfqNoLongerOpen => "rfq_no_longer_open".to_string(),
             Self::Compliance => "compliance".to_string(),
+            Self::ValidationFailed => "validation_failed".to_string(),
         }
     }
 }
@@ -59,6 +80,7 @@ impl std::str::FromStr for CancelReason {
             "subaccount_withdrawn" => Ok(Self::SubaccountWithdrawn),
             "rfq_no_longer_open" => Ok(Self::RfqNoLongerOpen),
             "compliance" => Ok(Self::Compliance),
+            "validation_failed" => Ok(Self::ValidationFailed),
             _ => Err("invalid value"),
         }
     }

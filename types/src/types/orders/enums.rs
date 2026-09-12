@@ -50,8 +50,17 @@ pub enum CancelReason {
     SubaccountWithdrawn,
     #[serde(rename = "compliance")]
     Compliance,
+    #[serde(rename = "trigger_failed")]
+    TriggerFailed,
     #[serde(rename = "validation_failed")]
     ValidationFailed,
+    #[serde(rename = "algo_completed")]
+    AlgoCompleted,
+}
+impl Default for CancelReason {
+    fn default() -> Self {
+        Self::X
+    }
 }
 impl From<&CancelReason> for CancelReason {
     fn from(value: &CancelReason) -> Self {
@@ -71,7 +80,9 @@ impl ToString for CancelReason {
             Self::SessionKeyDeregistered => "session_key_deregistered".to_string(),
             Self::SubaccountWithdrawn => "subaccount_withdrawn".to_string(),
             Self::Compliance => "compliance".to_string(),
+            Self::TriggerFailed => "trigger_failed".to_string(),
             Self::ValidationFailed => "validation_failed".to_string(),
+            Self::AlgoCompleted => "algo_completed".to_string(),
         }
     }
 }
@@ -89,6 +100,9 @@ impl std::str::FromStr for CancelReason {
             "session_key_deregistered" => Ok(Self::SessionKeyDeregistered),
             "subaccount_withdrawn" => Ok(Self::SubaccountWithdrawn),
             "compliance" => Ok(Self::Compliance),
+            "trigger_failed" => Ok(Self::TriggerFailed),
+            "validation_failed" => Ok(Self::ValidationFailed),
+            "algo_completed" => Ok(Self::AlgoCompleted),
             _ => Err("invalid value"),
         }
     }
@@ -297,6 +311,10 @@ pub enum OrderStatus {
     Cancelled,
     #[serde(rename = "expired")]
     Expired,
+    #[serde(rename = "untriggered")]
+    Untriggered,
+    #[serde(rename = "algo_active")]
+    AlgoActive,
 }
 impl From<&OrderStatus> for OrderStatus {
     fn from(value: &OrderStatus) -> Self {
@@ -311,6 +329,8 @@ impl ToString for OrderStatus {
             Self::Rejected => "rejected".to_string(),
             Self::Cancelled => "cancelled".to_string(),
             Self::Expired => "expired".to_string(),
+            Self::Untriggered => "untriggered".to_string(),
+            Self::AlgoActive => "algo_active".to_string(),
         }
     }
 }
@@ -323,6 +343,8 @@ impl std::str::FromStr for OrderStatus {
             "rejected" => Ok(Self::Rejected),
             "cancelled" => Ok(Self::Cancelled),
             "expired" => Ok(Self::Expired),
+            "untriggered" => Ok(Self::Untriggered),
+            "algo_active" => Ok(Self::AlgoActive),
             _ => Err("invalid value"),
         }
     }
@@ -485,85 +507,59 @@ impl std::convert::TryFrom<String> for TimeInForce {
     }
 }
 
-///Blockchain transaction status
-///
-/// <details><summary>JSON schema</summary>
-///
-/// ```json
-/**{
-  "title": "tx_status",
-  "description": "Blockchain transaction status",
-  "type": "string",
-  "enum": [
-    "requested",
-    "pending",
-    "settled",
-    "reverted",
-    "ignored"
-  ]
-}*/
-/// ```
-/// </details>
+/// Blockchain / batch lifecycle status on trades and quotes.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-pub enum TxStatus {
-    #[serde(rename = "requested")]
-    Requested,
-    #[serde(rename = "pending")]
-    Pending,
-    #[serde(rename = "settled")]
+pub enum BatchStatus {
+    Batching,
+    Executing,
+    Proving,
+    Settling,
     Settled,
-    #[serde(rename = "reverted")]
-    Reverted,
-    #[serde(rename = "ignored")]
-    Ignored,
+    BatchingError,
+    ExecutingError,
+    ProvingError,
+    SettlingError,
+    SettledError,
 }
-impl From<&TxStatus> for TxStatus {
-    fn from(value: &TxStatus) -> Self {
-        value.clone()
+
+impl BatchStatus {
+    pub fn is_error(self) -> bool {
+        matches!(
+            self,
+            Self::BatchingError
+                | Self::ExecutingError
+                | Self::ProvingError
+                | Self::SettlingError
+                | Self::SettledError
+        )
     }
 }
-impl ToString for TxStatus {
-    fn to_string(&self) -> String {
-        match *self {
-            Self::Requested => "requested".to_string(),
-            Self::Pending => "pending".to_string(),
-            Self::Settled => "settled".to_string(),
-            Self::Reverted => "reverted".to_string(),
-            Self::Ignored => "ignored".to_string(),
-        }
-    }
+
+/// Deprecated v2 name; V3 serializes as `BatchStatus`.
+pub type TxStatus = BatchStatus;
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum AlgoType {
+    #[serde(rename = "twap")]
+    Twap,
 }
-impl std::str::FromStr for TxStatus {
-    type Err = &'static str;
-    fn from_str(value: &str) -> Result<Self, &'static str> {
-        match value {
-            "requested" => Ok(Self::Requested),
-            "pending" => Ok(Self::Pending),
-            "settled" => Ok(Self::Settled),
-            "reverted" => Ok(Self::Reverted),
-            "ignored" => Ok(Self::Ignored),
-            _ => Err("invalid value"),
-        }
-    }
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum TriggerType {
+    #[serde(rename = "stoploss")]
+    Stoploss,
+    #[serde(rename = "takeprofit")]
+    Takeprofit,
 }
-impl std::convert::TryFrom<&str> for TxStatus {
-    type Error = &'static str;
-    fn try_from(value: &str) -> Result<Self, &'static str> {
-        value.parse()
-    }
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum TriggerPriceType {
+    #[serde(rename = "mark")]
+    Mark,
+    #[serde(rename = "index")]
+    Index,
 }
-impl std::convert::TryFrom<&String> for TxStatus {
-    type Error = &'static str;
-    fn try_from(value: &String) -> Result<Self, &'static str> {
-        value.parse()
-    }
-}
-impl std::convert::TryFrom<String> for TxStatus {
-    type Error = &'static str;
-    fn try_from(value: String) -> Result<Self, &'static str> {
-        value.parse()
-    }
-}
+
 pub mod defaults {
     pub(super) fn default_u64<T, const V: u64>() -> T
     where

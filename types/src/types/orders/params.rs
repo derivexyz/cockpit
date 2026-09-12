@@ -1,9 +1,10 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
 use crate::types::orders::enums::{
-    CancelReason, Direction, LiquidityRole, OrderStatus, OrderType, TimeInForce,
+    AlgoType, CancelReason, Direction, LiquidityRole, OrderStatus, OrderType, TimeInForce,
+    TriggerPriceType, TriggerType,
 };
-use crate::types::shared::RPCId;
+use crate::types::shared::{serde_nonce, serde_option_nonce, RPCId};
 use bigdecimal;
 use serde::{Deserialize, Serialize};
 use uuid;
@@ -30,7 +31,8 @@ pub struct OrderParams {
     ///Whether the order is tagged for market maker protections (default false)
     #[serde(default)]
     pub mmp: bool,
-    ///Unique nonce defined as <UTC_timestamp in ms><random_number_up_to_6_digits> (e.g. 1695836058725001, where 001 is the random number)
+    /// Unique nonce: UTC nanoseconds as a decimal string
+    #[serde(with = "serde_nonce")]
     pub nonce: i64,
     ///Order type:<br />- `limit`: limit order (default)<br />- `market`: market order, note that limit_price is still required for market orders, but unfilled order portion will be marked as cancelled
     #[serde(default = "defaults::order_params_order_type")]
@@ -38,30 +40,44 @@ pub struct OrderParams {
     ///If true, the order will not be able to increase position's size (default false). If the order amount exceeds available position size, the order will be filled up to the position size and the remainder will be cancelled. This flag is only supported for market orders or non-resting limit orders (IOC or FOK)
     #[serde(default)]
     pub reduce_only: bool,
-    ///Optional referral code for the order
-    #[serde(default)]
-    pub referral_code: String,
-    ///UTC timestamp in ms, if provided the matching engine will reject the order with an error if `reject_timestamp` < `server_time`. Note that the timestamp must be consistent with the server time: use `public/get_time` method to obtain current server time.
-    #[serde(default = "defaults::default_u64::<i64, 9223372036854775807>")]
-    pub reject_timestamp: i64,
-    ///If replaced, ID of the order that was replaced
+    /// Optional extra fee per unit of volume
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub replaced_order_id: Option<uuid::Uuid>,
-    ///Ethereum signature of the order
+    pub extra_fee: Option<bigdecimal::BigDecimal>,
+    /// Optional referral code for the order
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub referral_code: String,
+    /// UTC timestamp in ms; rejected if `reject_timestamp` < server time
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reject_timestamp: Option<i64>,
+    /// Ethereum signature of the order
     pub signature: String,
-    ///Unix timestamp in seconds. Order signature becomes invalid after this time, and the system will cancel the order.Expiry MUST be at least 5 min from now.
+    /// Unix timestamp in seconds. Order signature becomes invalid after this time.
     pub signature_expiry_sec: i64,
-    ///Owner wallet address or registered session key that signed order
+    /// Owner wallet address or registered session key that signed order
     pub signer: String,
-    ///Subaccount ID
+    /// Subaccount ID
     pub subaccount_id: i64,
-    ///Time in force behaviour:<br />- `gtc`: good til cancelled (default)<br />- `post_only`: a limit order that will be rejected if it crosses any order in the book, i.e. acts as a taker order<br />- `fok`: fill or kill, will be rejected if it is not fully filled<br />- `ioc`: immediate or cancel, fill at best bid/ask (market) or at limit price (limit), the unfilled portion is cancelled<br />Note that the order will still expire on the `signature_expiry_sec` timestamp.
+    /// Time in force
     #[serde(default = "defaults::order_params_time_in_force")]
     pub time_in_force: TimeInForce,
-    #[serde(default)]
-    pub is_atomic_signing: bool,
-    #[serde(default = "bool_true")]
-    pub reject_post_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_atomic_signing: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reject_post_only: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger_type: Option<TriggerType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger_price_type: Option<TriggerPriceType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger_price: Option<bigdecimal::BigDecimal>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub algo_type: Option<AlgoType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub algo_duration_sec: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub algo_num_slices: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client: Option<String>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OrderRequest {
@@ -92,10 +108,11 @@ pub struct ReplaceParams {
     ///Whether the order is tagged for market maker protections (default false)
     #[serde(default)]
     pub mmp: bool,
-    ///Unique nonce defined as <UTC_timestamp in ms><random_number_up_to_6_digits> (e.g. 1695836058725001, where 001 is the random number)
+    /// Unique nonce: UTC nanoseconds as a decimal string
+    #[serde(with = "serde_nonce")]
     pub nonce: i64,
     ///Cancel order by nonce (choose either order_id or nonce).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "serde_option_nonce")]
     pub nonce_to_cancel: Option<i64>,
     ///Cancel order by order_id (choose either order_id or nonce).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -106,30 +123,36 @@ pub struct ReplaceParams {
     ///If true, the order will not be able to increase position's size (default false). If the order amount exceeds available position size, the order will be filled up to the position size and the remainder will be cancelled. This flag is only supported for market orders or non-resting limit orders (IOC or FOK)
     #[serde(default)]
     pub reduce_only: bool,
-    ///Optional referral code for the order
-    #[serde(default)]
-    pub referral_code: String,
-    ///UTC timestamp in ms, if provided the matching engine will reject the order with an error if `reject_timestamp` < `server_time`. Note that the timestamp must be consistent with the server time: use `public/get_time` method to obtain current server time.
-    #[serde(default = "defaults::default_u64::<i64, 9223372036854775807>")]
-    pub reject_timestamp: i64,
-    ///If replaced, ID of the order that was replaced
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub replaced_order_id: Option<uuid::Uuid>,
-    ///Etherium signature of the order
+    pub extra_fee: Option<bigdecimal::BigDecimal>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub referral_code: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reject_timestamp: Option<i64>,
     pub signature: String,
-    ///Unix timestamp in seconds. Order signature becomes invalid after this time, and the system will cancel the order.Expiry MUST be at least 5 min from now.
     pub signature_expiry_sec: i64,
-    ///Owner wallet address or registered session key that signed order
     pub signer: String,
-    ///Subaccount ID
     pub subaccount_id: i64,
-    ///Time in force behaviour:<br />- `gtc`: good til cancelled (default)<br />- `post_only`: a limit order that will be rejected if it crosses any order in the book, i.e. acts as a taker order<br />- `fok`: fill or kill, will be rejected if it is not fully filled<br />- `ioc`: immediate or cancel, fill at best bid/ask (market) or at limit price (limit), the unfilled portion is cancelled<br />Note that the order will still expire on the `signature_expiry_sec` timestamp.
     #[serde(default = "defaults::order_params_time_in_force")]
     pub time_in_force: TimeInForce,
-    #[serde(default)]
-    pub is_atomic_signing: bool,
-    #[serde(default = "bool_true")]
-    pub reject_post_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_atomic_signing: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reject_post_only: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger_type: Option<TriggerType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger_price_type: Option<TriggerPriceType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger_price: Option<bigdecimal::BigDecimal>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub algo_type: Option<AlgoType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub algo_duration_sec: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub algo_num_slices: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -140,24 +163,26 @@ pub struct ReplaceRequest {
     pub params: ReplaceParams,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct GetTradesParams {
-    #[serde(default)]
-    pub subaccount_id: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subaccount_id: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub order_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quote_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instrument_name: Option<String>,
-    #[serde(default = "defaults::default_u64::<i64, 0>")]
-    pub from_timestamp: i64,
-    #[serde(default = "defaults::default_u64::<i64, 9223372036854775807>")]
-    pub to_timestamp: i64,
-    #[serde(default = "defaults::default_u64::<i64, 1>")]
-    pub page: i64,
-    #[serde(default = "defaults::default_u64::<i64, 100>")]
-    pub page_size: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_timestamp: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_timestamp: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

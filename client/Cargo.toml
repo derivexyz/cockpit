@@ -26,6 +26,6 @@ log = "0.4.20"
 futures = "0.3.29"
 env_logger = "0.11.3"
 aws-secrets = { version = "0.1.1", features = ["all"] }
-clap = { version = "4.0", features = ["derive"] }
+clap = { version = "4.0", features = ["derive", "env"] }
 crossterm = { version = "0.28", features = ["event-stream"] }
 comfy-table = "7.1.1"

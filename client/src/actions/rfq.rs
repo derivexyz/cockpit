@@ -200,6 +200,9 @@ impl ActionData {
             signer: hex::encode_prefixed(self.signer),
             mmp: true,
             rfq_id: args.rfq_id,
+            extra_fee: None,
+            referral_code: String::new(),
+            client: None,
             signature: signer.sign_hash(self.hash().into())?.to_string(),
         })
     }
@@ -221,6 +224,9 @@ impl ActionData {
             rfq_id: quote.rfq_id,
             signature_expiry_sec: self.expiry.as_u64() as i64,
             signer: hex::encode_prefixed(self.signer),
+            client: None,
+            enable_taker_protection: None,
+            referral_code: String::new(),
             signature: signer.sign_hash(self.hash().into())?.to_string(),
         })
     }
@@ -247,6 +253,9 @@ impl ActionData {
             signature: signer.sign_hash(self.hash().into())?.to_string(),
             quote_id_to_cancel,
             nonce_to_cancel,
+            extra_fee: None,
+            referral_code: String::new(),
+            client: None,
         })
     }
 }

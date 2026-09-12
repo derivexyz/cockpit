@@ -114,6 +114,7 @@ impl From<OptionPricingSlimSchema> for OptionPricingSchema {
             ask_iv: value.ask_iv,
             bid_iv: value.bid_iv,
             delta: value.delta,
+            discount_factor: value.discount_factor,
             forward_price: value.forward_price,
             gamma: value.gamma,
             iv: value.iv,
@@ -222,9 +223,18 @@ pub struct InstrumentTicker {
     pub scheduled_deactivation: i64,
     ///Percent of spot price fee rate for takers
     pub taker_fee_rate: bigdecimal::BigDecimal,
-    ///Tick size of the instrument, i.e. minimum price increment
+    /// Tick size of the instrument, i.e. minimum price increment
     pub tick_size: bigdecimal::BigDecimal,
-    ///Timestamp of the ticker feed snapshot
+    /// FIFO min allocation for matching
+    #[serde(default)]
+    pub fifo_min_allocation: bigdecimal::BigDecimal,
+    #[serde(default)]
+    pub pro_rata_amount_step: bigdecimal::BigDecimal,
+    #[serde(default)]
+    pub pro_rata_fraction: bigdecimal::BigDecimal,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub erc20_details: Option<SpotPublicDetailsSchema>,
+    /// Timestamp of the ticker feed snapshot
     pub timestamp: i64,
     pub stats: AggregateTradingStatsSlim,
 }
@@ -241,9 +251,12 @@ pub struct OptionPricingSchema {
     pub ask_iv: bigdecimal::BigDecimal,
     ///Implied volatility of the current best bid
     pub bid_iv: bigdecimal::BigDecimal,
-    ///Delta of the option
+    /// Delta of the option
     pub delta: bigdecimal::BigDecimal,
-    ///Forward price used to calculate option premium
+    /// Discount factor used to calculate option premium
+    #[serde(default)]
+    pub discount_factor: bigdecimal::BigDecimal,
+    /// Forward price used to calculate option premium
     pub forward_price: bigdecimal::BigDecimal,
     ///Gamma of the option
     pub gamma: bigdecimal::BigDecimal,
@@ -288,14 +301,26 @@ pub struct PerpPublicDetailsSchema {
     pub aggregate_funding: bigdecimal::BigDecimal,
     ///Current hourly funding rate as per `PerpAsset.sol`
     pub funding_rate: bigdecimal::BigDecimal,
-    ///Underlying spot price index for funding rate
+    /// Underlying spot price index for funding rate
     pub index: String,
-    ///Max rate per hour as per `PerpAsset.sol`
+    /// Max rate per hour as per `PerpAsset.sol`
     pub max_rate_per_hour: bigdecimal::BigDecimal,
-    ///Min rate per hour as per `PerpAsset.sol`
+    /// Min rate per hour as per `PerpAsset.sol`
     pub min_rate_per_hour: bigdecimal::BigDecimal,
-    ///Static interest rate as per `PerpAsset.sol`
-    pub static_interest_rate: bigdecimal::BigDecimal,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SpotPublicDetailsSchema {
+    pub borrow_index: String,
+    pub decimals: i64,
+    pub supply_index: String,
+    pub underlying_erc20_address: String,
+}
+
+impl From<&SpotPublicDetailsSchema> for SpotPublicDetailsSchema {
+    fn from(value: &SpotPublicDetailsSchema) -> Self {
+        value.clone()
+    }
 }
 impl From<&PerpPublicDetailsSchema> for PerpPublicDetailsSchema {
     fn from(value: &PerpPublicDetailsSchema) -> Self {
@@ -427,12 +452,24 @@ impl InstrumentTicker {
             minimum_amount: data.minimum_amount.clone(),
             option_details: data.option_details.clone(),
             option_pricing: slim.option_pricing.map(OptionPricingSchema::from),
-            perp_details: data.perp_details.clone(),
+            perp_details: {
+                let mut perp_details = data.perp_details.clone();
+                if let (Some(details), Some(funding_rate)) =
+                    (perp_details.as_mut(), slim.funding_rate.clone())
+                {
+                    details.funding_rate = funding_rate;
+                }
+                perp_details
+            },
             quote_currency: data.quote_currency.clone(),
             scheduled_activation: data.scheduled_activation,
             scheduled_deactivation: data.scheduled_deactivation,
             taker_fee_rate: data.taker_fee_rate.clone(),
             tick_size: data.tick_size.clone(),
+            fifo_min_allocation: data.fifo_min_allocation.clone(),
+            pro_rata_amount_step: data.pro_rata_amount_step.clone(),
+            pro_rata_fraction: data.pro_rata_fraction.clone(),
+            erc20_details: data.erc20_details.clone(),
             timestamp: slim.timestamp,
             stats: slim.stats,
         }
@@ -478,8 +515,16 @@ pub struct InstrumentData {
     pub scheduled_deactivation: i64,
     ///Percent of spot price fee rate for takers
     pub taker_fee_rate: bigdecimal::BigDecimal,
-    ///Tick size of the instrument, i.e. minimum price increment
+    /// Tick size of the instrument, i.e. minimum price increment
     pub tick_size: bigdecimal::BigDecimal,
+    #[serde(default)]
+    pub fifo_min_allocation: bigdecimal::BigDecimal,
+    #[serde(default)]
+    pub pro_rata_amount_step: bigdecimal::BigDecimal,
+    #[serde(default)]
+    pub pro_rata_fraction: bigdecimal::BigDecimal,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub erc20_details: Option<SpotPublicDetailsSchema>,
 }
 impl From<&InstrumentData> for InstrumentData {
     fn from(value: &InstrumentData) -> Self {
@@ -514,11 +559,43 @@ impl From<&InstrumentResponse> for InstrumentResponse {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TickerResponse {
     pub id: RPCId,
-    pub result: InstrumentTicker,
+    pub result: InstrumentSlimTicker,
 }
 
 impl From<&TickerResponse> for TickerResponse {
     fn from(value: &TickerResponse) -> Self {
         value.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ticker_response_parses_slim_get_ticker() {
+        let body = r#"{
+            "id":"209aa38b-fe86-48f8-9a93-b35bf0a00d49",
+            "result":{
+                "t":1789132892231,
+                "A":"5",
+                "a":"2499.11",
+                "B":"5",
+                "b":"2498.71",
+                "f":"-0.000171232",
+                "option_pricing":null,
+                "I":"2502.21",
+                "M":"2499.04",
+                "stats":{"c":"0","v":"0","pr":"0","n":0,"oi":"0","h":"0","l":"0","p":"0"},
+                "minp":"2450.05",
+                "maxp":"2549.02"
+            }
+        }"#;
+        let parsed: TickerResponse = serde_json::from_str(body).expect("slim ticker should parse");
+        assert_eq!(parsed.result.best_ask_price.to_string(), "2499.11");
+        assert_eq!(parsed.result.timestamp, 1789132892231);
+        assert!(parsed.result.option_pricing.is_none());
+        assert!(parsed.result.funding_rate.is_some());
+        assert_eq!(parsed.result.stats.num_trades, 0);
     }
 }

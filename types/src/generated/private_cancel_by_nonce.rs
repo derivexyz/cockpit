@@ -1,5 +1,6 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
+use crate::types::shared::serde_nonce;
 use bigdecimal;
 use serde::{Deserialize, Serialize};
 use uuid;
@@ -112,6 +113,7 @@ impl From<&PrivateCancelByNonceJsonrpcSchema> for PrivateCancelByNonceJsonrpcSch
 
 pub struct PrivateCancelByNonceParamsSchema {
     ///Cancel an order with this nonce
+    #[serde(with = "serde_nonce")]
     pub nonce: i64,
     ///Subaccount ID
     pub subaccount_id: i64,

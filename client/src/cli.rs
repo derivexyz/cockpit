@@ -1,16 +1,17 @@
 use crate::actions::QuoteArgs;
 use crate::actions::{new_quote_params, OrderArgs};
-use crate::json_rpc::{http_rpc, Notification, WsClient, WsClientExt};
+use crate::json_rpc::{fetch_instrument_ticker, Notification, WsClient, WsClientExt};
 use anyhow::{format_err, Result};
 use bigdecimal::RoundingMode::Down;
 use bigdecimal::{BigDecimal, One, Zero};
 use clap::{Args, Parser, Subcommand};
 use comfy_table::Table;
 use futures::{future::FutureExt, StreamExt};
+use uuid::Uuid;
 
 use crossterm::cursor::MoveTo;
 use crossterm::style::Print;
-use crossterm::terminal::{enable_raw_mode, Clear, ClearType};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType};
 use crossterm::ExecutableCommand;
 
 use crossterm::{
@@ -22,19 +23,19 @@ use crate::utils::await_tx_settlement;
 use crossterm::event::KeyEvent;
 use derive_types::generated::channel_orderbook_instrument_name_group_depth::OrderbookInstrumentNameGroupDepthPublisherDataSchema;
 use derive_types::generated::private_get_subaccount::{
-    PrivateGetSubaccount, PrivateGetSubaccountParamsSchema, PrivateGetSubaccountResponseSchema,
+    MarginType, PrivateGetSubaccountParamsSchema,
 };
 use derive_types::generated::public_login::PublicLoginResponseSchema;
 use derive_types::types::liquidations::{
     AuctionState, AuctionsWatchData, AuctionsWatchResultSchema,
 };
 use derive_types::types::rfqs::{PollQuotesResponse, PollQuotesResult, QuoteResultPublic};
-use derive_types::types::tickers::{InstrumentTicker, TickerResponse};
+use derive_types::types::tickers::InstrumentTicker;
 use log::{error, info, warn};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::io::stdout;
-use std::io::{stdin, BufRead, BufReader};
+use std::io::{stdout, IsTerminal};
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
@@ -93,7 +94,7 @@ impl CliSub {
 
 #[derive(Args, Debug)]
 pub struct CliAuctions {
-    #[arg(short, long)]
+    #[arg(short, long, env = "DERIVE_SUBACCOUNT_ID")]
     pub subaccount_id: i64,
 }
 
@@ -209,6 +210,12 @@ impl CliAuctions {
         auctions_map: AuctionMap,
         pause_tx: mpsc::Sender<(i64, bool)>,
     ) -> Result<()> {
+        if !std::io::stdin().is_terminal() {
+            warn!("stdin is not a TTY; auction keyboard input disabled");
+            futures::future::pending::<()>().await;
+            return Ok(());
+        }
+        enable_raw_mode()?;
         let mut reader = EventStream::new();
         let mut is_buffer_active = false;
         let mut liquidated_id = 0;
@@ -258,14 +265,18 @@ impl CliAuctions {
                                 let auction = auction.unwrap().clone();
                                 let details = auction.details.unwrap();
                                 let liquidate_res = client
-                                    .send_liquidate(subaccount_id, id, BigDecimal::one(), &details)
+                                    .send_liquidate(
+                                        subaccount_id,
+                                        id,
+                                        BigDecimal::one(),
+                                        details.price_limit_with_buffer(),
+                                    )
                                     .await?
                                     .into_result();
                                 match liquidate_res {
                                     Ok(v) => {
                                         info!("Liquidation successful: {:?}", v);
-                                        let tx_id = v.result.transaction_id;
-                                        let tx_res = await_tx_settlement(tx_id).await?;
+                                        let tx_res = await_tx_settlement(&v.result.op_uuid).await?;
                                         info!("Transaction settled: {:?}", tx_res);
                                     }
                                     Err(e) => {
@@ -291,6 +302,7 @@ impl CliAuctions {
                 }
             }
         }
+        let _ = disable_raw_mode();
         Ok(())
     }
 
@@ -325,13 +337,28 @@ impl CliAuctions {
         let (pause_tx, pause_rx) = mpsc::channel::<(i64, bool)>(64);
         let render_handle = tokio::spawn(Self::render_table(auctions_map.clone(), pause_rx));
 
-        // Create a task to listen for user input
-        let input_task: JoinHandle<Result<()>> = tokio::spawn(Self::listen_for_input(
-            self.subaccount_id,
-            client.clone(),
-            auctions_map.clone(),
-            pause_tx,
-        ));
+        let input_subaccount_id = self.subaccount_id;
+        let input_client = client.clone();
+        let input_map = auctions_map.clone();
+        let input_task: JoinHandle<Result<()>> = tokio::spawn(async move {
+            match AssertUnwindSafe(Self::listen_for_input(
+                input_subaccount_id,
+                input_client,
+                input_map,
+                pause_tx,
+            ))
+            .catch_unwind()
+            .await
+            {
+                Ok(r) => r,
+                Err(_) => {
+                    error!(
+                        "Auction keyboard input panicked (no crossterm event source); continuing without it"
+                    );
+                    futures::future::pending().await
+                }
+            }
+        });
 
         tokio::select! {
             _ = ping_task => {
@@ -428,46 +455,98 @@ impl CliRpc {
         }
     }
 
+    fn wants_cancel_on_disconnect(method: &str) -> bool {
+        matches!(
+            method,
+            "private/order"
+                | "private/replace"
+                | "private/cancel"
+                | "private/cancel_all"
+                | "private/cancel_by_instrument"
+                | "private/cancel_by_label"
+                | "private/cancel_by_nonce"
+                | "private/send_quote"
+                | "private/replace_quote"
+                | "private/execute_quote"
+        )
+    }
+
     pub async fn call(args: CliRpc) -> Result<()> {
+        println!("Calling method: {}", args.method);
+        println!("args: {:?}", args);
         let params = args.params_to_value().await?;
         let client = WsClient::new_client().await?;
         if args.method.starts_with("private") {
             client.login().await?.into_result()?;
-            client.set_cancel_on_disconnect(false).await?.into_result()?;
+            // Session keys scoped to `liquidate` (not `trade:all`) cannot call this.
+            if Self::wants_cancel_on_disconnect(&args.method) {
+                if let Err(e) = client.set_cancel_on_disconnect(false).await?.into_result() {
+                    warn!("Skipping private/set_cancel_on_disconnect: {e}");
+                }
+            }
         }
         let start = chrono::Utc::now().timestamp_millis();
-        let res = match args.method.as_str() {
+        println!("Starting RPC call, method: {}", args.method.as_str());
+        let res = match Self::dispatch(&args.method, params, client).await {
+            Ok(res) => res,
+            Err(e) => {
+                eprintln!("RPC {} failed: {e:?}", args.method);
+                error!("RPC {} failed: {e:?}", args.method);
+                return Err(e);
+            }
+        };
+        match res {
+            Ok(r) => info!("{}", serde_json::to_string_pretty(&r)?),
+            Err(e) => {
+                eprintln!("RPC error: {e:?}");
+                error!("Error: {:?}", e);
+            }
+        };
+        let end = chrono::Utc::now().timestamp_millis();
+        info!("RPC time taken: {}ms", end - start);
+        Ok(())
+    }
+
+    async fn dispatch(method: &str, params: Value, client: WsClient) -> Result<Result<Value>> {
+        let inner = match method {
             "private/order" => {
                 let order_args = serde_json::from_value::<OrderArgs>(params.clone())?;
-                let ticker = http_rpc::<_, TickerResponse>(
-                    "public/get_ticker",
-                    json!({ "instrument_name": params["instrument_name"] }),
-                    None,
+                let ticker = fetch_instrument_ticker(
+                    params["instrument_name"]
+                        .as_str()
+                        .ok_or_else(|| format_err!("instrument_name is required"))?,
                 )
-                .await?
-                .into_result()?
-                .result;
+                .await?;
+                println!("Ticker: {:?}", ticker);
                 let subaccount_id: i64 = params["subaccount_id"].as_i64().unwrap();
+                println!("Sending order to subaccount_id: {}", subaccount_id);
                 let response =
                     client.send_order(&ticker, subaccount_id, order_args).await?.into_result();
+                println!("Response: {:?}", response);
                 match response {
                     Ok(response) => Ok(serde_json::to_value(response)?),
                     Err(response) => Err(response),
                 }
             }
-            "private/deposit" => {
-                let subaccount_id: i64 = params["subaccount_id"].as_i64().unwrap();
-                let amount: BigDecimal = params["amount"].as_str().unwrap().parse()?;
-                let asset_name: String = params["asset_name"].as_str().unwrap().to_string();
-                let subacc = client
-                    .send_rpc::<_, PrivateGetSubaccountResponseSchema>(
-                        "private/get_subaccount",
-                        PrivateGetSubaccountParamsSchema { subaccount_id },
-                    )
-                    .await?
-                    .into_result()?;
+            "private/replace" => {
+                let order_args = serde_json::from_value::<OrderArgs>(params.clone())?;
+                let ticker = fetch_instrument_ticker(
+                    params["instrument_name"]
+                        .as_str()
+                        .ok_or_else(|| format_err!("instrument_name is required"))?,
+                )
+                .await?;
+                let subaccount_id: i64 = params["subaccount_id"]
+                    .as_i64()
+                    .ok_or_else(|| format_err!("subaccount_id is required"))?;
+                let order_id_to_cancel = params["order_id_to_cancel"]
+                    .as_str()
+                    .ok_or_else(|| format_err!("order_id_to_cancel is required"))
+                    .and_then(|s| {
+                        Uuid::parse_str(s).map_err(|e| format_err!("invalid order_id_to_cancel: {e}"))
+                    })?;
                 let response = client
-                    .deposit(subaccount_id, amount, asset_name, subacc.result.margin_type)
+                    .send_replace(&ticker, subaccount_id, order_id_to_cancel, order_args)
                     .await?
                     .into_result();
                 match response {
@@ -475,12 +554,64 @@ impl CliRpc {
                     Err(response) => Err(response),
                 }
             }
-            "private/withdraw" => {
-                let subaccount_id: i64 = params["subaccount_id"].as_i64().unwrap();
-                let amount: BigDecimal = params["amount"].as_str().unwrap().parse()?;
-                let asset_name: String = params["asset_name"].as_str().unwrap().to_string();
-                let response =
-                    client.withdraw(subaccount_id, amount, asset_name).await?.into_result();
+            // "private/deposit" => {
+            //     let subaccount_id: i64 = params["subaccount_id"].as_i64().unwrap();
+            //     let amount: BigDecimal = params["amount"].as_str().unwrap().parse()?;
+            //     let asset_name: String = params["asset_name"].as_str().unwrap().to_string();
+            //     let subacc = client
+            //         .send_rpc::<_, Value>(
+            //             "private/get_subaccount",
+            //             PrivateGetSubaccountParamsSchema { subaccount_id },
+            //         )
+            //         .await?
+            //         .into_result()?;
+            //     let margin_type: MarginType = serde_json::from_value(
+            //         subacc
+            //             .get("result")
+            //             .and_then(|r| r.get("margin_type"))
+            //             .cloned()
+            //             .ok_or_else(|| format_err!("private/get_subaccount missing margin_type"))?,
+            //     )?;
+            //     let response = client
+            //         .deposit(subaccount_id, amount, asset_name, margin_type)
+            //         .await?
+            //         .into_result();
+            //     match response {
+            //         Ok(response) => Ok(serde_json::to_value(response)?),
+            //         Err(response) => Err(response),
+            //     }
+            // }
+            // "private/withdraw" => {
+            //     let subaccount_id: i64 = params["subaccount_id"].as_i64().unwrap();
+            //     let amount: BigDecimal = params["amount"].as_str().unwrap().parse()?;
+            //     let asset_name: String = params["asset_name"].as_str().unwrap().to_string();
+            //     let response =
+            //         client.withdraw(subaccount_id, amount, asset_name).await?.into_result();
+            //     match response {
+            //         Ok(response) => Ok(serde_json::to_value(response)?),
+            //         Err(response) => Err(response),
+            //     }
+            // }
+            "private/liquidate" => {
+                let subaccount_id: i64 = params["subaccount_id"].as_i64().ok_or_else(|| {
+                    format_err!("subaccount_id is required")
+                })?;
+                let liquidated_id: i64 = params["liquidate_subaccount_id"].as_i64().ok_or_else(|| {
+                    format_err!("liquidate_subaccount_id is required")
+                })?;
+                let percent_of_acc: BigDecimal = params["percent_of_acc"]
+                    .as_str()
+                    .ok_or_else(|| format_err!("percent_of_acc is required"))?
+                    .parse()?;
+                let price_limit: BigDecimal = params
+                    .get("price_limit")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0")
+                    .parse()?;
+                let response = client
+                    .send_liquidate(subaccount_id, liquidated_id, percent_of_acc, price_limit)
+                    .await?
+                    .into_result();
                 match response {
                     Ok(response) => Ok(serde_json::to_value(response)?),
                     Err(response) => Err(response),
@@ -490,14 +621,8 @@ impl CliRpc {
                 let quote_args = serde_json::from_value::<QuoteArgs>(params.clone())?;
                 let mut tickers = HashMap::<String, InstrumentTicker>::new();
                 for leg in quote_args.legs.iter() {
-                    let ticker = http_rpc::<_, TickerResponse>(
-                        "public/get_ticker",
-                        json!({ "instrument_name": leg.instrument_name }),
-                        None,
-                    )
-                    .await?
-                    .into_result()?;
-                    tickers.insert(leg.instrument_name.clone(), ticker.result);
+                    let ticker = fetch_instrument_ticker(&leg.instrument_name).await?;
+                    tickers.insert(leg.instrument_name.clone(), ticker);
                 }
                 let subaccount_id: i64 = params["subaccount_id"].as_i64().unwrap();
                 client.send_quote(&tickers, subaccount_id, quote_args).await?.into_result()
@@ -512,28 +637,21 @@ impl CliRpc {
                     .send_rpc::<_, PollQuotesResponse>("private/poll_quotes", poll_params)
                     .await?
                     .into_result()?;
-                let quote = &quote.result.quotes[0];
+                let quote = quote.result.quotes.first().ok_or_else(|| {
+                    format_err!(
+                        "private/poll_quotes returned no quotes for quote_id {}",
+                        params["quote_id"]
+                    )
+                })?;
                 let mut tickers = HashMap::<String, InstrumentTicker>::new();
                 for leg in quote.legs.iter() {
-                    let ticker = http_rpc::<_, TickerResponse>(
-                        "public/get_ticker",
-                        json!({ "instrument_name": leg.instrument_name }),
-                        None,
-                    )
-                    .await?
-                    .into_result()?;
-                    tickers.insert(leg.instrument_name.clone(), ticker.result);
+                    let ticker = fetch_instrument_ticker(&leg.instrument_name).await?;
+                    tickers.insert(leg.instrument_name.clone(), ticker);
                 }
                 client.send_execute(&tickers, subaccount_id, quote).await?.into_result()
             }
-            _ => client.send_rpc::<Value, Value>(&args.method, params).await?.into_result(),
+            _ => client.send_rpc::<Value, Value>(method, params).await?.into_result(),
         };
-        match res {
-            Ok(r) => info!("{}", serde_json::to_string_pretty(&r)?),
-            Err(e) => error!("Error: {:?}", e),
-        };
-        let end = chrono::Utc::now().timestamp_millis();
-        info!("RPC time taken: {}ms", end - start);
-        Ok(())
+        Ok(inner)
     }
 }

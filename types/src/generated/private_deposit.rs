@@ -1,5 +1,6 @@
 #![allow(unused_variables)]
 #![allow(unused_imports)]
+use crate::types::shared::serde_nonce;
 use bigdecimal;
 use serde::{Deserialize, Serialize};
 use uuid;
@@ -147,6 +148,7 @@ pub struct PrivateDepositParamsSchema {
     ///Name of asset to deposit
     pub asset_name: String,
     ///Unique nonce defined as <UTC_timestamp in ms><random_number_up_to_6_digits> (e.g. 1695836058725001, where 001 is the random number)
+    #[serde(with = "serde_nonce")]
     pub nonce: i64,
     ///Ethereum signature of the deposit
     pub signature: String,

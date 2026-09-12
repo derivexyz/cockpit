@@ -1,11 +1,9 @@
 use crate::types::orders::enums::{
-    CancelReason, Direction, LiquidityRole, OrderStatus, OrderType, TimeInForce, TxStatus,
+    AlgoType, BatchStatus, CancelReason, Direction, LiquidityRole, OrderStatus, OrderType,
+    TimeInForce, TriggerPriceType, TriggerType,
 };
-use crate::types::shared::{PaginationInfoSchema, RPCError, RPCId};
+use crate::types::shared::{serde_nonce, PaginationInfoSchema, RPCError, RPCId};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::ops::Neg;
-use uuid;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OrderResponse {
@@ -13,58 +11,77 @@ pub struct OrderResponse {
     pub amount: bigdecimal::BigDecimal,
     ///Average fill price
     pub average_price: bigdecimal::BigDecimal,
-    ///If cancelled, reason behind order cancellation
+    /// If cancelled, reason behind order cancellation
+    #[serde(default)]
     pub cancel_reason: CancelReason,
-    ///Creation timestamp (in ms since Unix epoch)
+    /// Creation timestamp (in ms since Unix epoch)
     pub creation_timestamp: i64,
-    ///Order direction
+    /// Order direction
     pub direction: Direction,
-    ///Total filled amount for the order
+    /// Extra fee per unit of volume
+    #[serde(default)]
+    pub extra_fee: bigdecimal::BigDecimal,
+    /// Total filled amount for the order
     pub filled_amount: bigdecimal::BigDecimal,
-    ///Instrument name
+    /// Instrument name
     pub instrument_name: String,
-    ///Whether the order was generated through `private/transfer_position`
+    /// Whether the order was generated through `private/transfer_position`
     pub is_transfer: bool,
-    ///Optional user-defined label for the order
+    /// Optional user-defined label for the order
+    #[serde(default)]
     pub label: String,
-    ///Last update timestamp (in ms since Unix epoch)
+    /// Last update timestamp (in ms since Unix epoch)
     pub last_update_timestamp: i64,
-    ///Limit price in quote currency
+    /// Limit price in quote currency
     pub limit_price: bigdecimal::BigDecimal,
-    ///Max fee in units of the quote currency
+    /// Max fee in units of the quote currency
     pub max_fee: bigdecimal::BigDecimal,
-    ///Whether the order is tagged for market maker protections
+    /// Whether the order is tagged for market maker protections
     pub mmp: bool,
-    ///Unique nonce defined as <UTC_timestamp in ms><random_number_up_to_3_digits> (e.g. 16958360587
+    #[serde(with = "serde_nonce")]
     pub nonce: i64,
-    ///Total order fee paid so far
+    /// Total order fee paid so far
     pub order_fee: bigdecimal::BigDecimal,
-    ///Order ID
+    /// Order ID
     pub order_id: String,
-    ///Order status
+    /// Order status
     pub order_status: OrderStatus,
-    ///Order type
+    /// Order type
     pub order_type: OrderType,
-    ///Quote ID if the trade was executed via RFQ
-    pub quote_id: Option<uuid::Uuid>,
-    ///If replaced, ID of the order that was replaced
+    /// Quote ID if the trade was executed via RFQ
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub replaced_order_id: Option<uuid::Uuid>,
-    ///Ethereum signature of the order
+    pub quote_id: Option<uuid::Uuid>,
+    /// If replaced, ID of the order that was replaced
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaced_order_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_limit_price: Option<bigdecimal::BigDecimal>,
+    /// Ethereum signature of the order
     pub signature: String,
-    ///Signature expiry timestamp
+    /// Signature expiry timestamp
     pub signature_expiry_sec: i64,
-    ///Owner wallet address or registered session key that signed order
+    /// Owner wallet address or registered session key that signed order
     pub signer: String,
-    ///Subaccount ID
+    /// Subaccount ID
     pub subaccount_id: i64,
-    ///Time in force
+    /// Time in force
     pub time_in_force: TimeInForce,
-
-    pub trigger_type: Option<Value>,       // todo actual enum
-    pub trigger_price_type: Option<Value>, // todo actual enum
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger_type: Option<TriggerType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger_price_type: Option<TriggerPriceType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trigger_price: Option<bigdecimal::BigDecimal>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trigger_reject_message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub algo_type: Option<AlgoType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub algo_duration_sec: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub algo_num_slices: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub algo_slices_completed: Option<i32>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -85,27 +102,39 @@ pub struct TradeResponse {
     pub mark_price: bigdecimal::BigDecimal,
     ///Order ID
     pub order_id: String,
-    ///Quote ID if the trade was executed via RFQ
+    /// Quote ID if the trade was executed via RFQ
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quote_id: Option<uuid::Uuid>,
-    ///Realized PnL for this trade
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rfq_id: Option<uuid::Uuid>,
+    /// Realized PnL for this trade
     pub realized_pnl: bigdecimal::BigDecimal,
-    ///Subaccount ID
+    #[serde(default)]
+    pub realized_pnl_excl_fees: bigdecimal::BigDecimal,
+    /// Subaccount ID
     pub subaccount_id: i64,
-    ///Trade timestamp (in ms since Unix epoch)
+    /// Trade timestamp (in ms since Unix epoch)
     pub timestamp: i64,
-    ///Amount filled in this trade
+    /// Amount filled in this trade
     pub trade_amount: bigdecimal::BigDecimal,
-    ///Fee for this trade
+    /// Fee for this trade
     pub trade_fee: bigdecimal::BigDecimal,
     pub expected_rebate: bigdecimal::BigDecimal,
-    ///Trade ID
+    #[serde(default)]
+    pub extra_fee: bigdecimal::BigDecimal,
+    /// Trade ID
     pub trade_id: String,
-    ///Price at which the trade was filled
+    /// Price at which the trade was filled
     pub trade_price: bigdecimal::BigDecimal,
-    ///Blockchain transaction hash
+    /// Settling operation UUID
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_uuid: Option<String>,
+    /// Blockchain transaction hash
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tx_hash: Option<String>,
-    ///Blockchain transaction status
-    pub tx_status: TxStatus,
+    /// Batch lifecycle status
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_status: Option<BatchStatus>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

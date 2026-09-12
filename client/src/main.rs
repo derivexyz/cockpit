@@ -17,6 +17,10 @@ async fn main() -> anyhow::Result<()> {
     setup_env().await;
     ensure_session_key().await;
     ensure_owner().await;
-    let _ = CliRpc::execute().await;
+    if let Err(e) = CliRpc::execute().await {
+        eprintln!("CLI failed: {e:?}");
+        error!("CLI failed: {e:?}");
+        return Err(e);
+    }
     Ok(())
 }

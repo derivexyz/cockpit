@@ -28,7 +28,8 @@ pub struct ActionData {
 impl ActionData {
     fn get_nonce_and_expiry() -> (i64, i64) {
         let now = chrono::Utc::now();
-        let nonce = now.timestamp_micros();
+        // API expects UTC nanoseconds within 300s of the server clock.
+        let nonce = now.timestamp_nanos_opt().expect("UTC timestamp fits in i64 nanoseconds");
         let signature_expiry_sec = (now + chrono::Duration::seconds(600)).timestamp();
         (nonce, signature_expiry_sec)
     }
@@ -37,7 +38,17 @@ impl ActionData {
         subaccount_id: i64,
         signer_address: Address,
     ) -> Result<ActionData> {
-        let (nonce, signature_expiry_sec) = ActionData::get_nonce_and_expiry();
+        Self::new_with_expiry(module_data, subaccount_id, signer_address, None)
+    }
+
+    pub fn new_with_expiry<T: AbiEncode + ModuleData>(
+        module_data: T,
+        subaccount_id: i64,
+        signer_address: Address,
+        signature_expiry_sec: Option<i64>,
+    ) -> Result<ActionData> {
+        let (nonce, default_expiry) = ActionData::get_nonce_and_expiry();
+        let signature_expiry_sec = signature_expiry_sec.unwrap_or(default_expiry);
         let module_addr = module_data.address();
         let encoded_data = module_data.encode();
         debug!("encoded_data: {:?}", hex::encode(&encoded_data));

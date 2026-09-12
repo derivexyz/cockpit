@@ -1,5 +1,74 @@
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
+
+/// Action nonces are UTC nanoseconds encoded as JSON decimal strings.
+/// Decode still accepts integers so older payloads keep working.
+pub mod serde_nonce {
+    use super::*;
+
+    pub fn serialize<S>(value: &i64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<i64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct Visitor;
+        impl<'de> de::Visitor<'de> for Visitor {
+            type Value = i64;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a nonce as a decimal string or integer")
+            }
+
+            fn visit_i64<E: de::Error>(self, value: i64) -> Result<i64, E> {
+                Ok(value)
+            }
+
+            fn visit_u64<E: de::Error>(self, value: u64) -> Result<i64, E> {
+                i64::try_from(value).map_err(E::custom)
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<i64, E> {
+                value.parse().map_err(E::custom)
+            }
+        }
+        deserializer.deserialize_any(Visitor)
+    }
+}
+
+pub mod serde_option_nonce {
+    use super::*;
+
+    pub fn serialize<S>(value: &Option<i64>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(nonce) => serializer.serialize_some(&nonce.to_string()),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match Option::<serde_json::Value>::deserialize(deserializer)? {
+            None | Some(serde_json::Value::Null) => Ok(None),
+            Some(serde_json::Value::String(s)) => s.parse().map(Some).map_err(de::Error::custom),
+            Some(serde_json::Value::Number(n)) => n
+                .as_i64()
+                .map(Some)
+                .ok_or_else(|| de::Error::custom("nonce out of i64 range")),
+            Some(other) => Err(de::Error::custom(format!("invalid nonce: {other}"))),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -84,4 +153,33 @@ pub struct PaginationInfoSchema {
     pub count: i64,
     ///Number of pages
     pub num_pages: i64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::serde_nonce;
+    use serde::{Deserialize, Serialize};
+    use serde_json::json;
+
+    #[derive(Debug, Deserialize, Serialize)]
+    struct NonceWrapper {
+        #[serde(with = "serde_nonce")]
+        nonce: i64,
+    }
+
+    #[test]
+    fn nonce_serializes_as_decimal_string() {
+        let encoded = serde_json::to_value(NonceWrapper { nonce: 1789133536619202 }).unwrap();
+        assert_eq!(encoded, json!({ "nonce": "1789133536619202" }));
+    }
+
+    #[test]
+    fn nonce_deserializes_from_string_or_integer() {
+        let from_string: NonceWrapper =
+            serde_json::from_value(json!({ "nonce": "1789133536619202" })).unwrap();
+        let from_int: NonceWrapper =
+            serde_json::from_value(json!({ "nonce": 1789133536619202i64 })).unwrap();
+        assert_eq!(from_string.nonce, 1789133536619202);
+        assert_eq!(from_int.nonce, 1789133536619202);
+    }
 }

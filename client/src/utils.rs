@@ -1,5 +1,5 @@
 use crate::json_rpc::http_rpc;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use bigdecimal::{BigDecimal, RoundingMode};
 use derive_types::generated::public_get_transaction::{
     PublicGetTransactionParamsSchema, PublicGetTransactionResponseSchema,
@@ -7,7 +7,6 @@ use derive_types::generated::public_get_transaction::{
 };
 use ethers::prelude::{I256, U256};
 use std::str::FromStr;
-use uuid::Uuid;
 
 pub fn decimal_to_u256(decimal: BigDecimal) -> Result<U256> {
     decimal_to_u256_with_prec(decimal, 18)
@@ -47,7 +46,9 @@ pub fn i256_to_decimal(i256: I256) -> Result<BigDecimal> {
     i256_to_decimal_with_prec(i256, 18)
 }
 
-pub async fn await_tx_settlement(transaction_id: Uuid) -> Result<PublicGetTransactionResultSchema> {
+pub async fn await_tx_settlement(op_uuid: impl AsRef<str>) -> Result<PublicGetTransactionResultSchema> {
+    let op_uuid = op_uuid.as_ref().to_string();
+    let transaction_id = uuid::Uuid::parse_str(&op_uuid)?;
     loop {
         let tx_params = PublicGetTransactionParamsSchema { transaction_id };
         let tx_res = http_rpc::<_, PublicGetTransactionResponseSchema>(
@@ -58,10 +59,11 @@ pub async fn await_tx_settlement(transaction_id: Uuid) -> Result<PublicGetTransa
         .await?
         .into_result()?;
         match tx_res.result.status {
-            Status::Settled | Status::Reverted => {
-                return Ok(tx_res.result);
+            Status::Settled => return Ok(tx_res.result),
+            Status::Reverted | Status::Ignored | Status::TimedOut => {
+                bail!("operation {op_uuid} failed: {}", tx_res.result.status.to_string());
             }
-            _ => {
+            Status::Requested | Status::Pending => {
                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
             }
         }

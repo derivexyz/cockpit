@@ -22,14 +22,23 @@ use derive_types::generated::private_set_cancel_on_disconnect::{
 use derive_types::generated::private_withdraw::PrivateWithdrawResponseSchema;
 use derive_types::generated::public_login::PublicLoginResponseSchema;
 use derive_types::generated::subscribe::{SubscribeParamsSchema, SubscribeResponseSchema};
-use derive_types::types::liquidations::{
-    AuctionDetailsSchema, LiquidationParams, SendLiquidateResponse,
-};
+use derive_types::types::liquidations::{LiquidationParams, SendLiquidateResponse};
 use derive_types::types::orders::{ReplaceResponse, SendOrderResponse};
 use derive_types::types::rfqs::{
     ExecuteQuoteParams, QuoteParams, QuoteResultPublic, ReplaceQuoteResponse,
 };
-use derive_types::types::tickers::InstrumentTicker;
+use derive_types::types::tickers::{InstrumentResponse, InstrumentTicker, TickerResponse};
+use derive_types::types::vaults::{
+    BurnSharesParams, CancelAllVaultRequestsParams, CreateVaultParams, ForceBurnParams,
+    GetLiveQueueParams, GetVaultActionHistoryParams, GetVaultParams,
+    GetVaultPerformanceHistoryParams, GetVaultRequestHistoryParams, GetVaultsParams,
+    MintSharesParams, MultipleVaultRequestsResponse, OffchainAckResponse,
+    PaginatedVaultActionHistoryResponse, PaginatedVaultRequestHistoryResponse,
+    PerformanceResolution, RejectDepositRequestParams, RequestVaultDepositParams,
+    RequestVaultWithdrawParams, UpdateVaultInfoParams, VaultCancelResponse,
+    VaultIdsResponse, VaultOpResponse, VaultPerformanceHistoryResponse, VaultRequestAckResponse,
+    VaultRequestId, VaultResponse, VaultsResponse, VaultSharesResponse, WalletVaultParams,
+};
 use derive_types::types::RPCErrorResponse;
 use ethers::prelude::{LocalWallet, Signer};
 use ethers::utils::hex;
@@ -55,9 +64,11 @@ use tokio_tungstenite::{connect_async, tungstenite, MaybeTlsStream};
 use uuid::Uuid;
 
 use crate::actions::{
-    new_deposit_params, new_execute_params, new_liquidate_params, new_order_params,
-    new_quote_params, new_replace_params, new_replace_quote_params, new_withdraw_params,
-    DepositParams, OrderArgs, OrderParams, QuoteArgs, ReplaceParams, WithdrawParams,
+    new_burn_shares_params, new_cancel_all_vault_requests_params, new_create_vault_params,
+    new_deposit_params, new_execute_params, new_liquidate_params_with_price, new_mint_shares_params,
+    new_order_params, new_quote_params, new_replace_params, new_replace_quote_params,
+    new_vault_deposit_params, new_vault_withdraw_params, new_withdraw_params, DepositParams,
+    OrderArgs, OrderParams, QuoteArgs, ReplaceParams, WithdrawParams,
 };
 use crate::auth::{load_signer, sign_auth_msg};
 
@@ -232,8 +243,108 @@ where
         subaccount_id: i64,
         liquidated_id: i64,
         percent_bid: BigDecimal,
-        details: &AuctionDetailsSchema,
+        price_limit: BigDecimal,
     ) -> Result<Response<SendLiquidateResponse>>;
+    async fn get_vault(&self, vault_subaccount_id: i64) -> Result<Response<VaultResponse>>;
+    async fn get_vaults(
+        &self,
+        page: Option<u32>,
+        page_size: Option<u32>,
+    ) -> Result<Response<VaultsResponse>>;
+    async fn get_vault_action_history(
+        &self,
+        vault_subaccount_id: i64,
+        event_type: Option<String>,
+        page: Option<u32>,
+        page_size: Option<u32>,
+    ) -> Result<Response<PaginatedVaultActionHistoryResponse>>;
+    async fn get_vault_performance_history(
+        &self,
+        vault_subaccount_id: i64,
+        resolution: PerformanceResolution,
+        from_timestamp: Option<i64>,
+        to_timestamp: Option<i64>,
+        limit: Option<u32>,
+    ) -> Result<Response<VaultPerformanceHistoryResponse>>;
+    async fn get_curated_vaults(&self) -> Result<Response<VaultIdsResponse>>;
+    async fn get_shareholder_vaults(&self) -> Result<Response<VaultIdsResponse>>;
+    async fn get_vault_shares(&self) -> Result<Response<VaultSharesResponse>>;
+    async fn get_live_vault_requests(&self) -> Result<Response<MultipleVaultRequestsResponse>>;
+    async fn get_vault_request_history(
+        &self,
+        page: Option<u32>,
+        page_size: Option<u32>,
+    ) -> Result<Response<PaginatedVaultRequestHistoryResponse>>;
+    async fn request_vault_deposit(
+        &self,
+        subaccount_id: i64,
+        vault_subaccount_id: i64,
+        deposit_spot_asset: String,
+        amount: BigDecimal,
+    ) -> Result<Response<VaultRequestAckResponse>>;
+    async fn request_vault_withdraw(
+        &self,
+        subaccount_id: i64,
+        vault_subaccount_id: i64,
+        shares_to_burn: BigDecimal,
+    ) -> Result<Response<VaultRequestAckResponse>>;
+    async fn cancel_all_vault_requests(
+        &self,
+        subaccount_id: i64,
+        vault_subaccount_id: i64,
+    ) -> Result<Response<VaultCancelResponse>>;
+    async fn create_vault(
+        &self,
+        subaccount_id: i64,
+        manager_id: i64,
+        deposit_spot_asset: String,
+        initial_deposit: BigDecimal,
+        initial_share_price_usd: BigDecimal,
+        management_fee_bps: i64,
+        performance_fee_bps: i64,
+        max_slippage_bps: i64,
+        cooldown_sec: i64,
+        max_fee_usd: BigDecimal,
+        benchmark_asset: Option<String>,
+    ) -> Result<Response<VaultOpResponse>>;
+    async fn get_live_mint_requests(
+        &self,
+        vault_subaccount_id: i64,
+        limit: i64,
+    ) -> Result<Response<MultipleVaultRequestsResponse>>;
+    async fn get_live_burn_requests(
+        &self,
+        vault_subaccount_id: i64,
+        limit: i64,
+    ) -> Result<Response<MultipleVaultRequestsResponse>>;
+    async fn mint_vault_shares(
+        &self,
+        vault_subaccount_id: i64,
+        request_id: VaultRequestId,
+        share_price: BigDecimal,
+        deposit_hash: String,
+    ) -> Result<Response<VaultOpResponse>>;
+    async fn burn_vault_shares(
+        &self,
+        vault_subaccount_id: i64,
+        request_id: VaultRequestId,
+        share_price: BigDecimal,
+        withdraw_hash: String,
+    ) -> Result<Response<VaultOpResponse>>;
+    async fn update_vault_info(
+        &self,
+        params: UpdateVaultInfoParams,
+    ) -> Result<Response<OffchainAckResponse>>;
+    async fn reject_deposit_request(
+        &self,
+        request_id: VaultRequestId,
+        reason: Option<String>,
+    ) -> Result<Response<VaultRequestAckResponse>>;
+    async fn force_burn(
+        &self,
+        vault_subaccount_id: i64,
+        holder: String,
+    ) -> Result<Response<VaultOpResponse>>;
     async fn cancel_all(&self, subaccount_id: i64) -> Result<Response<Value>>;
     async fn cancel_by_instrument(
         &self,
@@ -559,17 +670,251 @@ impl WsClientExt for WsClient {
         subaccount_id: i64,
         liquidated_id: i64,
         percent_bid: BigDecimal,
-        details: &AuctionDetailsSchema,
+        price_limit: BigDecimal,
     ) -> Result<Response<SendLiquidateResponse>> {
         let liquidate_params = WsClientState::new_signed_liquidate(
             self,
             subaccount_id,
             liquidated_id,
             percent_bid,
-            details,
+            price_limit,
         )
         .await?;
         self.send_rpc("private/liquidate", liquidate_params).await
+    }
+    async fn get_vault(&self, vault_subaccount_id: i64) -> Result<Response<VaultResponse>> {
+        self.send_rpc("public/get_vault", GetVaultParams { subaccount_id: vault_subaccount_id })
+            .await
+    }
+    async fn get_vaults(
+        &self,
+        page: Option<u32>,
+        page_size: Option<u32>,
+    ) -> Result<Response<VaultsResponse>> {
+        self.send_rpc("public/get_vaults", GetVaultsParams { page, page_size }).await
+    }
+    async fn get_vault_action_history(
+        &self,
+        vault_subaccount_id: i64,
+        event_type: Option<String>,
+        page: Option<u32>,
+        page_size: Option<u32>,
+    ) -> Result<Response<PaginatedVaultActionHistoryResponse>> {
+        self.send_rpc(
+            "public/get_vault_action_history",
+            GetVaultActionHistoryParams {
+                subaccount_id: vault_subaccount_id,
+                event_type,
+                page,
+                page_size,
+            },
+        )
+        .await
+    }
+    async fn get_vault_performance_history(
+        &self,
+        vault_subaccount_id: i64,
+        resolution: PerformanceResolution,
+        from_timestamp: Option<i64>,
+        to_timestamp: Option<i64>,
+        limit: Option<u32>,
+    ) -> Result<Response<VaultPerformanceHistoryResponse>> {
+        self.send_rpc(
+            "public/get_vault_performance_history",
+            GetVaultPerformanceHistoryParams {
+                subaccount_id: vault_subaccount_id,
+                resolution,
+                from_timestamp,
+                to_timestamp,
+                limit,
+            },
+        )
+        .await
+    }
+    async fn get_curated_vaults(&self) -> Result<Response<VaultIdsResponse>> {
+        let wallet = self.get_owner().await;
+        self.send_rpc("private/get_curated_vaults", WalletVaultParams { wallet }).await
+    }
+    async fn get_shareholder_vaults(&self) -> Result<Response<VaultIdsResponse>> {
+        let wallet = self.get_owner().await;
+        self.send_rpc("private/get_shareholder_vaults", WalletVaultParams { wallet }).await
+    }
+    async fn get_vault_shares(&self) -> Result<Response<VaultSharesResponse>> {
+        let wallet = self.get_owner().await;
+        self.send_rpc("private/get_vault_shares", WalletVaultParams { wallet }).await
+    }
+    async fn get_live_vault_requests(&self) -> Result<Response<MultipleVaultRequestsResponse>> {
+        let wallet = self.get_owner().await;
+        self.send_rpc("private/get_live_vault_requests", WalletVaultParams { wallet }).await
+    }
+    async fn get_vault_request_history(
+        &self,
+        page: Option<u32>,
+        page_size: Option<u32>,
+    ) -> Result<Response<PaginatedVaultRequestHistoryResponse>> {
+        let wallet = self.get_owner().await;
+        self.send_rpc(
+            "private/get_vault_request_history",
+            GetVaultRequestHistoryParams { wallet, page, page_size },
+        )
+        .await
+    }
+    async fn request_vault_deposit(
+        &self,
+        subaccount_id: i64,
+        vault_subaccount_id: i64,
+        deposit_spot_asset: String,
+        amount: BigDecimal,
+    ) -> Result<Response<VaultRequestAckResponse>> {
+        let params = WsClientState::new_signed_vault_deposit(
+            self,
+            subaccount_id,
+            vault_subaccount_id,
+            deposit_spot_asset,
+            amount,
+        )
+        .await?;
+        self.send_rpc("private/request_vault_deposit", params).await
+    }
+    async fn request_vault_withdraw(
+        &self,
+        subaccount_id: i64,
+        vault_subaccount_id: i64,
+        shares_to_burn: BigDecimal,
+    ) -> Result<Response<VaultRequestAckResponse>> {
+        let params = WsClientState::new_signed_vault_withdraw(
+            self,
+            subaccount_id,
+            vault_subaccount_id,
+            shares_to_burn,
+        )
+        .await?;
+        self.send_rpc("private/request_vault_withdraw", params).await
+    }
+    async fn cancel_all_vault_requests(
+        &self,
+        subaccount_id: i64,
+        vault_subaccount_id: i64,
+    ) -> Result<Response<VaultCancelResponse>> {
+        let params =
+            WsClientState::new_signed_cancel_all_vault_requests(self, subaccount_id, vault_subaccount_id)
+                .await?;
+        self.send_rpc("private/cancel_all_vault_requests", params).await
+    }
+    async fn create_vault(
+        &self,
+        subaccount_id: i64,
+        manager_id: i64,
+        deposit_spot_asset: String,
+        initial_deposit: BigDecimal,
+        initial_share_price_usd: BigDecimal,
+        management_fee_bps: i64,
+        performance_fee_bps: i64,
+        max_slippage_bps: i64,
+        cooldown_sec: i64,
+        max_fee_usd: BigDecimal,
+        benchmark_asset: Option<String>,
+    ) -> Result<Response<VaultOpResponse>> {
+        let params = WsClientState::new_signed_create_vault(
+            self,
+            subaccount_id,
+            manager_id,
+            deposit_spot_asset,
+            initial_deposit,
+            initial_share_price_usd,
+            management_fee_bps,
+            performance_fee_bps,
+            max_slippage_bps,
+            cooldown_sec,
+            max_fee_usd,
+            benchmark_asset,
+        )
+        .await?;
+        self.send_rpc("private/create_vault", params).await
+    }
+    async fn get_live_mint_requests(
+        &self,
+        vault_subaccount_id: i64,
+        limit: i64,
+    ) -> Result<Response<MultipleVaultRequestsResponse>> {
+        self.send_rpc(
+            "private/get_live_mint_requests",
+            GetLiveQueueParams { subaccount_id: vault_subaccount_id, limit },
+        )
+        .await
+    }
+    async fn get_live_burn_requests(
+        &self,
+        vault_subaccount_id: i64,
+        limit: i64,
+    ) -> Result<Response<MultipleVaultRequestsResponse>> {
+        self.send_rpc(
+            "private/get_live_burn_requests",
+            GetLiveQueueParams { subaccount_id: vault_subaccount_id, limit },
+        )
+        .await
+    }
+    async fn mint_vault_shares(
+        &self,
+        vault_subaccount_id: i64,
+        request_id: VaultRequestId,
+        share_price: BigDecimal,
+        deposit_hash: String,
+    ) -> Result<Response<VaultOpResponse>> {
+        let params = WsClientState::new_signed_mint_shares(
+            self,
+            vault_subaccount_id,
+            request_id,
+            share_price,
+            deposit_hash,
+        )
+        .await?;
+        self.send_rpc("private/mint_vault_shares", params).await
+    }
+    async fn burn_vault_shares(
+        &self,
+        vault_subaccount_id: i64,
+        request_id: VaultRequestId,
+        share_price: BigDecimal,
+        withdraw_hash: String,
+    ) -> Result<Response<VaultOpResponse>> {
+        let params = WsClientState::new_signed_burn_shares(
+            self,
+            vault_subaccount_id,
+            request_id,
+            share_price,
+            withdraw_hash,
+        )
+        .await?;
+        self.send_rpc("private/burn_vault_shares", params).await
+    }
+    async fn update_vault_info(
+        &self,
+        params: UpdateVaultInfoParams,
+    ) -> Result<Response<OffchainAckResponse>> {
+        self.send_rpc("private/update_vault_info", params).await
+    }
+    async fn reject_deposit_request(
+        &self,
+        request_id: VaultRequestId,
+        reason: Option<String>,
+    ) -> Result<Response<VaultRequestAckResponse>> {
+        self.send_rpc(
+            "private/reject_deposit_request",
+            RejectDepositRequestParams { request_id, reason },
+        )
+        .await
+    }
+    async fn force_burn(
+        &self,
+        vault_subaccount_id: i64,
+        holder: String,
+    ) -> Result<Response<VaultOpResponse>> {
+        self.send_rpc(
+            "private/force_burn",
+            ForceBurnParams { holder, subaccount_id: vault_subaccount_id },
+        )
+        .await
     }
     async fn cancel_all(&self, subaccount_id: i64) -> Result<Response<Value>> {
         let cancel_params = PrivateCancelAllParamsSchema { subaccount_id };
@@ -852,11 +1197,147 @@ impl WsClientState {
         subaccount_id: i64,
         liquidated_id: i64,
         percent_bid: BigDecimal,
-        details: &AuctionDetailsSchema,
+        price_limit: BigDecimal,
     ) -> Result<LiquidationParams> {
         let client_guard = client.lock().await;
         if let Some(signer) = &client_guard.signer {
-            Ok(new_liquidate_params(signer, subaccount_id, liquidated_id, percent_bid, details)?)
+            Ok(new_liquidate_params_with_price(
+                signer,
+                subaccount_id,
+                liquidated_id,
+                percent_bid,
+                price_limit,
+            )?)
+        } else {
+            Err(Error::msg("Not logged in or signer not set"))
+        }
+    }
+
+    async fn new_signed_vault_deposit(
+        client: &WsClient,
+        subaccount_id: i64,
+        vault_subaccount_id: i64,
+        deposit_spot_asset: String,
+        amount: BigDecimal,
+    ) -> Result<RequestVaultDepositParams> {
+        let client_guard = client.lock().await;
+        if let Some(signer) = &client_guard.signer {
+            Ok(new_vault_deposit_params(
+                signer,
+                subaccount_id,
+                vault_subaccount_id,
+                deposit_spot_asset,
+                amount,
+            )?)
+        } else {
+            Err(Error::msg("Not logged in or signer not set"))
+        }
+    }
+
+    async fn new_signed_vault_withdraw(
+        client: &WsClient,
+        subaccount_id: i64,
+        vault_subaccount_id: i64,
+        shares_to_burn: BigDecimal,
+    ) -> Result<RequestVaultWithdrawParams> {
+        let client_guard = client.lock().await;
+        if let Some(signer) = &client_guard.signer {
+            Ok(new_vault_withdraw_params(
+                signer,
+                subaccount_id,
+                vault_subaccount_id,
+                shares_to_burn,
+            )?)
+        } else {
+            Err(Error::msg("Not logged in or signer not set"))
+        }
+    }
+
+    async fn new_signed_cancel_all_vault_requests(
+        client: &WsClient,
+        subaccount_id: i64,
+        vault_subaccount_id: i64,
+    ) -> Result<CancelAllVaultRequestsParams> {
+        let client_guard = client.lock().await;
+        if let Some(signer) = &client_guard.signer {
+            Ok(new_cancel_all_vault_requests_params(signer, subaccount_id, vault_subaccount_id)?)
+        } else {
+            Err(Error::msg("Not logged in or signer not set"))
+        }
+    }
+
+    async fn new_signed_create_vault(
+        client: &WsClient,
+        subaccount_id: i64,
+        manager_id: i64,
+        deposit_spot_asset: String,
+        initial_deposit: BigDecimal,
+        initial_share_price_usd: BigDecimal,
+        management_fee_bps: i64,
+        performance_fee_bps: i64,
+        max_slippage_bps: i64,
+        cooldown_sec: i64,
+        max_fee_usd: BigDecimal,
+        benchmark_asset: Option<String>,
+    ) -> Result<CreateVaultParams> {
+        let client_guard = client.lock().await;
+        if let Some(signer) = &client_guard.signer {
+            Ok(new_create_vault_params(
+                signer,
+                subaccount_id,
+                manager_id,
+                deposit_spot_asset,
+                initial_deposit,
+                initial_share_price_usd,
+                management_fee_bps,
+                performance_fee_bps,
+                max_slippage_bps,
+                cooldown_sec,
+                max_fee_usd,
+                benchmark_asset,
+            )?)
+        } else {
+            Err(Error::msg("Not logged in or signer not set"))
+        }
+    }
+
+    async fn new_signed_mint_shares(
+        client: &WsClient,
+        vault_subaccount_id: i64,
+        request_id: VaultRequestId,
+        share_price: BigDecimal,
+        deposit_hash: String,
+    ) -> Result<MintSharesParams> {
+        let client_guard = client.lock().await;
+        if let Some(signer) = &client_guard.signer {
+            Ok(new_mint_shares_params(
+                signer,
+                vault_subaccount_id,
+                request_id,
+                share_price,
+                deposit_hash,
+            )?)
+        } else {
+            Err(Error::msg("Not logged in or signer not set"))
+        }
+    }
+
+    async fn new_signed_burn_shares(
+        client: &WsClient,
+        vault_subaccount_id: i64,
+        request_id: VaultRequestId,
+        share_price: BigDecimal,
+        withdraw_hash: String,
+    ) -> Result<BurnSharesParams> {
+        let client_guard = client.lock().await;
+        if let Some(signer) = &client_guard.signer {
+            Ok(new_burn_shares_params(
+                signer,
+                vault_subaccount_id,
+                request_id,
+                share_price,
+                withdraw_hash,
+            )?)
         } else {
             Err(Error::msg("Not logged in or signer not set"))
         }
@@ -1051,6 +1532,20 @@ pub fn msg_to_value(msg: Message) -> Result<Value> {
     }
 }
 
+/// `public/get_ticker` returns a slim snapshot; merge it with `public/get_instrument`
+/// so callers still get a full `InstrumentTicker` for signing.
+pub async fn fetch_instrument_ticker(instrument_name: impl Into<String>) -> Result<InstrumentTicker> {
+    let instrument_name = instrument_name.into();
+    let params = json!({ "instrument_name": instrument_name });
+    let (ticker, instrument) = tokio::try_join!(
+        http_rpc::<_, TickerResponse>("public/get_ticker", params.clone(), None),
+        http_rpc::<_, InstrumentResponse>("public/get_instrument", params, None),
+    )?;
+    let slim = ticker.into_result()?.result;
+    let data = instrument.into_result()?.result;
+    Ok(InstrumentTicker::from_slim_and_data(slim, &data))
+}
+
 // TODO a bit ugly to pass two types here, can use one trait but the stub generator needs to be updated
 pub async fn http_rpc<P, R>(
     method: &str,
@@ -1066,10 +1561,36 @@ where
     let url = format!("{root}/{method}");
     let client = Client::new();
     info!("HTTP Request: {} with {:?} and headers {:?}", url, params, headers);
-    let response = client.post(url).json(&params).headers(headers).send().await?;
-    let response_text = response.text().await?;
-    debug!("HTTP Response: {response_text}");
+    let response = match client.post(url).json(&params).headers(headers).send().await {
+        Ok(response) => response,
+        Err(e) => {
+            eprintln!("HTTP request failed: {e:?}");
+            error!("HTTP request failed: {e:?}");
+            return Err(e.into());
+        }
+    };
+    let status = response.status();
+    let response_text = match response.text().await {
+        Ok(text) => text,
+        Err(e) => {
+            eprintln!("HTTP response body read failed (status {status}): {e:?}");
+            error!("HTTP response body read failed (status {status}): {e:?}");
+            return Err(e.into());
+        }
+    };
+    info!("HTTP Response status={status} body={response_text}");
+    if !status.is_success() {
+        eprintln!("HTTP RPC {method} returned status {status}: {response_text}");
+        error!("HTTP RPC {method} returned status {status}: {response_text}");
+    }
     let jd = &mut serde_json::Deserializer::from_str(&response_text);
     let parsed_response: Result<Response<R>, _> = serde_path_to_error::deserialize(jd);
-    Ok(parsed_response?)
+    match parsed_response {
+        Ok(parsed) => Ok(parsed),
+        Err(e) => {
+            eprintln!("Failed to parse HTTP RPC {method} response: {e}\nbody: {response_text}");
+            error!("Failed to parse HTTP RPC {method} response: {e}; body: {response_text}");
+            Err(e.into())
+        }
+    }
 }

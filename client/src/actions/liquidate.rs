@@ -1,5 +1,4 @@
-use crate::utils::{decimal_to_i256, decimal_to_u256, decimal_to_u256_with_prec};
-use std::str::FromStr;
+use crate::utils::{decimal_to_i256, decimal_to_u256_with_prec};
 
 use anyhow::Result;
 use bigdecimal::BigDecimal;
@@ -17,31 +16,20 @@ use crate::actions::helpers::ModuleData;
 use crate::actions::ActionData;
 use derive_types::types::liquidations::{AuctionDetailsSchema, LiquidationParams};
 
+/// ABI payload for the liquidate module: account id, percent (1e18), price limit.
 #[derive(Clone, Debug, Default, PartialEq, EthAbiType, EthAbiCodec)]
 pub struct LiquidateData {
     liquidated_account_id: i64,
-    cash_transfer: U256,
     percent_of_acc: U256,
     price_limit: I256,
-    last_seen_trade_id: U256,
-    merge_account: bool,
 }
 
 impl LiquidateData {
-    pub fn new(
-        subaccount_id: i64,
-        pct: BigDecimal,
-        price: BigDecimal,
-        transfer_amount: BigDecimal,
-        trade_id: i64,
-    ) -> Result<Self> {
+    pub fn new(subaccount_id: i64, pct: BigDecimal, price: BigDecimal) -> Result<Self> {
         Ok(Self {
             liquidated_account_id: subaccount_id,
-            cash_transfer: decimal_to_u256(transfer_amount)?,
             percent_of_acc: decimal_to_u256_with_prec(pct, 18)?,
             price_limit: decimal_to_i256(price)?,
-            last_seen_trade_id: trade_id.into(),
-            merge_account: true,
         })
     }
 }
@@ -58,15 +46,13 @@ impl ActionData {
         signer: &LocalWallet,
         liquidated_id: i64,
         percent_bid: BigDecimal,
-        details: &AuctionDetailsSchema,
+        price_limit: BigDecimal,
     ) -> Result<LiquidationParams> {
         Ok(LiquidationParams {
             subaccount_id: self.subaccount_id.as_u64() as i64,
-            liquidated_subaccount_id: liquidated_id,
-            cash_transfer: details.cash_transfer_with_buffer(),
-            price_limit: details.price_limit_with_buffer(),
-            percent_bid,
-            last_seen_trade_id: details.last_seen_trade_id,
+            liquidate_subaccount_id: liquidated_id,
+            price_limit,
+            percent_of_acc: percent_bid,
             nonce: self.nonce.as_u64() as i64,
             signature_expiry_sec: self.expiry.as_u64() as i64,
             signer: hex::encode_prefixed(self.signer),
@@ -82,14 +68,23 @@ pub fn new_liquidate_params(
     percent_bid: BigDecimal,
     details: &AuctionDetailsSchema,
 ) -> Result<LiquidationParams> {
-    let liquidate_data = LiquidateData::new(
+    new_liquidate_params_with_price(
+        signer,
+        subaccount_id,
         liquidated_id,
-        percent_bid.clone(),
+        percent_bid,
         details.price_limit_with_buffer(),
-        details.cash_transfer_with_buffer(),
-        details.last_seen_trade_id,
-    )?;
+    )
+}
+
+pub fn new_liquidate_params_with_price(
+    signer: &LocalWallet,
+    subaccount_id: i64,
+    liquidated_id: i64,
+    percent_bid: BigDecimal,
+    price_limit: BigDecimal,
+) -> Result<LiquidationParams> {
+    let liquidate_data = LiquidateData::new(liquidated_id, percent_bid.clone(), price_limit.clone())?;
     let action_data = ActionData::new(liquidate_data, subaccount_id, signer.address())?;
-    let params = action_data.to_liquidate_params(signer, liquidated_id, percent_bid, details)?;
-    Ok(params)
+    action_data.to_liquidate_params(signer, liquidated_id, percent_bid, price_limit)
 }
