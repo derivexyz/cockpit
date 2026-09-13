@@ -1,0 +1,18 @@
+[package]
+name = "derive-utils"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+anyhow = "1.0"
+argmin = "0.11.0"
+argmin-math = { version = "0.5", features = ["ndarray_latest-nolinalg"] }
+chrono = "0.4.34"
+nalgebra = "0.29.0"
+ndarray = { version = "0.16.1", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+statrs = "0.16.0"

@@ -3,6 +3,7 @@
 members = [
     "client",
     "types",
+    "utils",
 ]
 
 resolver = "2"
