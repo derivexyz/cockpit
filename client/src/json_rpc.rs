@@ -1583,10 +1583,28 @@ where
         eprintln!("HTTP RPC {method} returned status {status}: {response_text}");
         error!("HTTP RPC {method} returned status {status}: {response_text}");
     }
+    let value: Value = match serde_json::from_str(&response_text) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Failed to parse HTTP RPC {method} JSON: {e}\nbody: {response_text}");
+            error!("Failed to parse HTTP RPC {method} JSON: {e}; body: {response_text}");
+            return Err(e.into());
+        }
+    };
+    if value.get("error").is_some() && value.get("result").is_none() {
+        let jd = &mut serde_json::Deserializer::from_str(&response_text);
+        return match serde_path_to_error::deserialize::<_, RPCErrorResponse>(jd) {
+            Ok(err) => Ok(Response::Error(err)),
+            Err(e) => {
+                eprintln!("Failed to parse HTTP RPC {method} error: {e}\nbody: {response_text}");
+                error!("Failed to parse HTTP RPC {method} error: {e}; body: {response_text}");
+                Err(e.into())
+            }
+        };
+    }
     let jd = &mut serde_json::Deserializer::from_str(&response_text);
-    let parsed_response: Result<Response<R>, _> = serde_path_to_error::deserialize(jd);
-    match parsed_response {
-        Ok(parsed) => Ok(parsed),
+    match serde_path_to_error::deserialize::<_, R>(jd) {
+        Ok(parsed) => Ok(Response::Success(parsed)),
         Err(e) => {
             eprintln!("Failed to parse HTTP RPC {method} response: {e}\nbody: {response_text}");
             error!("Failed to parse HTTP RPC {method} response: {e}; body: {response_text}");

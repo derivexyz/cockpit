@@ -3,7 +3,7 @@ use derive_types::generated::public_login::PublicLoginParamsSchema;
 use ethers::prelude::{LocalWallet, Signer};
 use ethers::utils::hex;
 use log::info;
-use reqwest::header::HeaderMap;
+use reqwest::header::{HeaderMap, HeaderValue};
 use serde_json::{json, Value};
 
 pub async fn load_signer() -> LocalWallet {
@@ -27,9 +27,13 @@ async fn sign_auth_params(wallet: &LocalWallet) -> (String, String, String) {
 pub async fn sign_auth_header(wallet: &LocalWallet) -> HeaderMap {
     let mut headers = HeaderMap::new();
     let (address, timestamp, signature) = sign_auth_params(wallet).await;
-    headers.insert("X-LyraWallet", address.parse().unwrap());
-    headers.insert("X-LyraTimestamp", timestamp.parse().unwrap());
-    headers.insert("X-LyraSignature", signature.parse().unwrap());
+    // v3 REST auth reads X-Derive*; X-Lyra* is the v2 name and is ignored.
+    let wallet_value: HeaderValue = address.parse().unwrap();
+    let timestamp_value: HeaderValue = timestamp.parse().unwrap();
+    let signature_value: HeaderValue = signature.parse().unwrap();
+    headers.insert("X-DeriveWallet", wallet_value);
+    headers.insert("X-DeriveTimestamp", timestamp_value);
+    headers.insert("X-DeriveSignature", signature_value);
     headers
 }
 

@@ -41,6 +41,52 @@ pub mod serde_nonce {
     }
 }
 
+/// v3 returns some former scalar strings as JSON arrays (e.g. subaccount `currency`).
+pub mod serde_string_or_vec {
+    use super::*;
+
+    pub fn serialize<S>(value: &Vec<String>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        value.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct Visitor;
+        impl<'de> de::Visitor<'de> for Visitor {
+            type Value = Vec<String>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string or an array of strings")
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<Vec<String>, E> {
+                Ok(vec![value.to_string()])
+            }
+
+            fn visit_string<E: de::Error>(self, value: String) -> Result<Vec<String>, E> {
+                Ok(vec![value])
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Vec<String>, A::Error>
+            where
+                A: de::SeqAccess<'de>,
+            {
+                let mut out = Vec::new();
+                while let Some(item) = seq.next_element::<String>()? {
+                    out.push(item);
+                }
+                Ok(out)
+            }
+        }
+        deserializer.deserialize_any(Visitor)
+    }
+}
+
 pub mod serde_option_nonce {
     use super::*;
 
@@ -135,7 +181,9 @@ pub struct RPCError {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RPCErrorResponse {
-    pub id: RPCId,
+    /// HTTP JSON-RPC errors from v3 often omit `id` (e.g. auth failures).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<RPCId>,
     pub error: RPCError,
 }
 
@@ -181,5 +229,34 @@ mod tests {
             serde_json::from_value(json!({ "nonce": 1789133536619202i64 })).unwrap();
         assert_eq!(from_string.nonce, 1789133536619202);
         assert_eq!(from_int.nonce, 1789133536619202);
+    }
+
+    #[test]
+    fn rpc_error_response_parses_without_id() {
+        let parsed: super::RPCErrorResponse = serde_json::from_value(json!({
+            "error": {
+                "code": -32602,
+                "message": "Invalid params",
+                "data": "Missing wallet in header"
+            }
+        }))
+        .unwrap();
+        assert!(parsed.id.is_none());
+        assert_eq!(parsed.error.code, -32602);
+        assert_eq!(parsed.error.message, "Invalid params");
+    }
+
+    #[test]
+    fn string_or_vec_accepts_string_or_array() {
+        #[derive(Debug, Deserialize, Serialize)]
+        struct Wrapper {
+            #[serde(with = "super::serde_string_or_vec")]
+            currency: Vec<String>,
+        }
+        let from_array: Wrapper =
+            serde_json::from_value(json!({ "currency": ["BTC", "ETH"] })).unwrap();
+        let from_string: Wrapper = serde_json::from_value(json!({ "currency": "ETH" })).unwrap();
+        assert_eq!(from_array.currency, vec!["BTC", "ETH"]);
+        assert_eq!(from_string.currency, vec!["ETH"]);
     }
 }

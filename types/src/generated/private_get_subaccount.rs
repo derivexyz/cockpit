@@ -3,6 +3,7 @@
 use bigdecimal;
 use serde::{Deserialize, Serialize};
 use uuid;
+use crate::types::shared::serde_string_or_vec;
 ///Type of asset collateral (currently always `erc20`)
 ///
 /// <details><summary>JSON schema</summary>
@@ -1658,8 +1659,9 @@ pub struct PrivateGetSubaccountResultSchema {
     pub collaterals_maintenance_margin: bigdecimal::BigDecimal,
     ///Total mark-to-market value of all collaterals
     pub collaterals_value: bigdecimal::BigDecimal,
-    ///Currency of subaccount
-    pub currency: String,
+    /// Currencies traded on this subaccount. v3 sends a list (`["BTC","ETH"]`).
+    #[serde(with = "serde_string_or_vec")]
+    pub currency: Vec<String>,
     ///Total initial margin requirement of all positions and collaterals.Trades will be rejected if this value falls below zero after the trade.
     pub initial_margin: bigdecimal::BigDecimal,
     ///Whether the subaccount is undergoing a liquidation auction
