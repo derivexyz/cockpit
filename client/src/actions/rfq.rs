@@ -23,6 +23,15 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use uuid::Uuid;
 
+/// Added on top of the 10-minute default action expiry. The protocol rebuilds
+/// the EIP-712 hash from the submitted `signature_expiry_sec`, so this offset
+/// has to be part of the signed action, not only the request field.
+const RFQ_EXTRA_EXPIRY_SEC: i64 = 120 * 60;
+
+fn rfq_signature_expiry_sec() -> i64 {
+    (chrono::Utc::now() + chrono::Duration::seconds(600 + RFQ_EXTRA_EXPIRY_SEC)).timestamp()
+}
+
 fn get_rfq_max_fee(
     legs: &Vec<LegPriced>,
     tickers: &HashMap<String, InstrumentTicker>,
@@ -146,7 +155,12 @@ pub fn new_quote_params(
     args: QuoteArgs,
 ) -> Result<QuoteParams> {
     let quote_data = QuoteData::from_legs(&args.legs, args.direction, &tickers)?;
-    let quote_action = ActionData::new(quote_data, subaccount_id, signer.address())?;
+    let quote_action = ActionData::new_with_expiry(
+        quote_data,
+        subaccount_id,
+        signer.address(),
+        Some(rfq_signature_expiry_sec()),
+    )?;
     quote_action.to_quote_params(signer, &tickers, args)
 }
 
@@ -159,7 +173,12 @@ pub fn new_replace_quote_params(
     args: QuoteArgs,
 ) -> Result<ReplaceQuoteParams> {
     let quote_data = QuoteData::from_legs(&args.legs, args.direction, &tickers)?;
-    let quote_action = ActionData::new(quote_data, subaccount_id, signer.address())?;
+    let quote_action = ActionData::new_with_expiry(
+        quote_data,
+        subaccount_id,
+        signer.address(),
+        Some(rfq_signature_expiry_sec()),
+    )?;
     quote_action.to_replace_quote_params(
         signer,
         &tickers,
@@ -177,7 +196,12 @@ pub fn new_execute_params(
 ) -> Result<ExecuteQuoteParams> {
     let quote_data = QuoteData::from_quote_result(&quote, &tickers)?;
     let execute_data = quote_data.into_execute();
-    let execute_action = ActionData::new(execute_data, subaccount_id, signer.address())?;
+    let execute_action = ActionData::new_with_expiry(
+        execute_data,
+        subaccount_id,
+        signer.address(),
+        Some(rfq_signature_expiry_sec()),
+    )?;
     execute_action.to_execute_params(signer, &tickers, &quote)
 }
 

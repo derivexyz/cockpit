@@ -85,11 +85,11 @@ pub async fn setup_env() {
     let env_consts = format!(".env.constants.{env_name}");
     let env_keys = format!(".env.keys.{env_name}");
 
-    // println!("env_consts: {}", env_consts);
-    // println!("env_keys: {}", env_keys);
-    // println!("env_name: {}", env_name);
-    // println!("std::env::var(\"SESSION_PRIVATE_KEY\"): {}", std::env::var("SESSION_PRIVATE_KEY").unwrap());
-    // println!("std::env::var(\"OWNER_PUBLIC_KEY\"): {}", std::env::var("OWNER_PUBLIC_KEY").unwrap());    
+    println!("env_consts: {}", env_consts);
+    println!("env_keys: {}", env_keys);
+    println!("env_name: {}", env_name);
+    println!("std::env::var(\"SESSION_PRIVATE_KEY\"): {}", std::env::var("SESSION_PRIVATE_KEY").unwrap());
+    println!("std::env::var(\"OWNER_PUBLIC_KEY\"): {}", std::env::var("OWNER_PUBLIC_KEY").unwrap());    
 
     dotenv::from_filename(env_consts).expect("Failed to load .env.constants.{} file");
     let key_loaded = dotenv::from_filename(env_keys);
