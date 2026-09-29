@@ -134,7 +134,10 @@ impl SVIJWParams {
         let b = (sqrt_w_t / 2.0) * (self.c + self.p);
         let rho = 1.0 - (self.p * sqrt_w_t) / b;
 
-        let beta = (rho - (2.0 * self.psi * sqrt_w_t) / b).clamp(-1.0, 1.0);
+        // delta = rho - beta, computed directly from psi (before clamping) so it stays accurate as psi -> 0.
+        let delta = (2.0 * self.psi * sqrt_w_t) / b;
+        let beta = (rho - delta).clamp(-1.0, 1.0);
+        let rho_minus_beta = if beta == rho - delta { delta } else { rho - beta };
 
         // beta = m / sqrt(m^2 + sigma^2). Therefore beta ~ 0 is the m = 0 branch.
         // This is distinct from v_diff ~ 0, which can occur for m != 0.
@@ -148,20 +151,34 @@ impl SVIJWParams {
             // Regular m != 0 branch. Lemma 3.2 uses alpha = sigma / m.
             // Since beta = m / sqrt(m^2 + sigma^2), alpha = sign(beta) * sqrt(1 / beta^2 - 1).
             let alpha = Self::sign(beta) * ((1.0 / (beta * beta) - 1.0).max(0.0)).sqrt();
-            let sign_alpha = Self::sign(alpha);
-            let sqrt_1_plus_alpha2 = (1.0 + alpha * alpha).sqrt();
 
             // denom = b { -rho + sign(alpha)*sqrt(1+alpha^2) - alpha*sqrt(1-rho^2) }
-            let denom = b * (-rho + sign_alpha * sqrt_1_plus_alpha2 - alpha * sqrt_1_minus_rho2);
+            //       = (b / beta) { 1 - rho*beta - sqrt((1-beta^2)(1-rho^2)) }
+            //       = (b / beta) (rho - beta)^2 / { 1 - rho*beta + sqrt((1-beta^2)(1-rho^2)) }
+            // The last form avoids catastrophic cancellation as psi -> 0, where both v_diff and denom
+            // vanish like psi^2 but m = v_diff * t / denom has a finite limit.
+            let sqrt_1_minus_beta2 = (1.0 - beta * beta).max(0.0).sqrt();
+            let conj = 1.0 - rho * beta + sqrt_1_minus_beta2 * sqrt_1_minus_rho2;
+            let denom = if conj > 0.0 {
+                (b / beta) * rho_minus_beta * rho_minus_beta / conj
+            } else {
+                0.0
+            };
 
-            if denom.abs() > 1e-14 || v_diff.abs() > 1e-14 {
+            // v_diff = v_t - v_tilde_t is only known to within a few ulps of v_t; below that it is
+            // rounding noise and JW does not determine the curvature (m, sigma) individually.
+            let v_diff_noise_floor = f64::EPSILON * v_t.abs();
+
+            if denom != 0.0 && v_diff.abs() > v_diff_noise_floor {
                 let m = (v_diff * t) / denom;
                 let sigma = alpha * m;
                 // a = v_tilde_t * t - b * sigma * sqrt(1 - rho^2)
                 let a = w_tilde - b * sigma * sqrt_1_minus_rho2;
                 (m, sigma, a)
             } else {
-                // v_diff ~ 0 and denom ~ 0 is another non-unique inverse case.
+                // psi = 0 and v_diff = 0 (to within rounding) is another non-unique inverse case.
+                // The resulting smile is an arbitrary representative, not a usable price: callers that
+                // can keep a previous surface should reject JW params with |v_diff| within a few ulps of v.
                 // Pick a non-degenerate representative that preserves beta = m/sqrt(m^2 + sigma^2)
                 // and a + b*sigma*sqrt(1-rho^2) = w_tilde, so JW -> raw -> JW is stable.
                 let sigma = if b.abs() > 1e-14 { w_t / b } else { 0.0 };
@@ -560,5 +577,87 @@ mod tests {
         println!("{:?} recovered_jw", recovered_jw);
 
         assert_jw_approx(&jw, &recovered_jw, 1e-9);
+    }
+
+    /// BTC 2026-10-30 Haruko loads around 2026-09-29 16:01:22 UTC, when ATM skew crossed zero.
+    /// (v, psi, p, c, v_diff, reftau)
+    const BTC_SKEW_CROSSING_LOADS: [(f64, f64, f64, f64, f64, f64); 3] = [
+        // 16:01:03
+        (
+            0.11908607493380934,
+            -0.00044162119489349214,
+            1.7820384487178624,
+            0.5053919126912595,
+            2.2168858224147492e-7,
+            0.08401684966387621,
+        ),
+        // 16:01:22, psi ~ 2.4e-8 and v_diff ~ 6.5e-16: previously hit the 1e-14 fallback
+        (
+            0.11905111972220374,
+            2.4217552299342564e-8,
+            1.7280680055012836,
+            0.4996102566680253,
+            6.522560269672795e-16,
+            0.08401624226281075,
+        ),
+        // 16:01:41
+        (
+            0.1191147826195043,
+            0.0003925002858805838,
+            1.7267616701070332,
+            0.4992321608098015,
+            1.7511680462656276e-7,
+            0.08401564269406393,
+        ),
+    ];
+    const BTC_SKEW_CROSSING_FWD: f64 = 83_440.0;
+
+    fn jw_from_tuple((v, psi, p, c, v_diff, reftau): (f64, f64, f64, f64, f64, f64)) -> SVIJWParams {
+        SVIJWParams {
+            v,
+            psi,
+            p,
+            c,
+            v_diff,
+            fwd: BTC_SKEW_CROSSING_FWD,
+            reftau,
+        }
+    }
+
+    /// The surface must stay continuous in time when ATM skew crosses zero:
+    /// the degenerate 16:01:22 load must price like its neighbours, not jump 14-22 vol points in the wings.
+    #[test]
+    fn test_to_raw_skew_crossing_zero_real_data() {
+        let [before, degenerate, after] = BTC_SKEW_CROSSING_LOADS.map(jw_from_tuple);
+
+        for (strike, expected) in [(55_000.0, 0.661), (70_000.0, 0.411), (83_000.0, 0.345), (100_000.0, 0.389)] {
+            let vol = degenerate.get_vol_capped(strike);
+            println!("strike={strike} vol={vol}");
+            assert!((vol - expected).abs() < 0.005, "strike {strike}: vol {vol} vs {expected}");
+            for neighbour in [&before, &after] {
+                let neighbour_vol = neighbour.get_vol_capped(strike);
+                assert!(
+                    (vol - neighbour_vol).abs() < 0.01,
+                    "strike {strike}: vol {vol} vs neighbour {neighbour_vol}"
+                );
+            }
+        }
+    }
+
+    /// Sweep psi towards zero with v_diff = 1.137 * psi^2 (the ratio seen in real loads).
+    /// Previously the 70k vol stepped from 0.410 to 0.547 once v_diff < 1e-14.
+    #[test]
+    fn test_to_raw_skew_crossing_zero_continuity_sweep() {
+        let base = jw_from_tuple(BTC_SKEW_CROSSING_LOADS[1]);
+        for psi in [4e-4, 1e-5, 1e-6, 2e-7, 1e-7, 9e-8, 5e-8, 2.42e-8, 1e-8] {
+            let jw = SVIJWParams {
+                psi,
+                v_diff: 1.137 * psi * psi,
+                ..base.clone()
+            };
+            let vol = jw.get_vol_capped(70_000.0);
+            println!("psi={psi:e} vol70k={vol}");
+            assert!((vol - 0.410).abs() < 0.002, "psi {psi:e}: 70k vol {vol}");
+        }
     }
 }
