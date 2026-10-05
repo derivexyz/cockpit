@@ -1,9 +1,8 @@
-use anyhow::Result;
+use crate::SEC_PER_YEAR;
 use statrs::function::erf::erf;
 
 const FRAC_1_SQRT_PI: f64 = 0.564189583547756286948079451560772586_f64;
 const FRAC_1_SQRT_2_PI: f64 = FRAC_1_SQRT_PI * std::f64::consts::FRAC_1_SQRT_2;
-const SEC_PER_YEAR: f64 = 365.0 * 24.0 * 60.0 * 60.0;
 
 pub fn normcdf(x: f64) -> f64 {
     0.5 * (1.0 + erf(x * std::f64::consts::FRAC_1_SQRT_2))
