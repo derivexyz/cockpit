@@ -512,11 +512,14 @@ impl std::convert::TryFrom<String> for TimeInForce {
 pub enum BatchStatus {
     Batching,
     Executing,
+    /// State diff being posted to the data-availability layer.
+    Da,
     Proving,
     Settling,
     Settled,
     BatchingError,
     ExecutingError,
+    DaError,
     ProvingError,
     SettlingError,
     SettledError,
@@ -528,6 +531,7 @@ impl BatchStatus {
             self,
             Self::BatchingError
                 | Self::ExecutingError
+                | Self::DaError
                 | Self::ProvingError
                 | Self::SettlingError
                 | Self::SettledError
