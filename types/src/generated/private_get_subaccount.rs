@@ -735,6 +735,7 @@ pub struct OrderResponseSchema {
     ///Whether the order is tagged for market maker protections
     pub mmp: bool,
     ///Unique nonce defined as <UTC_timestamp in ms><random_number_up_to_3_digits> (e.g. 1695836058725001, where 001 is the random number)
+    #[serde(with = "crate::types::shared::serde_nonce")]
     pub nonce: i64,
     ///Total order fee paid so far
     pub order_fee: bigdecimal::BigDecimal,
