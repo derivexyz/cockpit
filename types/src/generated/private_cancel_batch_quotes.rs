@@ -144,7 +144,11 @@ pub struct PrivateCancelBatchQuotesParamsSchema {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     ///Cancel quote with this nonce
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "crate::types::shared::serde_option_nonce"
+    )]
     pub nonce: Option<i64>,
     ///Quote ID to cancel
     #[serde(default, skip_serializing_if = "Option::is_none")]
