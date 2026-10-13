@@ -1,4 +1,3 @@
-use crate::black76::OptionContract;
 use crate::fitters::svi::{SVIJWParams, SVIRawParams};
 use crate::SEC_PER_YEAR;
 use anyhow::{anyhow, bail, Result};
@@ -8,6 +7,7 @@ use argmin::core::{
 };
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::BFGS;
+use crate::black76::OptionContract;
 use nalgebra::SMatrix;
 use ndarray::{arr1, Array1, Array2};
 use std::collections::HashMap;
@@ -79,13 +79,21 @@ fn smooth_pos(x: f64, eps: f64) -> f64 {
 /// fair value.
 const MAX_BUFFER_PX_FRAC: f64 = 0.1;
 
-/// Pulls each quoted side of a book in by `buffer` (at most `MAX_BUFFER_PRICE_FRACTION` of that
-/// quote), never past the mid of a two-sided book. Missing sides (bid 0, ask f64::MAX) stay missing.
+/// Pulls each quoted side of a book in by `buffer` (at most `MAX_BUFFER_PX_FRAC` of that quote),
+/// never past the mid of a two-sided book. Missing sides (bid 0, ask f64::MAX) stay missing.
 fn buffered_bbo(bid: f64, ask: f64, buffer: f64) -> (f64, f64) {
     let has_bid = bid > 0.0;
     let has_ask = ask < f64::MAX;
-    let pulled_bid = if has_bid { bid + buffer.min(MAX_BUFFER_PX_FRAC * bid) } else { bid };
-    let pulled_ask = if has_ask { ask - buffer.min(MAX_BUFFER_PX_FRAC * ask) } else { ask };
+    let pulled_bid = if has_bid {
+        bid + buffer.min(MAX_BUFFER_PX_FRAC * bid)
+    } else {
+        bid
+    };
+    let pulled_ask = if has_ask {
+        ask - buffer.min(MAX_BUFFER_PX_FRAC * ask)
+    } else {
+        ask
+    };
     if has_bid && has_ask {
         let mid = 0.5 * (bid + ask);
         (pulled_bid.min(mid), pulled_ask.max(mid))
@@ -158,7 +166,13 @@ impl JWFit {
     }
 
     pub fn from_svi_jw(svi: &SVIJWParams) -> Self {
-        Self { v: svi.v, psi: svi.psi, p: svi.p, c: svi.c, v_diff: svi.v_diff }
+        Self {
+            v: svi.v,
+            psi: svi.psi,
+            p: svi.p,
+            c: svi.c,
+            v_diff: svi.v_diff,
+        }
     }
 
     pub fn to_svi_jw(&self, fwd: f64, tau: f64) -> SVIJWParams {
@@ -213,12 +227,7 @@ impl JWFit {
     }
 
     // returns the ratio of the v parameter of expiry / other
-    pub fn get_ratio(
-        surface: &HashMap<i64, JWFit>,
-        expiry: i64,
-        other: i64,
-        now_sec: i64,
-    ) -> Option<f64> {
+    pub fn get_ratio(surface: &HashMap<i64, JWFit>, expiry: i64, other: i64, now_sec: i64) -> Option<f64> {
         let this_interpolated = JWFit::get_interpolated_at(surface, expiry, now_sec);
         let other_interpolated = JWFit::get_interpolated_at(surface, other, now_sec);
 
@@ -243,11 +252,7 @@ impl JWFit {
         Self::get_interpolated_at(surface, expiry, chrono::Utc::now().timestamp())
     }
 
-    pub fn get_interpolated_at(
-        surface: &HashMap<i64, JWFit>,
-        expiry: i64,
-        now_sec: i64,
-    ) -> Option<JWFit> {
+    pub fn get_interpolated_at(surface: &HashMap<i64, JWFit>, expiry: i64, now_sec: i64) -> Option<JWFit> {
         if surface.is_empty() {
             return None;
         }
@@ -374,10 +379,12 @@ impl BfgsTracingObserver {
             return;
         }
 
-        let mut best_param =
-            self.best_param.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut best_param = self.best_param.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if best_param.as_ref().is_none_or(|best| cost < best.cost) {
-            *best_param = Some(BfgsBestParam { param: param.clone(), cost });
+            *best_param = Some(BfgsBestParam {
+                param: param.clone(),
+                cost,
+            });
         }
     }
 }
@@ -480,16 +487,16 @@ impl SliceFitter {
         strikes: Array1<f64>,
         is_calls: Array1<bool>,
     ) -> Self {
-        assert!(
-            bids.len() == asks.len()
-                && asks.len() == strikes.len()
-                && strikes.len() == is_calls.len()
-        );
+        assert!(bids.len() == asks.len() && asks.len() == strikes.len() && strikes.len() == is_calls.len());
         let expiry_sec = (self.expiry - self.ref_sec) as f64;
         let contracts: Vec<OptionContract> = strikes
             .iter()
             .zip(is_calls)
-            .map(|(&k, is_call)| OptionContract { strike: k, expiry_sec, is_call })
+            .map(|(&k, is_call)| OptionContract {
+                strike: k,
+                expiry_sec,
+                is_call,
+            })
             .collect();
         self.contracts = contracts;
         self.bids = bids;
@@ -538,12 +545,8 @@ impl SliceFitter {
         }
 
         let threshold = factor * avg_residual;
-        let mut outliers: Vec<(usize, f64)> = residuals
-            .iter()
-            .copied()
-            .enumerate()
-            .filter(|(_, residual)| *residual > threshold)
-            .collect();
+        let mut outliers: Vec<(usize, f64)> =
+            residuals.iter().copied().enumerate().filter(|(_, residual)| *residual > threshold).collect();
         outliers.sort_by(|left, right| right.1.total_cmp(&left.1));
         outliers.truncate(n);
 
@@ -555,8 +558,7 @@ impl SliceFitter {
         for (idx, _) in &outliers {
             remove[*idx] = true;
         }
-        let keep_indices: Vec<usize> =
-            (0..self.contracts.len()).filter(|idx| !remove[*idx]).collect();
+        let keep_indices: Vec<usize> = (0..self.contracts.len()).filter(|idx| !remove[*idx]).collect();
 
         let bids = Array1::from_iter(keep_indices.iter().map(|&idx| self.bids[idx]));
         let asks = Array1::from_iter(keep_indices.iter().map(|&idx| self.asks[idx]));
@@ -573,10 +575,9 @@ impl SliceFitter {
             })
             .collect();
 
-        let removed =
-            Vec::from_iter(outliers.iter().map(|(idx, _)| {
-                (self.strikes[*idx], self.contracts[*idx].is_call, residuals[*idx])
-            }));
+        let removed = Vec::from_iter(
+            outliers.iter().map(|(idx, _)| (self.strikes[*idx], self.contracts[*idx].is_call, residuals[*idx])),
+        );
 
         self.log(format!(
             "INFO remove_outliers removed_count={}, avg_residual={}, expiry={} removed={:?}",
@@ -620,8 +621,7 @@ impl SliceFitter {
             let mut fast_fitter = self.clone();
             fast_fitter.cost_cfg.arb_cost = 0.0;
 
-            let (optimized_fit, _) =
-                fast_fitter.fit_bfgs_with_guess(&initial_guess, max_iters, 0)?;
+            let (optimized_fit, _) = fast_fitter.fit_bfgs_with_guess(&initial_guess, max_iters, 0)?;
             let optimized_arb_cost = self.arb_cost_from_fit(&optimized_fit)?;
             if optimized_arb_cost == 0.0 {
                 let optimized_cost = self.cost_from_fit(&optimized_fit, true)?;
@@ -639,12 +639,7 @@ impl SliceFitter {
         Ok((opt_fit, opt_cost))
     }
 
-    fn fit_bfgs_with_guess(
-        &self,
-        initial_guess: &JWFit,
-        max_iters: u64,
-        attempt_idx: usize,
-    ) -> Result<(JWFit, f64)> {
+    fn fit_bfgs_with_guess(&self, initial_guess: &JWFit, max_iters: u64, attempt_idx: usize) -> Result<(JWFit, f64)> {
         let initial_param = initial_guess.to_param();
         let initial_cost = self.cost(&initial_param)?;
         if !Self::is_valid_cost(initial_cost) {
@@ -700,12 +695,7 @@ impl SliceFitter {
 
         let attempt_name = attempt.name;
         // note not as bad to clone - only one clone here but the optimizer won't re-clone
-        let output = self.clone().run_bfgs_attempt(
-            attempt_name,
-            &initial_param,
-            attempt.inv_hessian,
-            max_iters,
-        );
+        let output = self.clone().run_bfgs_attempt(attempt_name, &initial_param, attempt.inv_hessian, max_iters);
         match output.result {
             Ok((optimized_fit, optimized_cost)) if Self::is_valid_cost(optimized_cost) => {
                 if (optimized_cost < initial_cost) || optimized_cost < 1e-12 {
@@ -784,17 +774,13 @@ impl SliceFitter {
         let best_param = Arc::new(Mutex::new(None));
         let observed_best = best_param.clone();
         let result = (|| -> Result<(JWFit, f64)> {
-            let linesearch = MoreThuenteLineSearch::<Array1<f64>, Array1<f64>, f64>::new()
-                .with_bounds(1e-6, 0.1)?;
+            let linesearch = MoreThuenteLineSearch::<Array1<f64>, Array1<f64>, f64>::new().with_bounds(1e-6, 0.1)?;
             let solver = BFGS::new(linesearch);
             let calibration_log = self.calibration_log.clone();
 
             let result = Executor::new(self, solver)
                 .configure(|state| {
-                    state
-                        .param(initial_param.clone())
-                        .inv_hessian(initial_inv_hessian)
-                        .max_iters(max_iters)
+                    state.param(initial_param.clone()).inv_hessian(initial_inv_hessian).max_iters(max_iters)
                 })
                 .add_observer(
                     BfgsTracingObserver {
@@ -837,20 +823,13 @@ impl SliceFitter {
         Ok(InvHessianAttempt { name, inv_hessian })
     }
 
-    fn initial_inv_hessian(
-        &self,
-        initial_param: &Array1<f64>,
-        initial_guess: &JWFit,
-    ) -> Result<Array2<f64>> {
+    fn initial_inv_hessian(&self, initial_param: &Array1<f64>, initial_guess: &JWFit) -> Result<Array2<f64>> {
         let mut curvatures = arr1(&[
             Self::regularization_curvature(self.cost_cfg.v_cost, initial_guess.v),
             Self::regularization_curvature(self.cost_cfg.psi_cost, 1.0),
             Self::regularization_curvature(self.cost_cfg.p_cost, initial_guess.p),
             Self::regularization_curvature(self.cost_cfg.c_cost, initial_guess.c),
-            Self::regularization_curvature(
-                self.cost_cfg.v_diff_cost,
-                initial_guess.v_diff.min(REG_MAX_V_DIFF),
-            ),
+            Self::regularization_curvature(self.cost_cfg.v_diff_cost, initial_guess.v_diff.min(REG_MAX_V_DIFF)),
         ]);
 
         let base_cost = self.cost(initial_param)?;
@@ -886,7 +865,10 @@ impl SliceFitter {
 
     fn numerical_hessian(&self, initial_param: &Array1<f64>) -> Result<Array2<f64>> {
         if initial_param.len() != JW_PARAM_LEN {
-            return Err(anyhow!("expected {JW_PARAM_LEN} JW params, got {}", initial_param.len()));
+            return Err(anyhow!(
+                "expected {JW_PARAM_LEN} JW params, got {}",
+                initial_param.len()
+            ));
         }
 
         let base_cost = self.cost(initial_param)?;
@@ -941,8 +923,7 @@ impl SliceFitter {
                     && Self::is_valid_cost(cost_mp)
                     && Self::is_valid_cost(cost_mm)
                 {
-                    let curvature =
-                        (cost_pp - cost_pm - cost_mp + cost_mm) / (4.0 * step_i * step_j);
+                    let curvature = (cost_pp - cost_pm - cost_mp + cost_mm) / (4.0 * step_i * step_j);
                     hessian[[i, j]] = curvature;
                     hessian[[j, i]] = curvature;
                 }
@@ -957,8 +938,11 @@ impl SliceFitter {
             for j in i + 1..JW_PARAM_LEN {
                 let left = hessian[[i, j]];
                 let right = hessian[[j, i]];
-                let value =
-                    if left.is_finite() && right.is_finite() { 0.5 * (left + right) } else { 0.0 };
+                let value = if left.is_finite() && right.is_finite() {
+                    0.5 * (left + right)
+                } else {
+                    0.0
+                };
                 hessian[[i, j]] = value;
                 hessian[[j, i]] = value;
             }
@@ -997,12 +981,9 @@ impl SliceFitter {
             ));
         }
 
-        let matrix =
-            SMatrix::<f64, JW_PARAM_LEN, JW_PARAM_LEN>::from_fn(|row, col| matrix[[row, col]]);
-        let inverse =
-            matrix.try_inverse().ok_or_else(|| anyhow!("numerical Hessian is singular"))?;
-        let inverse =
-            Array2::from_shape_fn((JW_PARAM_LEN, JW_PARAM_LEN), |(row, col)| inverse[(row, col)]);
+        let matrix = SMatrix::<f64, JW_PARAM_LEN, JW_PARAM_LEN>::from_fn(|row, col| matrix[[row, col]]);
+        let inverse = matrix.try_inverse().ok_or_else(|| anyhow!("numerical Hessian is singular"))?;
+        let inverse = Array2::from_shape_fn((JW_PARAM_LEN, JW_PARAM_LEN), |(row, col)| inverse[(row, col)]);
 
         if inverse.iter().all(|v| v.is_finite()) {
             Ok(inverse)
@@ -1078,11 +1059,8 @@ impl SliceFitter {
             .collect();
 
         spreads_by_distance.sort_by(|left, right| left.0.total_cmp(&right.0));
-        let mut closest_spreads: Vec<f64> = spreads_by_distance
-            .into_iter()
-            .take(LIQ_SCORE_COUNT * 2)
-            .map(|(_, spread)| spread)
-            .collect();
+        let mut closest_spreads: Vec<f64> =
+            spreads_by_distance.into_iter().take(LIQ_SCORE_COUNT * 2).map(|(_, spread)| spread).collect();
         closest_spreads.sort_by(|left, right| left.total_cmp(right));
 
         let valid_spread_count = closest_spreads.len();
@@ -1165,8 +1143,7 @@ impl SliceFitter {
         cost += (jwp.psi - self.init_svi.psi).powi(2) * self.cost_cfg.psi_cost;
         cost += (jwp.p - self.init_svi.p).powi(2) * self.cost_cfg.p_cost;
         cost += (jwp.c - self.init_svi.c).powi(2) * self.cost_cfg.c_cost;
-        cost += (jwp.v_diff - self.init_svi.v_diff.min(REG_MAX_V_DIFF)).powi(2)
-            * self.cost_cfg.v_diff_cost;
+        cost += (jwp.v_diff - self.init_svi.v_diff.min(REG_MAX_V_DIFF)).powi(2) * self.cost_cfg.v_diff_cost;
 
         Ok(if cost.is_finite() { cost } else { INVALID_COST })
     }
@@ -1185,7 +1162,11 @@ impl SliceFitter {
             let pos_iv_cond = raw.a + raw.b * raw.sigma * (1.0 - raw.rho.powi(2)).sqrt();
             cost += smooth_pos(-pos_iv_cond, self.cost_cfg.smoothing_eps);
         }
-        Ok(if cost.is_finite() { cost * self.cost_cfg.constraints_cost } else { INVALID_COST })
+        Ok(if cost.is_finite() {
+            cost * self.cost_cfg.constraints_cost
+        } else {
+            INVALID_COST
+        })
     }
     fn arb_cost(&self, raw: &SVIRawParams, verbose: bool) -> Result<f64> {
         if self.cost_cfg.arb_cost == 0.0 {
@@ -1216,7 +1197,11 @@ impl SliceFitter {
                 _ => return Ok(0.0),
             };
 
-            let contract = OptionContract { strike, expiry_sec, is_call: true };
+            let contract = OptionContract {
+                strike,
+                expiry_sec,
+                is_call: true,
+            };
             // note suuuuuper deep otm gets f64 cancellation issues and may be -ve
             let px = (contract.price(raw.fwd, iv) * self.discount).max(0.0);
             let px = if px < ARB_COST_ROUND { 0.0 } else { px };
@@ -1270,15 +1255,22 @@ impl SliceFitter {
 
         let cost = if cost > ARB_COST_ROUND { cost } else { 0.0 };
 
-        Ok(if cost.is_finite() { cost * self.cost_cfg.arb_cost } else { INVALID_COST })
+        Ok(if cost.is_finite() {
+            cost * self.cost_cfg.arb_cost
+        } else {
+            INVALID_COST
+        })
     }
     fn cost_from_fit(&self, p: &JWFit, verbose: bool) -> Result<f64> {
         let jw_new = p.to_svi_jw(self.fwd, self.tau());
         let raw = jw_new.to_raw();
         let bbo_cost = self.bbo_cost(&raw, verbose)?;
         let constraints_cost = self.constraints_cost(&raw, &jw_new)?;
-        let arb_cost =
-            if self.cost_cfg.arb_cost == 0.0 { 0.0 } else { self.arb_cost(&raw, false)? };
+        let arb_cost = if self.cost_cfg.arb_cost == 0.0 {
+            0.0
+        } else {
+            self.arb_cost(&raw, false)?
+        };
         let reg_cost = self.regularization_cost(&jw_new)?;
         if verbose {
             self.log(format!(
@@ -1345,7 +1337,13 @@ mod tests {
         let expiry = (now + Duration::days(30)).timestamp();
         let tau = (expiry - now.timestamp()) as f64 / SEC_PER_YEAR;
 
-        let initial_guess = JWFit { v: 1.5, psi: -0.001, p: 0.51, c: 0.49, v_diff: 0.001 };
+        let initial_guess = JWFit {
+            v: 1.5,
+            psi: -0.001,
+            p: 0.51,
+            c: 0.49,
+            v_diff: 0.001,
+        };
 
         let cost_cfg = default_cost_cfg();
         let now = chrono::Utc::now().timestamp();
@@ -1401,7 +1399,12 @@ mod tests {
         let fitter = SliceFitter::new(cost_cfg, init_svi, expiry, fwd, discount, now)
             .build_contracts(bids, asks, strikes, is_calls);
 
-        MockFitterFixture { fitter, initial_guess, fwd, tau }
+        MockFitterFixture {
+            fitter,
+            initial_guess,
+            fwd,
+            tau,
+        }
     }
 
     fn assert_fit_approx(actual: &JWFit, expected: &JWFit, tol: f64) {
@@ -1418,23 +1421,46 @@ mod tests {
         let empty = HashMap::new();
         assert!(JWFit::get_interpolated_at(&empty, now + 20, now).is_none());
 
-        let fit = JWFit { v: 1.0, psi: -0.1, p: 0.2, c: 0.3, v_diff: 0.4 };
+        let fit = JWFit {
+            v: 1.0,
+            psi: -0.1,
+            p: 0.2,
+            c: 0.3,
+            v_diff: 0.4,
+        };
         let singleton = HashMap::from([(now + 10, fit.clone())]);
-        let interpolated = JWFit::get_interpolated_at(&singleton, now + 20, now)
-            .expect("singleton surface returns only fit");
+        let interpolated =
+            JWFit::get_interpolated_at(&singleton, now + 20, now).expect("singleton surface returns only fit");
         assert_fit_approx(&interpolated, &fit, 1e-12);
     }
 
     #[test]
     fn get_interpolated_uses_total_variance_interpolation() {
         let now = 1_000;
-        let lower = JWFit { v: 1.0, psi: -0.1, p: 0.2, c: 0.3, v_diff: 0.4 };
-        let upper = JWFit { v: 3.0, psi: -0.3, p: 0.6, c: 0.9, v_diff: 1.2 };
+        let lower = JWFit {
+            v: 1.0,
+            psi: -0.1,
+            p: 0.2,
+            c: 0.3,
+            v_diff: 0.4,
+        };
+        let upper = JWFit {
+            v: 3.0,
+            psi: -0.3,
+            p: 0.6,
+            c: 0.9,
+            v_diff: 1.2,
+        };
         let surface = HashMap::from([(now + 10, lower), (now + 30, upper)]);
 
-        let interpolated =
-            JWFit::get_interpolated_at(&surface, now + 20, now).expect("expiry is bracketed");
-        let expected = JWFit { v: 2.5, psi: -0.25, p: 0.5, c: 0.75, v_diff: 1.0 };
+        let interpolated = JWFit::get_interpolated_at(&surface, now + 20, now).expect("expiry is bracketed");
+        let expected = JWFit {
+            v: 2.5,
+            psi: -0.25,
+            p: 0.5,
+            c: 0.75,
+            v_diff: 1.0,
+        };
 
         assert_fit_approx(&interpolated, &expected, 1e-12);
     }
@@ -1442,12 +1468,23 @@ mod tests {
     #[test]
     fn get_interpolated_returns_exact_match_and_none_outside_bounds() {
         let now = 1_000;
-        let lower = JWFit { v: 1.0, psi: -0.1, p: 0.2, c: 0.3, v_diff: 0.4 };
-        let upper = JWFit { v: 3.0, psi: -0.3, p: 0.6, c: 0.9, v_diff: 1.2 };
+        let lower = JWFit {
+            v: 1.0,
+            psi: -0.1,
+            p: 0.2,
+            c: 0.3,
+            v_diff: 0.4,
+        };
+        let upper = JWFit {
+            v: 3.0,
+            psi: -0.3,
+            p: 0.6,
+            c: 0.9,
+            v_diff: 1.2,
+        };
         let surface = HashMap::from([(now + 10, lower.clone()), (now + 30, upper)]);
 
-        let exact = JWFit::get_interpolated_at(&surface, now + 10, now)
-            .expect("exact expiry returns exact fit");
+        let exact = JWFit::get_interpolated_at(&surface, now + 10, now).expect("exact expiry returns exact fit");
         assert_fit_approx(&exact, &lower, 1e-12);
         assert!(JWFit::get_interpolated_at(&surface, now + 5, now).is_none());
         assert!(JWFit::get_interpolated_at(&surface, now + 35, now).is_none());
@@ -1468,19 +1505,28 @@ mod tests {
         let expiry_sec = 30.0 * 24.0 * 60.0 * 60.0;
         let expiry = ref_sec + expiry_sec as i64;
         let tau = expiry_sec / SEC_PER_YEAR;
-        let fit = JWFit { v: 1.5, psi: -0.001, p: 0.51, c: 0.49, v_diff: 0.001 };
+        let fit = JWFit {
+            v: 1.5,
+            psi: -0.001,
+            p: 0.51,
+            c: 0.49,
+            v_diff: 0.001,
+        };
         let init_svi = fit.to_svi_jw(fwd, tau);
         let iv = init_svi.to_raw().get_vol_result(fwd).expect("calculate ATM volatility");
-        let contract = OptionContract { strike: fwd, expiry_sec, is_call: true };
+        let contract = OptionContract {
+            strike: fwd,
+            expiry_sec,
+            is_call: true,
+        };
         let model_price = contract.price(fwd, iv);
         let ask = ask_offset.map_or(f64::MAX, |offset| model_price + offset);
-        let fitter = SliceFitter::new(cost_cfg, init_svi, expiry, fwd, 1.0, ref_sec)
-            .build_contracts(
-                arr1(&[model_price + bid_offset]),
-                arr1(&[ask]),
-                arr1(&[fwd]),
-                Array1::from_elem(1, true),
-            );
+        let fitter = SliceFitter::new(cost_cfg, init_svi, expiry, fwd, 1.0, ref_sec).build_contracts(
+            arr1(&[model_price + bid_offset]),
+            arr1(&[ask]),
+            arr1(&[fwd]),
+            Array1::from_elem(1, true),
+        );
         (fitter, fit)
     }
 
@@ -1506,7 +1552,10 @@ mod tests {
     fn buffer_penalises_fits_resting_on_the_edge_of_a_wide_book() {
         // a wide book's fair value is assumed to sit inside it, so pricing on the bid is no longer free
         let cost_with_buffer = |buffer_bp: f64| {
-            let cost_cfg = JWFitCostConfig { buffer_bp, ..default_cost_cfg() };
+            let cost_cfg = JWFitCostConfig {
+                buffer_bp,
+                ..default_cost_cfg()
+            };
             let (fitter, fit) = atm_call_fitter(cost_cfg, 67.0, 0.0, Some(0.5));
             fitter.bbo_cost_from_fit(&fit, false).expect("calculate BBO cost")
         };
@@ -1562,7 +1611,12 @@ mod tests {
 
     #[test]
     fn test_arb_cost() {
-        let MockFitterFixture { fitter, initial_guess, fwd, tau } = mock_fitter_fixture();
+        let MockFitterFixture {
+            fitter,
+            initial_guess,
+            fwd,
+            tau,
+        } = mock_fitter_fixture();
         let mut raw = initial_guess.to_svi_jw(fwd, tau).to_raw();
         raw.a = -0.0410;
         raw.b = 0.1331;
@@ -1577,11 +1631,9 @@ mod tests {
         let jw = SVIJWParams::from_raw(&raw);
         println!("{:?}", jw);
         let fitter_bfgs = fitter.clone();
-        let (optimized_fit, optimized_cost) =
-            fitter_bfgs.with_init_svi(jw).fit_bfgs(1000).expect("run BFGS");
+        let (optimized_fit, optimized_cost) = fitter_bfgs.with_init_svi(jw).fit_bfgs(1000).expect("run BFGS");
         let optimized_raw = optimized_fit.to_svi_jw(fwd, tau).to_raw();
-        let optimized_arb_cost =
-            fitter.arb_cost(&optimized_raw, true).expect("calculate optimized mock arb cost");
+        let optimized_arb_cost = fitter.arb_cost(&optimized_raw, true).expect("calculate optimized mock arb cost");
         println!("optimized mock JW fit cost: {optimized_cost}");
         println!("optimized JW fit: {optimized_fit:?}");
         println!("optimized mock JW fit arb cost: {optimized_arb_cost}");
@@ -1591,7 +1643,12 @@ mod tests {
 
     #[test]
     fn fit_bfgs_unarbs_with_empty_books() {
-        let MockFitterFixture { mut fitter, initial_guess, fwd, tau } = mock_fitter_fixture();
+        let MockFitterFixture {
+            mut fitter,
+            initial_guess,
+            fwd,
+            tau,
+        } = mock_fitter_fixture();
         let mut raw = initial_guess.to_svi_jw(fwd, tau).to_raw();
         raw.a = -0.0410;
         raw.b = 0.1331;
@@ -1609,13 +1666,11 @@ mod tests {
         assert!(fitter.contracts.is_empty());
 
         let initial_fit = fitter.init_fit();
-        let initial_arb_cost =
-            fitter.arb_cost_from_fit(&initial_fit).expect("calculate initial arb cost");
+        let initial_arb_cost = fitter.arb_cost_from_fit(&initial_fit).expect("calculate initial arb cost");
         assert!(initial_arb_cost > 0.0);
 
         let (optimized_fit, _) = fitter.fit_bfgs(1000).expect("fit empty books");
-        let optimized_arb_cost =
-            fitter.arb_cost_from_fit(&optimized_fit).expect("calculate optimized arb cost");
+        let optimized_arb_cost = fitter.arb_cost_from_fit(&optimized_fit).expect("calculate optimized arb cost");
         assert_eq!(optimized_arb_cost, 0.0);
     }
 
@@ -1652,7 +1707,11 @@ mod tests {
         println!("raw_svi={raw:?}");
         for strike in strikes {
             let iv = raw.get_vol_result(strike).expect("calculate logged XAUT SVI volatility");
-            let contract = OptionContract { strike, expiry_sec, is_call: true };
+            let contract = OptionContract {
+                strike,
+                expiry_sec,
+                is_call: true,
+            };
             let call_price = contract.price(fwd, iv);
             println!(
                 "strike={strike:.15}, iv={iv:.17}, call_price={call_price:.17e}, discounted_call_price={:.17e}",
@@ -1663,7 +1722,12 @@ mod tests {
 
     #[test]
     fn calculate_and_print_mock_cost() {
-        let MockFitterFixture { fitter, initial_guess, fwd, tau } = mock_fitter_fixture();
+        let MockFitterFixture {
+            fitter,
+            initial_guess,
+            fwd,
+            tau,
+        } = mock_fitter_fixture();
 
         let liq = fitter.get_liquidity_score();
         println!("liq={liq:.9} at tau {tau:.9}");
