@@ -75,15 +75,31 @@ fn smooth_pos(x: f64, eps: f64) -> f64 {
     }
 }
 
-/// Pulls each quoted side of a book in by `buffer`, never past the mid. A missing bid (0) stays missing and
-/// acts as a zero floor for the mid; a missing ask (f64::MAX) leaves no mid to cap the bid at.
+/// Caps a quote's buffer relative to its price, so min-tick bids on cheap wings can't lift their
+/// fair value.
+const MAX_BUFFER_PX_FRAC: f64 = 0.1;
+
+/// Pulls each quoted side of a book in by `buffer` (at most `MAX_BUFFER_PX_FRAC` of that quote),
+/// never past the mid of a two-sided book. Missing sides (bid 0, ask f64::MAX) stay missing.
 fn buffered_bbo(bid: f64, ask: f64, buffer: f64) -> (f64, f64) {
     let has_bid = bid > 0.0;
     let has_ask = ask < f64::MAX;
-    let mid = if has_ask { 0.5 * (bid.max(0.0) + ask) } else { f64::MAX };
-    let bid = if has_bid { (bid + buffer).min(mid) } else { bid };
-    let ask = if has_ask { (ask - buffer).max(mid) } else { ask };
-    (bid, ask)
+    let pulled_bid = if has_bid {
+        bid + buffer.min(MAX_BUFFER_PX_FRAC * bid)
+    } else {
+        bid
+    };
+    let pulled_ask = if has_ask {
+        ask - buffer.min(MAX_BUFFER_PX_FRAC * ask)
+    } else {
+        ask
+    };
+    if has_bid && has_ask {
+        let mid = 0.5 * (bid + ask);
+        (pulled_bid.min(mid), pulled_ask.max(mid))
+    } else {
+        (pulled_bid, pulled_ask)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1580,9 +1596,17 @@ mod tests {
         let (bid, ask) = buffered_bbo(1.0, f64::MAX, 0.05);
         assert_close(bid, 1.05);
         assert_eq!(ask, f64::MAX);
-        // an ask smaller than the buffer stops at the mid against a zero bid instead of going negative
+    }
+
+    #[test]
+    fn buffered_bbo_caps_buffer_at_a_tenth_of_the_quote() {
+        // a min-tick bid under a far ask must not lift a cheap wing's fair value by more than 10%
+        let (bid, ask) = buffered_bbo(0.01, 0.40, 0.008);
+        assert_close(bid, 0.011);
+        assert_close(ask, 0.392);
+        // and a cheap lone ask can't be pulled to zero or below
         let (_, ask) = buffered_bbo(0.0, 0.004, 0.008);
-        assert_close(ask, 0.002);
+        assert_close(ask, 0.0036);
     }
 
     #[test]
