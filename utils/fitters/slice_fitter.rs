@@ -75,6 +75,17 @@ fn smooth_pos(x: f64, eps: f64) -> f64 {
     }
 }
 
+/// Pulls each quoted side of a book in by `buffer`, never past the mid. A missing bid (0) stays missing and
+/// acts as a zero floor for the mid; a missing ask (f64::MAX) leaves no mid to cap the bid at.
+fn buffered_bbo(bid: f64, ask: f64, buffer: f64) -> (f64, f64) {
+    let has_bid = bid > 0.0;
+    let has_ask = ask < f64::MAX;
+    let mid = if has_ask { 0.5 * (bid.max(0.0) + ask) } else { f64::MAX };
+    let bid = if has_bid { (bid + buffer).min(mid) } else { bid };
+    let ask = if has_ask { (ask - buffer).max(mid) } else { ask };
+    (bid, ask)
+}
+
 #[derive(Clone, Debug)]
 pub struct JWFit {
     pub v: f64,
@@ -92,6 +103,8 @@ pub struct JWFitCostConfig {
     pub c_cost: f64,
     pub v_diff_cost: f64,
     pub bbo_cost: f64,
+    /// bp of the slice forward that the bid and ask are each pulled in by before scoring a fit against them.
+    pub buffer_bp: f64,
     pub constraints_cost: f64,
     pub arb_cost: f64,
     pub smoothing_eps: f64,
@@ -105,6 +118,7 @@ pub fn default_cost_cfg() -> JWFitCostConfig {
         c_cost: 100.0,
         v_diff_cost: 10_000.0,
         bbo_cost: 10_000.0,
+        buffer_bp: 1.0,
         constraints_cost: 10_000_000.0,
         arb_cost: 100.0,
         smoothing_eps: 1e-8,
@@ -1068,6 +1082,7 @@ impl SliceFitter {
             return Err(anyhow!("SVI raw params contain non-finite values"));
         }
 
+        let buffer = self.cost_cfg.buffer_bp * 1e-4 * self.fwd;
         let mut residuals = Vec::with_capacity(self.contracts.len());
         for (i, c) in self.contracts.iter().enumerate() {
             let iv = match raw.get_vol_result(c.strike) {
@@ -1085,8 +1100,9 @@ impl SliceFitter {
             if !px.is_finite() {
                 return Err(anyhow!("BBO residual price is not finite"));
             }
-            let bid_resid = smooth_pos(self.bids[i] - px, self.cost_cfg.smoothing_eps);
-            let ask_resid = smooth_pos(px - self.asks[i], self.cost_cfg.smoothing_eps);
+            let (bid, ask) = buffered_bbo(self.bids[i], self.asks[i], buffer);
+            let bid_resid = smooth_pos(bid - px, self.cost_cfg.smoothing_eps);
+            let ask_resid = smooth_pos(px - ask, self.cost_cfg.smoothing_eps);
             let relative_resid = (bid_resid + ask_resid) / self.fwd;
             let residual_cost = relative_resid.powi(2) * self.cost_cfg.bbo_cost;
             if !residual_cost.is_finite() {
@@ -1095,9 +1111,10 @@ impl SliceFitter {
             residuals.push(residual_cost);
             if verbose && (bid_resid > 0.0 || ask_resid > 0.0) {
                 let ask_f = if self.asks[i] == f64::MAX { 0.0 } else { self.asks[i] };
+                let buffered_ask_f = if ask == f64::MAX { 0.0 } else { ask };
                 self.log(format!(
-                    "INFO bbo_residual_costs strike={}, bid={}, ask={}, price={}, bid_resid={}, ask_resid={}, residual_cost={}",
-                    c.strike, self.bids[i], ask_f, px, bid_resid, ask_resid, residual_cost
+                    "INFO bbo_residual_costs strike={}, bid={}, ask={}, buffered_bid={}, buffered_ask={}, price={}, bid_resid={}, ask_resid={}, residual_cost={}",
+                    c.strike, self.bids[i], ask_f, bid, buffered_ask_f, px, bid_resid, ask_resid, residual_cost
                 ));
             }
         }
@@ -1457,47 +1474,115 @@ mod tests {
         assert!(JWFit::get_interpolated_at(&surface, now + 35, now).is_none());
     }
 
+    fn assert_close(actual: f64, expected: f64) {
+        assert!((actual - expected).abs() < 1e-12, "expected {expected}, got {actual}");
+    }
+
+    /// One ATM call quoted at its model price plus `bid_offset` / `ask_offset` (no ask when `None`).
+    fn atm_call_fitter(
+        cost_cfg: JWFitCostConfig,
+        fwd: f64,
+        bid_offset: f64,
+        ask_offset: Option<f64>,
+    ) -> (SliceFitter, JWFit) {
+        let ref_sec = 1_000_000;
+        let expiry_sec = 30.0 * 24.0 * 60.0 * 60.0;
+        let expiry = ref_sec + expiry_sec as i64;
+        let tau = expiry_sec / SEC_PER_YEAR;
+        let fit = JWFit {
+            v: 1.5,
+            psi: -0.001,
+            p: 0.51,
+            c: 0.49,
+            v_diff: 0.001,
+        };
+        let init_svi = fit.to_svi_jw(fwd, tau);
+        let iv = init_svi.to_raw().get_vol_result(fwd).expect("calculate ATM volatility");
+        let contract = OptionContract {
+            strike: fwd,
+            expiry_sec,
+            is_call: true,
+        };
+        let model_price = contract.price(fwd, iv);
+        let ask = ask_offset.map_or(f64::MAX, |offset| model_price + offset);
+        let fitter = SliceFitter::new(cost_cfg, init_svi, expiry, fwd, 1.0, ref_sec).build_contracts(
+            arr1(&[model_price + bid_offset]),
+            arr1(&[ask]),
+            arr1(&[fwd]),
+            Array1::from_elem(1, true),
+        );
+        (fitter, fit)
+    }
+
     #[test]
     fn bbo_cost_is_invariant_to_forward_price_scale() {
-        fn cost_for_forward(fwd: f64) -> f64 {
-            let ref_sec = 1_000_000;
-            let expiry_sec = 30.0 * 24.0 * 60.0 * 60.0;
-            let expiry = ref_sec + expiry_sec as i64;
-            let tau = expiry_sec / SEC_PER_YEAR;
-            let strike = fwd;
-            let fit = JWFit {
-                v: 1.5,
-                psi: -0.001,
-                p: 0.51,
-                c: 0.49,
-                v_diff: 0.001,
-            };
-            let init_svi = fit.to_svi_jw(fwd, tau);
-            let raw = init_svi.to_raw();
-            let contract = OptionContract {
-                strike,
-                expiry_sec,
-                is_call: true,
-            };
-            let iv = raw.get_vol_result(strike).expect("calculate ATM volatility");
-            let model_price = contract.price(fwd, iv);
-            let bid = model_price + 0.01 * fwd;
-            let fitter = SliceFitter::new(default_cost_cfg(), init_svi, expiry, fwd, 1.0, ref_sec).build_contracts(
-                arr1(&[bid]),
-                arr1(&[f64::MAX]),
-                arr1(&[strike]),
-                Array1::from_elem(1, true),
-            );
-
+        let cost_for_forward = |fwd: f64| {
+            let (fitter, fit) = atm_call_fitter(default_cost_cfg(), fwd, 0.01 * fwd, None);
             fitter.bbo_cost_from_fit(&fit, false).expect("calculate BBO cost")
-        }
+        };
 
+        // the bid sits 1% of fwd above the model, and the buffer is a fraction of fwd as well
+        let cfg = default_cost_cfg();
+        let expected = (0.01 + cfg.buffer_bp * 1e-4).powi(2) * cfg.bbo_cost;
         let low_forward_cost = cost_for_forward(2_000.0);
         let high_forward_cost = cost_for_forward(60_000.0);
 
-        assert!((low_forward_cost - 1.0).abs() < 1e-10);
-        assert!((high_forward_cost - 1.0).abs() < 1e-10);
+        assert!((low_forward_cost - expected).abs() < 1e-10);
+        assert!((high_forward_cost - expected).abs() < 1e-10);
         assert!((low_forward_cost - high_forward_cost).abs() < 1e-10);
+    }
+
+    #[test]
+    fn buffer_penalises_fits_resting_on_the_edge_of_a_wide_book() {
+        // a wide book's fair value is assumed to sit inside it, so pricing on the bid is no longer free
+        let cost_with_buffer = |buffer_bp: f64| {
+            let cost_cfg = JWFitCostConfig {
+                buffer_bp,
+                ..default_cost_cfg()
+            };
+            let (fitter, fit) = atm_call_fitter(cost_cfg, 67.0, 0.0, Some(0.5));
+            fitter.bbo_cost_from_fit(&fit, false).expect("calculate BBO cost")
+        };
+
+        assert_eq!(cost_with_buffer(0.0), 0.0);
+        // n bp of fwd below the buffered bid costs (n * 1e-4)^2 * bbo_cost
+        let bbo_cost = default_cost_cfg().bbo_cost;
+        assert!((cost_with_buffer(1.0) - 1e-8 * bbo_cost).abs() < 1e-10);
+        assert!((cost_with_buffer(5.0) - 25e-8 * bbo_cost).abs() < 1e-10);
+    }
+
+    #[test]
+    fn buffered_bbo_pulls_wide_quotes_inside() {
+        let (bid, ask) = buffered_bbo(1.0, 1.5, 0.05);
+        assert_close(bid, 1.05);
+        assert_close(ask, 1.45);
+    }
+
+    #[test]
+    fn buffered_bbo_never_moves_past_mid() {
+        // a book tighter than twice the buffer collapses to its mid rather than inverting
+        let (bid, ask) = buffered_bbo(1.0, 1.04, 0.05);
+        assert_close(bid, 1.02);
+        assert_close(ask, 1.02);
+        // so does a crossed book
+        let (bid, ask) = buffered_bbo(1.1, 1.0, 0.05);
+        assert_close(bid, 1.05);
+        assert_close(ask, 1.05);
+    }
+
+    #[test]
+    fn buffered_bbo_keeps_missing_sides_missing() {
+        // an invented bid would push cheap far-OTM fits up towards the buffer
+        let (bid, ask) = buffered_bbo(0.0, 1.5, 0.05);
+        assert_eq!(bid, 0.0);
+        assert_close(ask, 1.45);
+        // with no ask there is no mid, so the bid takes the full buffer
+        let (bid, ask) = buffered_bbo(1.0, f64::MAX, 0.05);
+        assert_close(bid, 1.05);
+        assert_eq!(ask, f64::MAX);
+        // an ask smaller than the buffer stops at the mid against a zero bid instead of going negative
+        let (_, ask) = buffered_bbo(0.0, 0.004, 0.008);
+        assert_close(ask, 0.002);
     }
 
     #[test]
