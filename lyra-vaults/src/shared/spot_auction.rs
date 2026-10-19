@@ -7,6 +7,8 @@ use lyra_client::actions::Direction;
 use lyra_utils::black76::OptionContract;
 use orderbook_types::types::tickers::OptionType;
 use std::cmp::Ordering;
+
+#[async_trait::async_trait]
 impl OrderStrategy for SpotAuctionParams {
     async fn get_desired_price(&self, auction: &LimitOrderAuction) -> Result<BigDecimal> {
         let market = &auction.market;

@@ -77,14 +77,35 @@ pub async fn get_provider_with_signer(
     Ok(Arc::new(provider))
 }
 
+/// Returns the vault's TSA address, or None if the vault is not backed by a TSA contract.
+/// Vaults without a TSA sign their actions with a session key via the regular API flow.
+pub fn maybe_tsa_address(vault_name: &str) -> Option<String> {
+    match std::env::var(format!("{vault_name}_TSA_ADDRESS")) {
+        Ok(address) if !address.trim().is_empty() => Some(address),
+        _ => None,
+    }
+}
+
 pub async fn get_tsa_contract(
     vault_name: &str,
     signer_name: &str,
 ) -> anyhow::Result<TSA<ProviderWithSigner>> {
     let provider = get_provider_with_signer(&signer_name).await?;
-    let tsa_address: Address =
-        std::env::var(format!("{vault_name}_TSA_ADDRESS")).unwrap().parse()?;
+    let tsa_address: Address = maybe_tsa_address(vault_name)
+        .ok_or(Error::msg(format!("{vault_name}_TSA_ADDRESS is not set")))?
+        .parse()?;
     Ok(TSA::new(tsa_address, provider.clone()))
+}
+
+/// Same as [get_tsa_contract] but returns None instead of erroring for vaults without a TSA.
+pub async fn maybe_get_tsa_contract(
+    vault_name: &str,
+    signer_name: &str,
+) -> anyhow::Result<Option<TSA<ProviderWithSigner>>> {
+    match maybe_tsa_address(vault_name) {
+        Some(_) => Ok(Some(get_tsa_contract(vault_name, signer_name).await?)),
+        None => Ok(None),
+    }
 }
 
 pub const GAS_PRICE: u64 = 200000;

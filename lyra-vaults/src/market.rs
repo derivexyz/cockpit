@@ -93,8 +93,17 @@ impl MarketData {
     pub fn iter_tickers(&self) -> impl Iterator<Item = &InstrumentTicker> {
         self.tickers.values()
     }
+    /// Tickers that are still being updated, i.e. excluding any instrument whose feed went stale.
+    /// Prefer this over [Self::iter_tickers] whenever the values (e.g. greeks) drive a decision.
+    pub fn iter_fresh_tickers(&self) -> impl Iterator<Item = &InstrumentTicker> {
+        let now = chrono::Utc::now().timestamp_millis();
+        self.tickers.values().filter(move |t| now - t.timestamp <= STALENESS_MS)
+    }
     pub fn insert_instrument(&mut self, instrument: InstrumentData) {
         self.instruments.insert(instrument.instrument_name.clone(), instrument);
+    }
+    pub fn iter_instruments(&self) -> impl Iterator<Item = &InstrumentData> {
+        self.instruments.values()
     }
     pub fn insert_instruments(&mut self, instruments: Vec<InstrumentData>) {
         for instrument in instruments {
@@ -109,6 +118,10 @@ impl MarketData {
     }
     pub fn insert_position(&mut self, position: Balance) {
         self.positions.insert(position.instrument_name.clone(), position);
+    }
+    pub fn clear_subaccount(&mut self) {
+        self.positions.clear();
+        self.orders.clear();
     }
     pub fn iter_positions(&self) -> impl Iterator<Item = &Balance> {
         self.positions.values()

@@ -60,6 +60,7 @@ impl LongPPParams {
 /// - Generalize the amount selector to support PP with interest and Covered where # == LRT balance
 /// - For short spreads, make sure the unit cost logic goes down in price with time
 
+#[async_trait::async_trait]
 impl RFQStrategy for OptionRFQParams {
     async fn get_desired_unit_cost(
         &self,

@@ -3,11 +3,11 @@ use crate::helpers::{
     sync_subaccount, TickerInterval,
 };
 use crate::market::{new_market_state, MarketState};
-use crate::web3::{get_tsa_contract, sign_execute_quote, sign_order, ProviderWithSigner, TSA};
+use crate::web3::signer::VaultSigner;
 use anyhow::{Error, Result};
+use async_trait::async_trait;
 use bigdecimal::{BigDecimal, Zero};
 use core::fmt;
-use ethers::prelude::Middleware;
 use log::{error, info, warn};
 use lyra_client::actions::rfq::{LegUnpriced, QuoteResultPublic};
 use lyra_client::json_rpc::{Response, WsClient, WsClientExt};
@@ -36,7 +36,8 @@ use tokio::sync::Mutex;
 const POLL_INTERVAL_MS: u64 = 500;
 const BASE_FREEZE_SEC: i64 = 4;
 
-pub trait RFQStrategy {
+#[async_trait]
+pub trait RFQStrategy: Send + Sync {
     /// Implement specific pricing logic for specific spreads (e.g. for long calls spreads, etc.)
     async fn get_desired_unit_cost(
         &self,
@@ -112,7 +113,7 @@ pub struct RFQAuction {
     pub subaccount_id: i64,
     pub market: MarketState,
     pub client: WsClient,
-    pub tsa: TSA<ProviderWithSigner>,
+    pub signer: VaultSigner,
     pub start_timestamp_sec: i64,
     pub lots: Arc<Mutex<Vec<RFQLot>>>,
 
@@ -138,12 +139,12 @@ impl RFQAuction {
         let client = WsClient::new_client().await?;
         client.login().await?;
         client.enable_cancel_on_disconnect().await?;
-        let tsa = get_tsa_contract(&vault_name, "SESSION").await?;
+        let signer = VaultSigner::new(&vault_name).await?;
         Ok(Self {
             subaccount_id,
             market,
             client,
-            tsa,
+            signer,
             start_timestamp_sec,
             lots: Arc::new(Mutex::new(vec![])),
             unit_legs,
@@ -312,12 +313,10 @@ impl<S: RFQStrategy + Debug> RFQAuctionExecutor<S> {
             info!("RFQ best quote cost too high. Cost: {}", best_cost);
             Ok(None)
         } else {
-            let provider = self.auction.tsa.client();
-            let signer = provider.inner().signer();
             let reader = self.auction.market.read().await;
             let tickers = reader.get_tickers();
-            let action_data = sign_execute_quote(&self.auction.tsa, &tickers, &best_quote).await?;
-            let execute_params = action_data.to_execute_params(&signer, tickers, best_quote)?;
+            let execute_params =
+                self.auction.signer.execute_quote_params(tickers, best_quote).await?;
             let send_resp = self
                 .auction
                 .client
