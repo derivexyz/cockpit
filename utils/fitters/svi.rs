@@ -1,5 +1,5 @@
 use anyhow::Result;
-use serde::{de, Deserialize, Deserializer};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 fn bool_true() -> bool {
@@ -53,7 +53,7 @@ impl SVIRawParams {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SVIJWParams {
     pub v: f64,
     pub psi: f64,
