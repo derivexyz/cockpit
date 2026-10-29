@@ -8,27 +8,39 @@ const SLICE_FIT_MAX_ITERS: u64 = 500;
 
 pub struct SurfaceFitter {
     ref_sec: i64,
-    forwards: HashMap<i64, f64>,     // expiry (sec) -> forward price
-    disc_factors: HashMap<i64, f64>, // expiry (sec) -> discount factor applied to option prices
-    cost_cfg: JWFitCostConfig,
+    forwards: HashMap<i64, f64>,              // expiry (sec) -> forward price
+    disc_factors: HashMap<i64, f64>,          // expiry (sec) -> discount factor applied to option prices
+    cost_cfgs: HashMap<i64, JWFitCostConfig>, // expiry (sec) -> cost config its slice is fitted with
     slice_fitters: HashMap<i64, SliceFitter>, // expiry (sec) -> slice fitter
     calibration_log: CalibrationLog,
 }
 
 impl SurfaceFitter {
     /// `ref_sec` is the reference the slices measure tau from; `forwards` and `disc_factors`
-    /// must be struck off that same reference.
+    /// must be struck off that same reference. Every slice is fitted with `cost_cfg`.
     pub fn new(
         ref_sec: i64,
         forwards: HashMap<i64, f64>,
         disc_factors: HashMap<i64, f64>,
         cost_cfg: JWFitCostConfig,
     ) -> Self {
+        let cost_cfgs = forwards.keys().map(|&expiry| (expiry, cost_cfg.clone())).collect();
+        Self::new_with_cfgs(ref_sec, forwards, disc_factors, cost_cfgs)
+    }
+
+    /// As [`SurfaceFitter::new`], with a cost config per expiry (sec), e.g. to weigh the
+    /// parameter pulls by time to expiry.
+    pub fn new_with_cfgs(
+        ref_sec: i64,
+        forwards: HashMap<i64, f64>,
+        disc_factors: HashMap<i64, f64>,
+        cost_cfgs: HashMap<i64, JWFitCostConfig>,
+    ) -> Self {
         Self {
             ref_sec,
             forwards,
             disc_factors,
-            cost_cfg,
+            cost_cfgs,
             slice_fitters: HashMap::new(),
             calibration_log: CalibrationLog::new(),
         }
@@ -102,8 +114,8 @@ impl SurfaceFitter {
             let slice_strikes = Array1::from_iter(indices.iter().map(|&idx| strikes[idx]));
             let slice_is_calls = Array1::from_iter(indices.iter().map(|&idx| is_calls[idx]));
 
-            let mut slice_fitter =
-                SliceFitter::new(self.cost_cfg.clone(), init_svi, expiry, fwd, discount, self.ref_sec);
+            let cost_cfg = self.cost_cfgs[&expiry].clone();
+            let mut slice_fitter = SliceFitter::new(cost_cfg, init_svi, expiry, fwd, discount, self.ref_sec);
             slice_fitter = slice_fitter.with_calibration_log(self.calibration_log.clone());
             let slice_fitter = slice_fitter.build_contracts(slice_bids, slice_asks, slice_strikes, slice_is_calls);
             self.slice_fitters.insert(expiry, slice_fitter);
@@ -112,8 +124,8 @@ impl SurfaceFitter {
         Ok(self)
     }
 
-    /// Every quoted expiry needs a forward, a discount factor and an init SVI. Extra entries in
-    /// those maps are ignored; missing ones are a caller bug, reported all at once.
+    /// Every quoted expiry needs a forward, a discount factor, a cost config and an init SVI.
+    /// Extra entries in those maps are ignored; missing ones are a caller bug, reported all at once.
     fn check_expiries_covered(&self, quoted: &[i64], init_svis: &HashMap<i64, SVIJWParams>) -> Result<()> {
         fn missing(quoted: &[i64], present: impl Fn(i64) -> bool) -> Vec<i64> {
             let mut absent: Vec<i64> = quoted.iter().copied().filter(|expiry| !present(*expiry)).collect();
@@ -126,6 +138,10 @@ impl SurfaceFitter {
             (
                 "discount factor",
                 missing(quoted, |expiry| self.disc_factors.contains_key(&expiry)),
+            ),
+            (
+                "cost config",
+                missing(quoted, |expiry| self.cost_cfgs.contains_key(&expiry)),
             ),
             ("init SVI", missing(quoted, |expiry| init_svis.contains_key(&expiry))),
         ]
