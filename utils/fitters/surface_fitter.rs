@@ -8,27 +8,39 @@ const SLICE_FIT_MAX_ITERS: u64 = 500;
 
 pub struct SurfaceFitter {
     ref_sec: i64,
-    forwards: HashMap<i64, f64>,     // expiry (sec) -> forward price
-    disc_factors: HashMap<i64, f64>, // expiry (sec) -> discount factor applied to option prices
-    cost_cfg: JWFitCostConfig,
+    forwards: HashMap<i64, f64>,              // expiry (sec) -> forward price
+    disc_factors: HashMap<i64, f64>,          // expiry (sec) -> discount factor applied to option prices
+    cost_cfgs: HashMap<i64, JWFitCostConfig>, // expiry (sec) -> cost config its slice is fitted with
     slice_fitters: HashMap<i64, SliceFitter>, // expiry (sec) -> slice fitter
     calibration_log: CalibrationLog,
 }
 
 impl SurfaceFitter {
     /// `ref_sec` is the reference the slices measure tau from; `forwards` and `disc_factors`
-    /// must be struck off that same reference.
+    /// must be struck off that same reference. Every slice is fitted with `cost_cfg`.
     pub fn new(
         ref_sec: i64,
         forwards: HashMap<i64, f64>,
         disc_factors: HashMap<i64, f64>,
         cost_cfg: JWFitCostConfig,
     ) -> Self {
+        let cost_cfgs = forwards.keys().map(|&expiry| (expiry, cost_cfg.clone())).collect();
+        Self::new_with_cfgs(ref_sec, forwards, disc_factors, cost_cfgs)
+    }
+
+    /// As [`SurfaceFitter::new`], with a cost config per expiry (sec), e.g. to weigh the
+    /// parameter pulls by time to expiry.
+    pub fn new_with_cfgs(
+        ref_sec: i64,
+        forwards: HashMap<i64, f64>,
+        disc_factors: HashMap<i64, f64>,
+        cost_cfgs: HashMap<i64, JWFitCostConfig>,
+    ) -> Self {
         Self {
             ref_sec,
             forwards,
             disc_factors,
-            cost_cfg,
+            cost_cfgs,
             slice_fitters: HashMap::new(),
             calibration_log: CalibrationLog::new(),
         }
@@ -102,8 +114,8 @@ impl SurfaceFitter {
             let slice_strikes = Array1::from_iter(indices.iter().map(|&idx| strikes[idx]));
             let slice_is_calls = Array1::from_iter(indices.iter().map(|&idx| is_calls[idx]));
 
-            let mut slice_fitter =
-                SliceFitter::new(self.cost_cfg.clone(), init_svi, expiry, fwd, discount, self.ref_sec);
+            let cost_cfg = self.cost_cfgs[&expiry].clone();
+            let mut slice_fitter = SliceFitter::new(cost_cfg, init_svi, expiry, fwd, discount, self.ref_sec);
             slice_fitter = slice_fitter.with_calibration_log(self.calibration_log.clone());
             let slice_fitter = slice_fitter.build_contracts(slice_bids, slice_asks, slice_strikes, slice_is_calls);
             self.slice_fitters.insert(expiry, slice_fitter);
@@ -112,8 +124,8 @@ impl SurfaceFitter {
         Ok(self)
     }
 
-    /// Every quoted expiry needs a forward, a discount factor and an init SVI. Extra entries in
-    /// those maps are ignored; missing ones are a caller bug, reported all at once.
+    /// Every quoted expiry needs a forward, a discount factor, a cost config and an init SVI.
+    /// Extra entries in those maps are ignored; missing ones are a caller bug, reported all at once.
     fn check_expiries_covered(&self, quoted: &[i64], init_svis: &HashMap<i64, SVIJWParams>) -> Result<()> {
         fn missing(quoted: &[i64], present: impl Fn(i64) -> bool) -> Vec<i64> {
             let mut absent: Vec<i64> = quoted.iter().copied().filter(|expiry| !present(*expiry)).collect();
@@ -126,6 +138,10 @@ impl SurfaceFitter {
             (
                 "discount factor",
                 missing(quoted, |expiry| self.disc_factors.contains_key(&expiry)),
+            ),
+            (
+                "cost config",
+                missing(quoted, |expiry| self.cost_cfgs.contains_key(&expiry)),
             ),
             ("init SVI", missing(quoted, |expiry| init_svis.contains_key(&expiry))),
         ]
@@ -194,5 +210,115 @@ impl SurfaceFitter {
         }
 
         Ok(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::black76::OptionContract;
+    use crate::fitters::slice_fitter::{default_cost_cfg, JWFit};
+    use crate::SEC_PER_YEAR;
+
+    const REF_SEC: i64 = 1_000_000;
+    const FWD: f64 = 67.0;
+    const DAY: i64 = 24 * 60 * 60;
+
+    fn tau(expiry: i64) -> f64 {
+        (expiry - REF_SEC) as f64 / SEC_PER_YEAR
+    }
+
+    fn init_svi(expiry: i64) -> SVIJWParams {
+        JWFit {
+            v: 1.5,
+            psi: -0.001,
+            p: 0.51,
+            c: 0.49,
+            v_diff: 0.001,
+        }
+        .to_svi_jw(FWD, tau(expiry))
+    }
+
+    fn fitter(expiries: &[i64], cost_cfgs: Option<HashMap<i64, JWFitCostConfig>>) -> SurfaceFitter {
+        let forwards = expiries.iter().map(|&expiry| (expiry, FWD)).collect();
+        let disc_factors = expiries.iter().map(|&expiry| (expiry, 1.0)).collect();
+        match cost_cfgs {
+            Some(cost_cfgs) => SurfaceFitter::new_with_cfgs(REF_SEC, forwards, disc_factors, cost_cfgs),
+            None => SurfaceFitter::new(REF_SEC, forwards, disc_factors, default_cost_cfg()),
+        }
+    }
+
+    /// One ATM call per expiry, bid 1% of the forward above its init smile's price, so a fit
+    /// has to leave the init to get inside the book.
+    fn build(fitter: SurfaceFitter, expiries: &[i64]) -> Result<SurfaceFitter> {
+        let init_svis: HashMap<i64, SVIJWParams> = expiries.iter().map(|&expiry| (expiry, init_svi(expiry))).collect();
+        let bids = expiries
+            .iter()
+            .map(|expiry| {
+                let iv = init_svis[expiry].to_raw().get_vol_result(FWD).expect("ATM vol");
+                let contract = OptionContract {
+                    strike: FWD,
+                    expiry_sec: (expiry - REF_SEC) as f64,
+                    is_call: true,
+                };
+                contract.price(FWD, iv) + 0.01 * FWD
+            })
+            .collect();
+        let n = expiries.len();
+        fitter.build_slices(
+            init_svis,
+            Array1::from_vec(bids),
+            Array1::from_elem(n, f64::MAX),
+            Array1::from_elem(n, FWD),
+            Array1::from(expiries.to_vec()),
+            Array1::from_elem(n, true),
+        )
+    }
+
+    /// The point of per-expiry configs: weaker parameter pulls on one slice let the book move
+    /// that slice, and only that one.
+    #[test]
+    fn each_slice_is_fitted_with_its_own_cost_config() -> Result<()> {
+        let (held, free) = (REF_SEC + 30 * DAY, REF_SEC + 31 * DAY);
+        let mut weak_pulls = default_cost_cfg();
+        for pull in [
+            &mut weak_pulls.v_cost,
+            &mut weak_pulls.psi_cost,
+            &mut weak_pulls.p_cost,
+            &mut weak_pulls.c_cost,
+            &mut weak_pulls.v_diff_cost,
+        ] {
+            *pull *= 1e-6;
+        }
+        let cost_cfgs = HashMap::from([(held, default_cost_cfg()), (free, weak_pulls)]);
+        let fitted = build(fitter(&[held, free], Some(cost_cfgs)), &[held, free])?.fit_slices()?;
+
+        let bbo_cost = |expiry: i64| {
+            let slice = &fitted.slices()[&expiry];
+            slice.bbo_cost_from_fit(&slice.init_fit(), false).expect("bbo cost")
+        };
+        assert!(
+            bbo_cost(free) < 0.01 * bbo_cost(held),
+            "weak pulls fit the book, default ones hold the init: {} vs {}",
+            bbo_cost(free),
+            bbo_cost(held)
+        );
+        Ok(())
+    }
+
+    /// `new` keeps every existing caller working: one config covers every forward's expiry.
+    #[test]
+    fn a_quoted_expiry_needs_a_cost_config() {
+        let (covered, uncovered) = (REF_SEC + 30 * DAY, REF_SEC + 31 * DAY);
+        assert!(build(fitter(&[covered, uncovered], None), &[covered, uncovered]).is_ok());
+
+        let cost_cfgs = HashMap::from([(covered, default_cost_cfg())]);
+        let error = build(fitter(&[covered, uncovered], Some(cost_cfgs)), &[covered, uncovered])
+            .err()
+            .expect("an expiry without a cost config is a caller bug");
+        assert!(
+            error.to_string().contains(&format!("cost config missing for expiries [{uncovered}]")),
+            "{error}"
+        );
     }
 }
