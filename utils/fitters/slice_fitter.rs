@@ -1,3 +1,4 @@
+use crate::black76::OptionContract;
 use crate::fitters::svi::{SVIJWParams, SVIRawParams};
 use crate::SEC_PER_YEAR;
 use anyhow::{anyhow, bail, Result};
@@ -7,7 +8,6 @@ use argmin::core::{
 };
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::BFGS;
-use crate::black76::OptionContract;
 use nalgebra::SMatrix;
 use ndarray::{arr1, Array1, Array2};
 use std::collections::HashMap;
@@ -15,6 +15,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 const JW_PARAM_LEN: usize = 5;
+const BOUND_MARGIN: f64 = 1e-9;
 const FINITE_DIFF_STEP: f64 = 1e-5;
 const INITIAL_HESSIAN_STEP: f64 = 1e-3;
 const INVALID_COST: f64 = 1e50;
@@ -26,7 +27,14 @@ const INV_HESSIAN_ATTEMPT_COUNT: usize = 4;
 /// start asserting on a cost of exactly zero.
 const ARB_COST_ROUND: f64 = 1e-5;
 pub const LIQ_SCORE_COUNT: usize = 8;
-const REG_MAX_V_DIFF: f64 = 0.05;
+/// Two-sided quotes nearest the forward that a bootstrap reads the at-the-money level and skew off.
+const BOOTSTRAP_ATM_QUOTES: usize = 5;
+/// The quotes say little about the curvature at the money, so a bootstrap starts from each of these
+/// v_diff shares of v.
+const BOOTSTRAP_V_DIFF_SHARES: [f64; 3] = [0.01, 0.1, 0.4];
+/// Bootstrap starts hold p, c and the v_diff share at least this share of their band in from both ends:
+/// a start read off the quotes can land on an end, where the fit could not move it.
+const BOOTSTRAP_EDGE_MARGIN: f64 = 0.01;
 
 #[derive(Clone, Default)]
 pub struct CalibrationLog {
@@ -124,6 +132,22 @@ pub struct JWFitCostConfig {
     pub constraints_cost: f64,
     pub arb_cost: f64,
     pub smoothing_eps: f64,
+    /// Caps on the put and call wing slopes: p is fitted in (0, p_max) and c in (0, c_max), so a wing
+    /// the quotes do not pin stops short of the cap instead of running away.
+    pub p_max: f64,
+    pub c_max: f64,
+    /// v_diff is fitted as a share of v within this band: below it the smile kinks at the money, and at 1
+    /// its minimum variance reaches zero.
+    pub v_diff_min_share: f64,
+    pub v_diff_max_share: f64,
+    /// The v_diff pull's target is the init's v_diff, capped at this share of the init's v; 1 leaves it
+    /// uncapped.
+    pub v_diff_pull_max_share: f64,
+    /// A fit starts from its init with p, c and the v_diff share of v held this share of their band (at
+    /// most half) below their caps, where it could not move them back down; 0 starts from the init as
+    /// given. The init, its pull targets and the stored fits are never clipped. Near the floors the
+    /// fitted coordinates move like logs, so the floors need no margin.
+    pub init_edge_margin: f64,
 }
 
 pub fn default_cost_cfg() -> JWFitCostConfig {
@@ -138,7 +162,63 @@ pub fn default_cost_cfg() -> JWFitCostConfig {
         constraints_cost: 10_000_000.0,
         arb_cost: 100.0,
         smoothing_eps: 1e-8,
+        p_max: 12.0,
+        c_max: 5.0,
+        v_diff_min_share: 1e-6,
+        v_diff_max_share: 0.8,
+        v_diff_pull_max_share: 1.0,
+        init_edge_margin: 0.05,
     }
+}
+
+impl JWFitCostConfig {
+    /// The fitter's optimiser coordinates: as `JWFit::to_param`, but with the wing slopes p and c as
+    /// logits within their caps, and v_diff as a logit of its share of v within its band.
+    fn to_param(&self, fit: &JWFit) -> Array1<f64> {
+        let mut param = fit.to_param();
+        param[2] = bounded_to_param(fit.p, 0.0, self.p_max);
+        param[3] = bounded_to_param(fit.c, 0.0, self.c_max);
+        param[4] = bounded_to_param(fit.v_diff / fit.v, self.v_diff_min_share, self.v_diff_max_share);
+        param
+    }
+
+    /// `init` with p, c and its v_diff share of v at least `init_edge_margin` of their band below their caps.
+    fn below_caps(&self, init: SVIJWParams) -> SVIJWParams {
+        let margin = self.init_edge_margin.clamp(0.0, 0.5);
+        let cap = |lo: f64, hi: f64| hi - margin * (hi - lo);
+        SVIJWParams {
+            p: init.p.min(cap(0.0, self.p_max)),
+            c: init.c.min(cap(0.0, self.c_max)),
+            v_diff: init.v_diff.min(init.v * cap(self.v_diff_min_share, self.v_diff_max_share)),
+            ..init
+        }
+    }
+
+    fn to_fit(&self, param: &Array1<f64>) -> Result<JWFit> {
+        let mut fit = JWFit::try_from_param(param)?;
+        fit.p = bounded_from_param(param[2], 0.0, self.p_max);
+        fit.c = bounded_from_param(param[3], 0.0, self.c_max);
+        fit.v_diff = fit.v * bounded_from_param(param[4], self.v_diff_min_share, self.v_diff_max_share);
+        Ok(fit)
+    }
+}
+
+/// A value in (lo, hi) as an unbounded optimiser coordinate: the logit of its position in the band.
+/// A value at or past either end is moved just inside it.
+fn bounded_to_param(value: f64, lo: f64, hi: f64) -> f64 {
+    let share = ((value - lo) / (hi - lo)).clamp(BOUND_MARGIN, 1.0 - BOUND_MARGIN);
+    (share / (1.0 - share)).ln()
+}
+
+/// The logistic rounds to exactly 0 or 1 far out, so the position is held inside the same margin.
+fn bounded_from_param(param: f64, lo: f64, hi: f64) -> f64 {
+    lo + (hi - lo) * (1.0 / (1.0 + (-param).exp())).clamp(BOUND_MARGIN, 1.0 - BOUND_MARGIN)
+}
+
+/// d(value) / d(coordinate) at `param`.
+fn bounded_slope(param: f64, lo: f64, hi: f64) -> f64 {
+    let share = 1.0 / (1.0 + (-param).exp());
+    (hi - lo) * share * (1.0 - share)
 }
 
 impl JWFit {
@@ -342,6 +422,7 @@ struct BfgsAttemptOutput {
 
 struct BfgsTracingObserver {
     attempt: &'static str,
+    cost_cfg: JWFitCostConfig,
     calibration_log: Option<CalibrationLog>,
     best_param: Arc<Mutex<Option<BfgsBestParam>>>, // used to pass to further re-attempts
 }
@@ -353,9 +434,9 @@ impl BfgsTracingObserver {
         }
     }
 
-    fn format_fit(param: Option<&Array1<f64>>) -> String {
+    fn format_fit(&self, param: Option<&Array1<f64>>) -> String {
         match param {
-            Some(param) => match JWFit::try_from_param(param) {
+            Some(param) => match self.cost_cfg.to_fit(param) {
                 Ok(fit) => format!("{fit:?}"),
                 Err(error) => format!("invalid_jw_fit error={error}, raw_param={param:?}"),
             },
@@ -395,8 +476,8 @@ where
 {
     fn observe_init(&mut self, optimizer: &str, state: &I, _kv: &KV) -> Result<()> {
         self.record_best(state);
-        let current_fit = Self::format_fit(state.get_param());
-        let best_fit = Self::format_fit(state.get_best_param());
+        let current_fit = self.format_fit(state.get_param());
+        let best_fit = self.format_fit(state.get_best_param());
         self.log(format!(
             "INFO BFGS optimizer initialized optimizer={optimizer}, attempt={}, iter={}, cost={}, current_fit={}, best_cost={}, best_fit={}",
             self.attempt,
@@ -411,8 +492,8 @@ where
 
     fn observe_iter(&mut self, state: &I, _kv: &KV) -> Result<()> {
         self.record_best(state);
-        let current_fit = Self::format_fit(state.get_param());
-        let best_fit = Self::format_fit(state.get_best_param());
+        let current_fit = self.format_fit(state.get_param());
+        let best_fit = self.format_fit(state.get_best_param());
         self.log(format!(
             "INFO BFGS optimizer iteration attempt={}, iter={}, cost={}, current_fit={}, best_cost={}, best_fit={}, func_counts={:?}",
             self.attempt,
@@ -428,8 +509,8 @@ where
 
     fn observe_final(&mut self, state: &I) -> Result<()> {
         self.record_best(state);
-        let current_fit = Self::format_fit(state.get_param());
-        let best_fit = Self::format_fit(state.get_best_param());
+        let current_fit = self.format_fit(state.get_param());
+        let best_fit = self.format_fit(state.get_best_param());
         self.log(format!(
             "INFO BFGS optimizer finished attempt={}, iter={}, cost={}, current_fit={}, best_cost={}, best_fit={}, termination_status={:?}, termination_reason={:?}",
             self.attempt,
@@ -457,6 +538,37 @@ impl SliceFitter {
         Self {
             cost_cfg,
             init_svi,
+            bids: Array1::zeros(0),
+            asks: Array1::zeros(0),
+            strikes: Array1::zeros(0),
+            contracts: vec![],
+            expiry,
+            ref_sec,
+            fwd,
+            discount,
+            calibration_log: None,
+        }
+    }
+
+    /// As `new` for a slice with no fit yet: every pull is off, and `fit_bootstrap` finds its starts in
+    /// the quotes. Its init stays unset until `set_init_fit`, so fit it before anything reads the init,
+    /// such as `remove_outliers` or `fit_bfgs`.
+    pub fn new_bootstrap(cost_cfg: JWFitCostConfig, expiry: i64, fwd: f64, discount: f64, ref_sec: i64) -> Self {
+        let tau = (expiry - ref_sec) as f64 / SEC_PER_YEAR;
+        Self {
+            cost_cfg: JWFitCostConfig {
+                v_cost: 0.0,
+                psi_cost: 0.0,
+                p_cost: 0.0,
+                c_cost: 0.0,
+                v_diff_cost: 0.0,
+                ..cost_cfg
+            },
+            init_svi: SVIJWParams {
+                fwd,
+                reftau: tau,
+                ..SVIJWParams::default()
+            },
             bids: Array1::zeros(0),
             asks: Array1::zeros(0),
             strikes: Array1::zeros(0),
@@ -612,16 +724,115 @@ impl SliceFitter {
     }
 
     pub fn fit_bfgs(&self, max_iters: u64) -> Result<(JWFit, f64)> {
-        let initial_guess = JWFit::from_svi_jw(&self.init_svi);
-        let _ = self.cost_from_fit(&initial_guess, true)?; // for logging
+        let start = self.cost_cfg.below_caps(self.init_svi.clone());
+        self.fit_bfgs_from(&JWFit::from_svi_jw(&start), max_iters)
+    }
 
-        let init_arb_cost = self.arb_cost_from_fit(&initial_guess)?;
+    /// Fits from each of the starts `bootstrap_starts` reads off the quotes and keeps the cheapest fit,
+    /// as one start can stop in a local minimum that another avoids. The init is not a start.
+    pub fn fit_bootstrap(&self, max_iters: u64) -> Result<(JWFit, f64)> {
+        let mut best: Option<(JWFit, f64)> = None;
+        for start in self.bootstrap_starts()? {
+            match self.fit_bfgs_from(&start, max_iters) {
+                Ok((fit, cost)) => {
+                    self.log(format!("INFO bootstrap start={start:?} fit={fit:?} cost={cost}"));
+                    if best.as_ref().is_none_or(|(_, best_cost)| cost < *best_cost) {
+                        best = Some((fit, cost));
+                    }
+                }
+                Err(err) => self.log(format!("WARN bootstrap start={start:?} failed: {err}")),
+            }
+        }
+        best.ok_or_else(|| {
+            anyhow!(
+                "no bootstrap start could be fitted for expiry {}",
+                format_expiry(self.expiry)
+            )
+        })
+    }
+
+    /// Starts read off the two-sided mid vols: the at-the-money level and skew from a line through
+    /// sqrt(total variance) at the quotes nearest the forward, each wing slope from the outermost quote
+    /// on its side, and one start per `BOOTSTRAP_V_DIFF_SHARES`.
+    fn bootstrap_starts(&self) -> Result<Vec<JWFit>> {
+        let tau = self.tau();
+        // (log moneyness, total variance)
+        let mut smile: Vec<(f64, f64)> = self
+            .contracts
+            .iter()
+            .zip(self.bids.iter().zip(self.asks.iter()))
+            .filter(|(_, (&bid, &ask))| bid > 0.0 && ask < f64::MAX)
+            .filter_map(|(contract, (&bid, &ask))| {
+                let vol = contract.implied_vol(self.fwd, 0.5 * (bid + ask) / self.discount)?;
+                Some(((contract.strike / self.fwd).ln(), vol * vol * tau))
+            })
+            .collect();
+        if smile.len() < BOOTSTRAP_ATM_QUOTES {
+            bail!(
+                "{} two-sided quotes with a mid vol for expiry {}, a bootstrap needs {BOOTSTRAP_ATM_QUOTES}",
+                smile.len(),
+                format_expiry(self.expiry)
+            );
+        }
+
+        smile.sort_by(|left, right| left.0.abs().total_cmp(&right.0.abs()));
+        let atm = &smile[..BOOTSTRAP_ATM_QUOTES];
+        let k_mean = atm.iter().map(|(k, _)| k).sum::<f64>() / atm.len() as f64;
+        let sqrt_w_mean = atm.iter().map(|(_, w)| w.sqrt()).sum::<f64>() / atm.len() as f64;
+        let k_spread: f64 = atm.iter().map(|(k, _)| (k - k_mean).powi(2)).sum();
+        let psi = atm.iter().map(|(k, w)| (k - k_mean) * (w.sqrt() - sqrt_w_mean)).sum::<f64>() / k_spread;
+        let atm_sqrt_w = sqrt_w_mean - psi * k_mean;
+        if !psi.is_finite() || !atm_sqrt_w.is_finite() || atm_sqrt_w <= 0.0 {
+            bail!(
+                "no at-the-money vol and skew in the quotes for expiry {}",
+                format_expiry(self.expiry)
+            );
+        }
+
+        let w_atm = atm_sqrt_w * atm_sqrt_w;
+        let wing = |(k, w): (f64, f64), is_left: bool| {
+            let on_side = if is_left { k < 0.0 } else { k > 0.0 };
+            if on_side {
+                (w - w_atm) / k.abs() / atm_sqrt_w
+            } else {
+                0.0
+            }
+        };
+        let left = smile.iter().copied().min_by(|left, right| left.0.total_cmp(&right.0)).expect("smile is not empty");
+        let right = smile.iter().copied().max_by(|left, right| left.0.total_cmp(&right.0)).expect("smile is not empty");
+        let inside = |value: f64, lo: f64, hi: f64| {
+            let margin = BOOTSTRAP_EDGE_MARGIN * (hi - lo);
+            value.clamp(lo + margin, hi - margin)
+        };
+        let cfg = &self.cost_cfg;
+        let (p, c) = (
+            inside(wing(left, true), 0.0, cfg.p_max),
+            inside(wing(right, false), 0.0, cfg.c_max),
+        );
+        let v = w_atm / tau;
+        Ok(BOOTSTRAP_V_DIFF_SHARES
+            .iter()
+            .map(|&share| JWFit {
+                v,
+                // the smile stays convex: -p / 2 <= psi <= c / 2
+                psi: psi.clamp(-0.5 * p, 0.5 * c),
+                p,
+                c,
+                v_diff: v * inside(share, cfg.v_diff_min_share, cfg.v_diff_max_share),
+            })
+            .collect())
+    }
+
+    fn fit_bfgs_from(&self, initial_guess: &JWFit, max_iters: u64) -> Result<(JWFit, f64)> {
+        let _ = self.cost_from_fit(initial_guess, true)?; // for logging
+
+        let init_arb_cost = self.arb_cost_from_fit(initial_guess)?;
         if init_arb_cost == 0.0 {
             self.log("INFO BFGS zero init arb cost, running fast fitter".to_string());
             let mut fast_fitter = self.clone();
             fast_fitter.cost_cfg.arb_cost = 0.0;
 
-            let (optimized_fit, _) = fast_fitter.fit_bfgs_with_guess(&initial_guess, max_iters, 0)?;
+            let (optimized_fit, _) = fast_fitter.fit_bfgs_with_guess(initial_guess, max_iters, 0)?;
             let optimized_arb_cost = self.arb_cost_from_fit(&optimized_fit)?;
             if optimized_arb_cost == 0.0 {
                 let optimized_cost = self.cost_from_fit(&optimized_fit, true)?;
@@ -631,16 +842,16 @@ impl SliceFitter {
             self.log(format!(
                 "WARN BFGS introduced arbitrage with arb cost disabled; rerunning from init with full arb cost init_arb_cost={init_arb_cost}, optimized_arb_cost={optimized_arb_cost}"
             ));
-            return self.fit_bfgs_with_guess(&initial_guess, max_iters, 0);
+            return self.fit_bfgs_with_guess(initial_guess, max_iters, 0);
         }
         self.log(format!("INFO BFGS {init_arb_cost} init arb cost, running slow fitter",));
-        let (opt_fit, opt_cost) = self.fit_bfgs_with_guess(&initial_guess, max_iters, 0)?;
+        let (opt_fit, opt_cost) = self.fit_bfgs_with_guess(initial_guess, max_iters, 0)?;
         let _ = self.cost_from_fit(&opt_fit, true)?; // logs the costs breakdown
         Ok((opt_fit, opt_cost))
     }
 
     fn fit_bfgs_with_guess(&self, initial_guess: &JWFit, max_iters: u64, attempt_idx: usize) -> Result<(JWFit, f64)> {
-        let initial_param = initial_guess.to_param();
+        let initial_param = self.cost_cfg.to_param(initial_guess);
         let initial_cost = self.cost(&initial_param)?;
         if !Self::is_valid_cost(initial_cost) {
             return Err(anyhow!("initial JW fit cost is invalid: {initial_cost}"));
@@ -746,7 +957,7 @@ impl SliceFitter {
             return None;
         }
 
-        match JWFit::try_from_param(&best_param.param) {
+        match self.cost_cfg.to_fit(&best_param.param) {
             Ok(fit) => {
                 self.log(format!(
                     "INFO carrying BFGS observed best params into next fallback attempt={attempt_name}, initial_cost={initial_cost}, best_cost={}, best_fit={fit:?}",
@@ -777,6 +988,7 @@ impl SliceFitter {
             let linesearch = MoreThuenteLineSearch::<Array1<f64>, Array1<f64>, f64>::new().with_bounds(1e-6, 0.1)?;
             let solver = BFGS::new(linesearch);
             let calibration_log = self.calibration_log.clone();
+            let cost_cfg = self.cost_cfg.clone();
 
             let result = Executor::new(self, solver)
                 .configure(|state| {
@@ -785,6 +997,7 @@ impl SliceFitter {
                 .add_observer(
                     BfgsTracingObserver {
                         attempt: attempt_name,
+                        cost_cfg: cost_cfg.clone(),
                         calibration_log,
                         best_param: observed_best,
                     },
@@ -799,7 +1012,7 @@ impl SliceFitter {
                 .or_else(|| result.state.get_param().map(|param| (param, result.state.get_cost())))
                 .ok_or_else(|| anyhow!("BFGS did not return a JW parameter vector"))?;
 
-            Ok((JWFit::try_from_param(best_param)?, best_cost))
+            Ok((cost_cfg.to_fit(best_param)?, best_cost))
         })();
 
         let best_param = best_param.lock().unwrap_or_else(|p| p.into_inner()).clone();
@@ -827,9 +1040,23 @@ impl SliceFitter {
         let mut curvatures = arr1(&[
             Self::regularization_curvature(self.cost_cfg.v_cost, initial_guess.v),
             Self::regularization_curvature(self.cost_cfg.psi_cost, 1.0),
-            Self::regularization_curvature(self.cost_cfg.p_cost, initial_guess.p),
-            Self::regularization_curvature(self.cost_cfg.c_cost, initial_guess.c),
-            Self::regularization_curvature(self.cost_cfg.v_diff_cost, initial_guess.v_diff.min(REG_MAX_V_DIFF)),
+            Self::regularization_curvature(
+                self.cost_cfg.p_cost,
+                bounded_slope(initial_param[2], 0.0, self.cost_cfg.p_max),
+            ),
+            Self::regularization_curvature(
+                self.cost_cfg.c_cost,
+                bounded_slope(initial_param[3], 0.0, self.cost_cfg.c_max),
+            ),
+            Self::regularization_curvature(
+                self.cost_cfg.v_diff_cost,
+                initial_guess.v
+                    * bounded_slope(
+                        initial_param[4],
+                        self.cost_cfg.v_diff_min_share,
+                        self.cost_cfg.v_diff_max_share,
+                    ),
+            ),
         ]);
 
         let base_cost = self.cost(initial_param)?;
@@ -1143,7 +1370,8 @@ impl SliceFitter {
         cost += (jwp.psi - self.init_svi.psi).powi(2) * self.cost_cfg.psi_cost;
         cost += (jwp.p - self.init_svi.p).powi(2) * self.cost_cfg.p_cost;
         cost += (jwp.c - self.init_svi.c).powi(2) * self.cost_cfg.c_cost;
-        cost += (jwp.v_diff - self.init_svi.v_diff.min(REG_MAX_V_DIFF)).powi(2) * self.cost_cfg.v_diff_cost;
+        let v_diff_target = self.init_svi.v_diff.min(self.cost_cfg.v_diff_pull_max_share * self.init_svi.v);
+        cost += (jwp.v_diff - v_diff_target).powi(2) * self.cost_cfg.v_diff_cost;
 
         Ok(if cost.is_finite() { cost } else { INVALID_COST })
     }
@@ -1287,7 +1515,7 @@ impl CostFunction for SliceFitter {
     type Output = f64;
 
     fn cost(&self, p: &Self::Param) -> Result<Self::Output> {
-        let fit = JWFit::try_from_param(p)?;
+        let fit = self.cost_cfg.to_fit(p)?;
         self.cost_from_fit(&fit, false)
     }
 }
@@ -1657,6 +1885,8 @@ mod tests {
         raw.sigma = 0.4153;
 
         fitter = fitter.with_init_svi(SVIJWParams::from_raw(&raw));
+        // with no quotes, only a capped v_diff pull lets the arb cost move v_diff off this init
+        fitter.cost_cfg.v_diff_pull_max_share = 0.1;
         let liquidity_score = fitter.get_liquidity_score();
         assert!(liquidity_score > 0.0);
         fitter.remove_outliers(1, 10.0, liquidity_score / 2.0).expect("clear illiquid books");
@@ -1672,6 +1902,191 @@ mod tests {
         let (optimized_fit, _) = fitter.fit_bfgs(1000).expect("fit empty books");
         let optimized_arb_cost = fitter.arb_cost_from_fit(&optimized_fit).expect("calculate optimized arb cost");
         assert_eq!(optimized_arb_cost, 0.0);
+    }
+
+    const QUOTED_REF_SEC: i64 = 1_000_000;
+
+    fn without_pulls() -> JWFitCostConfig {
+        JWFitCostConfig {
+            v_cost: 0.0,
+            psi_cost: 0.0,
+            p_cost: 0.0,
+            c_cost: 0.0,
+            v_diff_cost: 0.0,
+            ..default_cost_cfg()
+        }
+    }
+
+    /// A fitter `days` out on a forward of 100, starting from `init`.
+    fn fitter_from(cost_cfg: JWFitCostConfig, init: &JWFit, days: f64) -> SliceFitter {
+        let expiry_sec = days * 86_400.0;
+        let init_svi = init.to_svi_jw(100.0, expiry_sec / SEC_PER_YEAR);
+        SliceFitter::new(
+            cost_cfg,
+            init_svi,
+            QUOTED_REF_SEC + expiry_sec as i64,
+            100.0,
+            0.99,
+            QUOTED_REF_SEC,
+        )
+    }
+
+    /// A bootstrap fitter `days` out on a forward of 100.
+    fn bootstrap_fitter(days: f64) -> SliceFitter {
+        let expiry = QUOTED_REF_SEC + (days * 86_400.0) as i64;
+        SliceFitter::new_bootstrap(default_cost_cfg(), expiry, 100.0, 0.99, QUOTED_REF_SEC)
+    }
+
+    /// `fitter` on out-of-the-money books quoted `half_spread` of vol either side of `smile`.
+    fn quoted(fitter: SliceFitter, smile: &JWFit, strikes: &[f64], half_spread: f64) -> SliceFitter {
+        let raw = smile.to_svi_jw(fitter.fwd, fitter.tau()).to_raw();
+        let expiry_sec = (fitter.expiry - fitter.ref_sec) as f64;
+        let contracts: Vec<OptionContract> = strikes
+            .iter()
+            .map(|&strike| OptionContract {
+                strike,
+                expiry_sec,
+                is_call: strike >= fitter.fwd,
+            })
+            .collect();
+        let quote = |shift: f64| {
+            Array1::from_iter(
+                contracts.iter().map(|c| fitter.discount * c.price(fitter.fwd, raw.get_vol(c.strike) + shift)),
+            )
+        };
+        let (bids, asks) = (quote(-half_spread), quote(half_spread));
+        fitter.build_contracts(
+            bids,
+            asks,
+            Array1::from_iter(strikes.iter().copied()),
+            Array1::from_iter(contracts.iter().map(|c| c.is_call)),
+        )
+    }
+
+    /// The largest distance between the vols of `fit` and `smile` over `strikes`.
+    fn largest_miss(fitter: &SliceFitter, fit: &JWFit, smile: &JWFit, strikes: &[f64]) -> f64 {
+        let fitted = fit.to_svi_jw(fitter.fwd, fitter.tau()).to_raw();
+        let market = smile.to_svi_jw(fitter.fwd, fitter.tau()).to_raw();
+        strikes
+            .iter()
+            .map(|&strike| (fitted.get_vol(strike) - market.get_vol(strike)).abs())
+            .fold(0.0, f64::max)
+    }
+
+    #[test]
+    fn fit_bootstrap_lands_inside_the_quotes_with_no_init() {
+        // a new listing has no fit to start from or pull towards: its first fit comes from the quotes alone
+        let half_spread = 0.005;
+        let month = JWFit {
+            v: 0.04,
+            psi: -0.3,
+            p: 1.0,
+            c: 0.4,
+            v_diff: 0.01,
+        };
+        let month_strikes: Vec<f64> = (0..15).map(|i| 80.0 + 2.5 * i as f64).collect();
+        let day = JWFit {
+            v: 0.0225,
+            psi: -0.4,
+            p: 1.5,
+            c: 0.5,
+            v_diff: 0.007,
+        };
+        let day_strikes: Vec<f64> = (0..21).map(|i| 97.5 + 0.25 * i as f64).collect();
+
+        for (smile, days, strikes) in [(month, 30.0, month_strikes), (day, 1.0, day_strikes)] {
+            let fitter = quoted(bootstrap_fitter(days), &smile, &strikes, half_spread);
+            let (fit, _) = fitter.fit_bootstrap(500).expect("bootstrap a fit");
+            let miss = largest_miss(&fitter, &fit, &smile, &strikes);
+            assert!(miss < half_spread, "dte={days}: missed the mid vol by {miss}");
+        }
+    }
+
+    #[test]
+    fn fit_bootstrap_needs_two_sided_quotes_near_the_money() {
+        let smile = JWFit {
+            v: 0.04,
+            psi: -0.3,
+            p: 1.0,
+            c: 0.4,
+            v_diff: 0.01,
+        };
+        let fitter = quoted(bootstrap_fitter(30.0), &smile, &[95.0, 100.0, 105.0], 0.005);
+        assert!(fitter.fit_bootstrap(500).is_err());
+    }
+
+    #[test]
+    fn a_wing_past_its_cap_comes_back_to_the_quotes() {
+        // each fit becomes the next one's init, so a wing that ends on its cap must still be able to leave it
+        let market = JWFit {
+            v: 0.36,
+            psi: -0.05,
+            p: 0.8,
+            c: 1.5,
+            v_diff: 0.36 * 0.03,
+        };
+        let strikes: Vec<f64> = (0..53).map(|i| 70.0 + 2.5 * i as f64).collect();
+        // a tight book: in a wide one, a wing stuck on its cap can hide behind the put wing
+        let half_spread = 0.001;
+        let mut fitter = quoted(
+            fitter_from(without_pulls(), &market, 30.0),
+            &market,
+            &strikes,
+            half_spread,
+        );
+        fitter.set_init_fit(&JWFit {
+            c: 6.0,
+            ..market.clone()
+        });
+        // only the fit's start is moved below the cap: the stored init keeps what it was given
+        assert_eq!(fitter.init_fit().c, 6.0);
+        let (fit, _) = fitter.fit_bfgs(500).expect("fit from past the cap");
+        let miss = largest_miss(&fitter, &fit, &market, &strikes);
+        assert!(miss < half_spread, "c={} missed the mid vol by {miss}", fit.c);
+    }
+
+    #[test]
+    fn a_smile_with_almost_no_curvature_at_the_money_keeps_its_fit() {
+        // a logged init with v_diff at 0.0017% of v: a v_diff floor above that bends its kink away from the quotes
+        let init = JWFit {
+            v: 0.9900229541833522,
+            psi: 0.0040283709978556565,
+            p: 0.17505780364296245,
+            c: 0.14786467750312546,
+            v_diff: 1.7019040620902537e-5,
+        };
+        let strikes: Vec<f64> = (0..25).map(|i| 70.0 + 2.5 * i as f64).collect();
+        let fitter = quoted(fitter_from(default_cost_cfg(), &init, 9.65), &init, &strikes, 0.005);
+        let (fit, _) = fitter.fit_bfgs(500).expect("fit");
+        let miss = largest_miss(&fitter, &fit, &init, &strikes);
+        assert!(
+            miss < 0.005,
+            "v_diff/v={:.2e} missed the mid vol by {miss}",
+            fit.v_diff / fit.v
+        );
+    }
+
+    #[test]
+    fn the_v_diff_pull_aims_at_most_at_its_share_of_v() {
+        // a large init v_diff stops pulling the at-the-money curvature once it is above the cap
+        let init = JWFit {
+            v: 0.81,
+            psi: -0.25,
+            p: 1.2,
+            c: 0.4,
+            v_diff: 0.3 * 0.81,
+        };
+        let cost_cfg = JWFitCostConfig {
+            v_diff_pull_max_share: 0.1,
+            ..default_cost_cfg()
+        };
+        let fitter = fitter_from(cost_cfg, &init, 30.0);
+        let pull_at = |v_diff: f64| {
+            let jw = JWFit { v_diff, ..init.clone() }.to_svi_jw(fitter.fwd, fitter.tau());
+            fitter.regularization_cost(&jw).expect("pull cost")
+        };
+        assert_eq!(pull_at(0.1 * init.v), 0.0);
+        assert!(pull_at(init.v_diff) > 0.0);
     }
 
     #[test]
@@ -1735,7 +2150,7 @@ mod tests {
         let cost = fitter.cost_from_fit(&initial_guess, true).expect("calculate mock cost");
         println!("mock JW fit cost: {cost}");
 
-        let gradient = fitter.gradient(&initial_guess.to_param()).expect("calculate mock gradient");
+        let gradient = fitter.gradient(&fitter.cost_cfg.to_param(&initial_guess)).expect("calculate mock gradient");
         println!("mock JW fit gradient: {gradient:?}");
 
         let fitter_bfgs = fitter.clone();

@@ -3,6 +3,9 @@ use statrs::function::erf::erf;
 
 const FRAC_1_SQRT_PI: f64 = 0.564189583547756286948079451560772586_f64;
 const FRAC_1_SQRT_2_PI: f64 = FRAC_1_SQRT_PI * std::f64::consts::FRAC_1_SQRT_2;
+const IMPLIED_VOL_MAX: f64 = 10.0;
+const IMPLIED_VOL_TOLERANCE: f64 = 1e-10;
+const IMPLIED_VOL_MAX_ITERS: usize = 100;
 
 pub fn normcdf(x: f64) -> f64 {
     0.5 * (1.0 + erf(x * std::f64::consts::FRAC_1_SQRT_2))
@@ -60,6 +63,39 @@ impl OptionContract {
         } else {
             self.strike * normcdf(-d2) - fwd * normcdf(-d1)
         }
+    }
+
+    /// The vol `price` implies, undiscounted as `price` is; None outside (intrinsic, fwd for a call or
+    /// strike for a put) or above `IMPLIED_VOL_MAX`. Newton steps from vol 1, bisecting the bracket that
+    /// holds the vol whenever a step leaves it, so tiny wing vegas cannot throw a step out.
+    pub fn implied_vol(&self, fwd: f64, price: f64) -> Option<f64> {
+        let max_price = if self.is_call { fwd } else { self.strike };
+        let in_bounds = price > self.price_expired(fwd) && price < max_price;
+        if self.expiry_sec <= 0.0 || !in_bounds || self.price(fwd, IMPLIED_VOL_MAX) < price {
+            return None;
+        }
+
+        let (mut low, mut high) = (0.0, IMPLIED_VOL_MAX);
+        let mut vol = 1.0;
+        for _ in 0..IMPLIED_VOL_MAX_ITERS {
+            let excess = self.price(fwd, vol) - price;
+            if excess > 0.0 {
+                high = vol;
+            } else {
+                low = vol;
+            }
+            let newton = vol - excess / self.vega(fwd, vol);
+            let next = if newton > low && newton < high {
+                newton
+            } else {
+                0.5 * (low + high)
+            };
+            if (next - vol).abs() < IMPLIED_VOL_TOLERANCE {
+                return Some(next);
+            }
+            vol = next;
+        }
+        None
     }
 
     pub fn delta(&self, fwd: f64, vol: f64) -> f64 {
@@ -204,6 +240,43 @@ mod tests {
         let price_and_greeks = contract.price_and_greeks(fwd, vol);
         assert_almost_eq!(price_and_greeks.price, contract.price_expired(fwd), tol);
     }
+    #[test]
+    fn implied_vol_recovers_the_pricing_vol() {
+        // fitters read market vols off quotes, from 0DTE wings with tiny vegas to long-dated ATM
+        let fwd = 100.0;
+        for expiry_sec in [3600.0, 86_400.0, 30.0 * 86_400.0, 2.0 * 365.0 * 86_400.0] {
+            for strike in [50.0, 90.0, 100.0, 110.0, 200.0] {
+                for is_call in [true, false] {
+                    for vol in [0.05, 0.2, 1.0, 3.0] {
+                        let contract = OptionContract { strike, expiry_sec, is_call };
+                        let price = contract.price(fwd, vol);
+                        if price - contract.price_expired(fwd) < 1e-10 * fwd {
+                            continue; // no time value left to read a vol from
+                        }
+                        let implied = contract.implied_vol(fwd, price).expect("price within bounds");
+                        assert!(
+                            (implied - vol).abs() < 1e-6,
+                            "strike={strike}, expiry_sec={expiry_sec}, is_call={is_call}: {implied} != {vol}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn implied_vol_rejects_prices_outside_the_no_arbitrage_bounds() {
+        let fwd = 100.0;
+        let call = OptionContract { strike: 90.0, expiry_sec: 30.0 * 86_400.0, is_call: true };
+        let put = OptionContract { is_call: false, ..call.clone() };
+        assert_eq!(call.implied_vol(fwd, 10.0), None); // at intrinsic
+        assert_eq!(call.implied_vol(fwd, fwd), None);
+        assert_eq!(put.implied_vol(fwd, 0.0), None);
+        assert_eq!(put.implied_vol(fwd, put.strike), None);
+        let expired = OptionContract { expiry_sec: 0.0, ..call };
+        assert_eq!(expired.implied_vol(fwd, 11.0), None);
+    }
+
     #[test]
     fn test_volga_numerically() {
         // make sure volga is approx the first deriv of vega w.r.t vol;
