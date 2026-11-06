@@ -178,7 +178,7 @@ impl JWFitCostConfig {
     }
 
     /// `init` with p, c and its v_diff share of v at least `init_edge_margin` of their band below their caps.
-    fn below_caps(&self, init: SVIJWParams) -> SVIJWParams {
+    fn apply_init_caps(&self, init: SVIJWParams) -> SVIJWParams {
         let margin = self.init_edge_margin.clamp(0.0, 0.5);
         let cap = |lo: f64, hi: f64| hi - margin * (hi - lo);
         SVIJWParams {
@@ -719,7 +719,7 @@ impl SliceFitter {
     }
 
     pub fn fit_bfgs(&self, max_iters: u64) -> Result<(JWFit, f64)> {
-        let start = self.cost_cfg.below_caps(self.init_svi.clone());
+        let start = self.cost_cfg.apply_init_caps(self.init_svi.clone());
         self.fit_bfgs_from(&JWFit::from_svi_jw(&start), max_iters)
     }
 
