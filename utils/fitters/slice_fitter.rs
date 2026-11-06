@@ -132,21 +132,13 @@ pub struct JWFitCostConfig {
     pub constraints_cost: f64,
     pub arb_cost: f64,
     pub smoothing_eps: f64,
-    /// Caps on the put and call wing slopes: p is fitted in (0, p_max) and c in (0, c_max), so a wing
-    /// the quotes do not pin stops short of the cap instead of running away.
+
+    /// params softmaxxing
     pub p_max: f64,
     pub c_max: f64,
-    /// v_diff is fitted as a share of v within this band: below it the smile kinks at the money, and at 1
-    /// its minimum variance reaches zero.
     pub v_diff_min_share: f64,
     pub v_diff_max_share: f64,
-    /// The v_diff pull's target is the init's v_diff, capped at this share of the init's v; 1 leaves it
-    /// uncapped.
     pub v_diff_pull_max_share: f64,
-    /// A fit starts from its init with p, c and the v_diff share of v held this share of their band (at
-    /// most half) below their caps, where it could not move them back down; 0 starts from the init as
-    /// given. The init, its pull targets and the stored fits are never clipped. Near the floors the
-    /// fitted coordinates move like logs, so the floors need no margin.
     pub init_edge_margin: f64,
 }
 
