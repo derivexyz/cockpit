@@ -32,6 +32,9 @@ const BOOTSTRAP_ATM_QUOTES: usize = 5;
 /// The quotes say little about the curvature at the money, so a bootstrap starts from each of these
 /// v_diff shares of v.
 const BOOTSTRAP_V_DIFF_SHARES: [f64; 3] = [0.01, 0.1, 0.4];
+/// Bootstrap starts read only quotes whose bid and ask vols are each within this share of their mid
+/// vol: a wider quote's mid vol says little about the smile.
+const BOOTSTRAP_MAX_VOL_SPREAD_SHARE: f64 = 0.15;
 /// Bootstrap starts hold p, c and the v_diff share at least this share of their band in from both ends:
 /// a start read off the quotes can land on an end, where the fit could not move it.
 const BOOTSTRAP_EDGE_MARGIN: f64 = 0.01;
@@ -743,9 +746,10 @@ impl SliceFitter {
         })
     }
 
-    /// Starts read off the two-sided mid vols: the at-the-money level and skew from a line through
-    /// sqrt(total variance) at the quotes nearest the forward, each wing slope from the outermost quote
-    /// on its side, and one start per `BOOTSTRAP_V_DIFF_SHARES`.
+    /// Starts read off the mid vols of the quotes tight enough to trust (`BOOTSTRAP_MAX_VOL_SPREAD_SHARE`):
+    /// the at-the-money level and skew from a line through sqrt(total variance) at the quotes nearest
+    /// the forward, each wing slope from the outermost quote on its side, and one start per
+    /// `BOOTSTRAP_V_DIFF_SHARES`.
     fn bootstrap_starts(&self) -> Result<Vec<JWFit>> {
         let tau = self.tau();
         // (log moneyness, total variance)
@@ -753,15 +757,19 @@ impl SliceFitter {
             .contracts
             .iter()
             .zip(self.bids.iter().zip(self.asks.iter()))
-            .filter(|(_, (&bid, &ask))| bid > 0.0 && ask < f64::MAX)
+            .filter(|(_, (&bid, &ask))| bid > 0.0 && ask < f64::MAX && bid < ask)
             .filter_map(|(contract, (&bid, &ask))| {
-                let vol = contract.implied_vol(self.fwd, 0.5 * (bid + ask) / self.discount)?;
-                Some(((contract.strike / self.fwd).ln(), vol * vol * tau))
+                let vol = |price: f64| contract.implied_vol(self.fwd, price / self.discount);
+                let mid = vol(0.5 * (bid + ask))?;
+                let near_mid = |side: Option<f64>| {
+                    side.is_some_and(|side| (side - mid).abs() <= BOOTSTRAP_MAX_VOL_SPREAD_SHARE * mid)
+                };
+                (near_mid(vol(bid)) && near_mid(vol(ask))).then(|| ((contract.strike / self.fwd).ln(), mid * mid * tau))
             })
             .collect();
         if smile.len() < BOOTSTRAP_ATM_QUOTES {
             bail!(
-                "{} two-sided quotes with a mid vol for expiry {}, a bootstrap needs {BOOTSTRAP_ATM_QUOTES}",
+                "{} two-sided quotes tight enough to read a mid vol off for expiry {}, a bootstrap needs {BOOTSTRAP_ATM_QUOTES}",
                 smile.len(),
                 format_expiry(self.expiry)
             );
@@ -2005,6 +2013,31 @@ mod tests {
         };
         let fitter = quoted(bootstrap_fitter(30.0), &smile, &[95.0, 100.0, 105.0], 0.005);
         assert!(fitter.fit_bootstrap(500).is_err());
+    }
+
+    #[test]
+    fn a_wide_wing_quote_does_not_steer_the_bootstrap_starts() {
+        // the outermost quote sets its wing's start, and a stale ask far above the rest drags its mid vol up
+        let smile = JWFit {
+            v: 0.04,
+            psi: -0.3,
+            p: 1.0,
+            c: 0.4,
+            v_diff: 0.01,
+        };
+        let strikes: Vec<f64> = (0..15).map(|i| 80.0 + 2.5 * i as f64).collect();
+        let tight = quoted(bootstrap_fitter(30.0), &smile, &strikes[..strikes.len() - 1], 0.005);
+        let all = quoted(bootstrap_fitter(30.0), &smile, &strikes, 0.005);
+        let mut asks = all.asks.clone();
+        asks[strikes.len() - 1] *= 5.0;
+        let is_calls = Array1::from_iter(all.contracts.iter().map(|c| c.is_call));
+        let with_wide = bootstrap_fitter(30.0).build_contracts(all.bids.clone(), asks, all.strikes.clone(), is_calls);
+
+        let params = |fitter: &SliceFitter| -> Vec<[f64; 5]> {
+            let starts = fitter.bootstrap_starts().expect("bootstrap starts");
+            starts.iter().map(|s| [s.v, s.psi, s.p, s.c, s.v_diff]).collect()
+        };
+        assert_eq!(params(&with_wide), params(&tight));
     }
 
     #[test]
