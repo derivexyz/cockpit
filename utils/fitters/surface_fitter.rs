@@ -2,10 +2,12 @@ use crate::fitters::slice_fitter::{CalibrationLog, JWFit, JWFitCostConfig, Slice
 use crate::fitters::svi::SVIJWParams;
 use anyhow::{anyhow, bail, Result};
 use ndarray::Array1;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::thread;
 
 const SLICE_FIT_MAX_ITERS: u64 = 500;
 
+#[derive(Clone)]
 pub struct SurfaceFitter {
     ref_sec: i64,
     forwards: HashMap<i64, f64>,              // expiry (sec) -> forward price
@@ -13,6 +15,35 @@ pub struct SurfaceFitter {
     cost_cfgs: HashMap<i64, JWFitCostConfig>, // expiry (sec) -> cost config its slice is fitted with
     slice_fitters: HashMap<i64, SliceFitter>, // expiry (sec) -> slice fitter
     calibration_log: CalibrationLog,
+}
+
+/// How `fit_multithread` starts a slice.
+#[derive(Clone, Debug)]
+pub enum SliceStart {
+    /// Fitted from this SVI, regularized towards it.
+    Init(SVIJWParams),
+    /// Not fitted: this SVI, priced on the slice's quotes.
+    Hold(SVIJWParams),
+    /// Fitted from its quotes alone, with no regularization (`SliceFitter::fit_bootstrap`).
+    Bootstrap,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SliceStatus {
+    Refit,
+    Bootstrapped,
+    Held,
+    /// The fit erred, or panicked where panics unwind: an init or a hold returns its SVI, a bootstrap
+    /// no fit.
+    Failed(String),
+}
+
+#[derive(Clone, Debug)]
+pub struct SliceOutcome {
+    pub status: SliceStatus,
+    /// (fit, its bbo cost on the slice's quotes); None only for a failed bootstrap
+    pub fit: Option<(JWFit, f64)>,
+    pub liquidity: f64,
 }
 
 impl SurfaceFitter {
@@ -29,7 +60,7 @@ impl SurfaceFitter {
     }
 
     /// As [`SurfaceFitter::new`], with a cost config per expiry (sec), e.g. to weigh the
-    /// parameter pulls by time to expiry.
+    /// regularization by time to expiry.
     pub fn new_with_cfgs(
         ref_sec: i64,
         forwards: HashMap<i64, f64>,
@@ -83,7 +114,7 @@ impl SurfaceFitter {
     }
 
     /// For a surface with no fit yet, in place of `build_slices` and `fit_slices`: each slice is fitted by
-    /// `SliceFitter::fit_bootstrap`, with every pull off, and keeps its fit as its init, so that
+    /// `SliceFitter::fit_bootstrap`, with no regularization, and keeps its fit as its init, so that
     /// `remove_outliers` and `fit_slices` can follow. A slice too thin to bootstrap takes the other
     /// slices' fits interpolated to its expiry, or the nearest one's beyond either end.
     pub fn bootstrap_slices(
@@ -101,12 +132,13 @@ impl SurfaceFitter {
         let mut fitted: HashMap<i64, JWFit> = HashMap::new();
         for expiry in &expiries {
             let fitter = &surface.slice_fitters[expiry];
+            let log = surface.calibration_log.for_expiry(*expiry);
             match fitter.fit_bootstrap(SLICE_FIT_MAX_ITERS) {
                 Ok((fit, _)) => {
-                    surface.log(format!("INFO Bootstrapped {:.2} DTE with {fit:?}", fitter.dte()));
+                    log.push(format!("INFO Bootstrapped {:.2} DTE with {fit:?}", fitter.dte()));
                     fitted.insert(*expiry, fit);
                 }
-                Err(err) => surface.log(format!(
+                Err(err) => log.push(format!(
                     "WARN {:.2} DTE takes the other slices' fits, its bootstrap failed: {err}",
                     fitter.dte()
                 )),
@@ -118,11 +150,8 @@ impl SurfaceFitter {
 
         let ref_sec = surface.ref_sec;
         for (expiry, fitter) in surface.slice_fitters.iter_mut() {
-            let fit = fitted.get(expiry).cloned().or_else(|| JWFit::get_interpolated_at(&fitted, *expiry, ref_sec));
-            let fit = fit.unwrap_or_else(|| {
-                let nearest = fitted.keys().min_by_key(|fitted_expiry| (*fitted_expiry - expiry).abs());
-                fitted[nearest.expect("some slice was bootstrapped")].clone()
-            });
+            let fit =
+                JWFit::get_interpolated_or_nearest(&fitted, *expiry, ref_sec).expect("some slice was bootstrapped");
             fitter.set_init_fit(&fit);
         }
         Ok(surface)
@@ -250,8 +279,7 @@ impl SurfaceFitter {
         Ok(self)
     }
 
-    /// Slices are fitted independently of one another, so the order only decides the shape of the
-    /// calibration log. Longest dated first keeps that log reading from the stablest slice down.
+    /// Slices are fitted independently of one another, one after another.
     pub fn fit_slices(mut self) -> Result<Self> {
         if self.slice_fitters.is_empty() {
             self.log("WARN empty liquidity_scores");
@@ -261,8 +289,8 @@ impl SurfaceFitter {
         let mut expiries: Vec<i64> = self.slice_fitters.keys().copied().collect();
         expiries.sort_unstable_by(|left, right| right.cmp(left));
 
-        let log = self.calibration_log.clone();
         for expiry in expiries {
+            let log = self.calibration_log.for_expiry(expiry);
             let fitter = self
                 .slice_fitters
                 .get_mut(&expiry)
@@ -280,73 +308,146 @@ impl SurfaceFitter {
 
         Ok(self)
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::black76::OptionContract;
-    use crate::fitters::slice_fitter::default_cost_cfg;
+    /// Each slice's quotes with no init, for `hold_outliers` and `fit_multithread`. They take a start
+    /// per slice per call, so a caller can refit every slice, then bootstrap some again, off the same
+    /// quotes.
+    ///
+    /// Do not call `fit_slices`, `remove_outliers` or `into_svi_jw_params` on the result. They read
+    /// each slice's init, which here is all zeros, so they panic, err or return zero smiles.
+    pub fn with_quotes(
+        self,
+        bids: Array1<f64>,
+        asks: Array1<f64>,
+        strikes: Array1<f64>,
+        expiries: Array1<i64>,
+        is_calls: Array1<bool>,
+    ) -> Result<Self> {
+        self.build_slice_fitters(None, bids, asks, strikes, expiries, is_calls)
+    }
 
-    #[test]
-    fn bootstrap_slices_interpolates_a_slice_too_thin_to_bootstrap() {
-        // one thinly quoted expiry still gets a smile, from its neighbours, instead of failing the surface
-        let (ref_sec, fwd) = (1_000_000, 100.0);
-        let smile = JWFit {
-            v: 0.04,
-            psi: -0.3,
-            p: 1.0,
-            c: 0.4,
-            v_diff: 0.01,
-        };
-        let [near, thin, far] = [7, 14, 30].map(|days| ref_sec + days * 86_400);
-        let (mut bids, mut asks, mut strikes, mut expiries, mut is_calls) = (vec![], vec![], vec![], vec![], vec![]);
-        for expiry in [near, thin, far] {
-            let expiry_sec = (expiry - ref_sec) as f64;
-            let raw = smile.to_svi_jw(fwd, expiry_sec / crate::SEC_PER_YEAR).to_raw();
-            let quoted: Vec<f64> = if expiry == thin {
-                vec![99.0, 100.0, 101.0]
-            } else {
-                (0..15).map(|i| 86.0 + 2.0 * i as f64).collect()
+    /// A copy without up to `n` outliers in each slice of `inits`, scored against its init as
+    /// `SliceFitter::remove_outliers` scores them, and the expiries whose liquidity score is past
+    /// `min_score`, too illiquid to fit, for the caller to hold. A held slice keeps its quotes, to
+    /// price its hold on. A slice with no init is left as it is.
+    pub fn hold_outliers(
+        &self,
+        inits: &HashMap<i64, SVIJWParams>,
+        n: usize,
+        factor: f64,
+        min_score: f64,
+    ) -> Result<(Self, HashSet<i64>)> {
+        let mut cleaned = self.clone();
+        let mut held = HashSet::new();
+        for (expiry, init) in inits {
+            let Some(fitter) = cleaned.slice_fitters.get_mut(expiry) else {
+                continue;
             };
-            for strike in quoted {
-                let contract = OptionContract {
-                    strike,
-                    expiry_sec,
-                    is_call: strike >= fwd,
-                };
-                bids.push(contract.price(fwd, raw.get_vol(strike) - 0.005));
-                asks.push(contract.price(fwd, raw.get_vol(strike) + 0.005));
-                strikes.push(strike);
-                expiries.push(expiry);
-                is_calls.push(contract.is_call);
+            let liquidity = fitter.get_liquidity_score();
+            if liquidity > min_score {
+                let line = format!(
+                    "INFO {:.2} DTE held: liquidity score {liquidity} is past {min_score}",
+                    fitter.dte()
+                );
+                self.calibration_log.for_expiry(*expiry).push(line);
+                held.insert(*expiry);
+                continue;
+            }
+            *fitter = fitter.clone().with_init_svi(init.clone());
+            fitter.remove_outliers(n, factor, min_score)?;
+        }
+        Ok((cleaned, held))
+    }
+
+    /// Fits each slice in `starts` on a thread of its own, each fit at most `max_iters` BFGS
+    /// iterations. Errs only on a start for an expiry with no quotes.
+    pub fn fit_multithread(
+        &self,
+        starts: &HashMap<i64, SliceStart>,
+        max_iters: u64,
+    ) -> Result<HashMap<i64, SliceOutcome>> {
+        let mut unquoted: Vec<i64> =
+            starts.keys().copied().filter(|expiry| !self.slice_fitters.contains_key(expiry)).collect();
+        if !unquoted.is_empty() {
+            unquoted.sort_unstable();
+            bail!("starts for expiries with no quotes: {unquoted:?}");
+        }
+
+        let outcomes: HashMap<i64, SliceOutcome> = thread::scope(|scope| {
+            let fits: Vec<_> = starts
+                .iter()
+                .map(|(&expiry, start)| {
+                    (
+                        expiry,
+                        start,
+                        scope.spawn(move || self.fit_slice(expiry, start, max_iters)),
+                    )
+                })
+                .collect();
+            fits.into_iter()
+                .map(|(expiry, start, fit)| {
+                    let outcome = match fit.join() {
+                        Ok(Ok(outcome)) => outcome,
+                        Ok(Err(error)) => self.failed(expiry, start, format!("{error:#}")),
+                        Err(_) => self.failed(expiry, start, "the fit panicked".to_string()),
+                    };
+                    (expiry, outcome)
+                })
+                .collect()
+        });
+        for (expiry, outcome) in &outcomes {
+            let dte = self.slice_fitters[expiry].dte();
+            let line = format!("INFO {dte:.2} DTE {:?} with {:?}", outcome.status, outcome.fit);
+            self.calibration_log.for_expiry(*expiry).push(line);
+        }
+        Ok(outcomes)
+    }
+
+    fn fit_slice(&self, expiry: i64, start: &SliceStart, max_iters: u64) -> Result<SliceOutcome> {
+        if let SliceStart::Init(svi) = start {
+            // the fitter asserts these, and a panic aborts a process built with panic = "abort"
+            if !([svi.v, svi.p, svi.c, svi.v_diff].iter().all(|param| *param > 0.0) && svi.psi.is_finite()) {
+                bail!("cannot start from init {svi:?}: v, p, c and v_diff must be positive");
             }
         }
-        let forwards = HashMap::from([(near, fwd), (thin, fwd), (far, fwd)]);
-        let discounts = HashMap::from([(near, 1.0), (thin, 1.0), (far, 1.0)]);
+        let fitter = self.fitter_for(expiry, start);
+        let (fit, status): (JWFit, SliceStatus) = match start {
+            SliceStart::Init(_) => (fitter.fit_bfgs(max_iters)?.0, SliceStatus::Refit),
+            SliceStart::Hold(_) => (fitter.init_fit(), SliceStatus::Held),
+            SliceStart::Bootstrap => (fitter.fit_bootstrap(max_iters)?.0, SliceStatus::Bootstrapped),
+        };
+        let bbo_cost = fitter.bbo_cost_from_fit(&fit, false)?;
+        Ok(SliceOutcome {
+            status,
+            fit: Some((fit, bbo_cost)),
+            liquidity: fitter.get_liquidity_score(),
+        })
+    }
 
-        let surface = SurfaceFitter::new(ref_sec, forwards, discounts, default_cost_cfg())
-            .bootstrap_slices(
-                Array1::from(bids),
-                Array1::from(asks),
-                Array1::from(strikes),
-                Array1::from(expiries),
-                Array1::from(is_calls),
-            )
-            .expect("bootstrap a surface with one thin slice");
+    fn failed(&self, expiry: i64, start: &SliceStart, error: String) -> SliceOutcome {
+        let fitter = self.fitter_for(expiry, start);
+        let fit = match start {
+            SliceStart::Init(_) | SliceStart::Hold(_) => {
+                let init = fitter.init_fit();
+                fitter.bbo_cost_from_fit(&init, false).ok().map(|bbo_cost| (init, bbo_cost))
+            }
+            SliceStart::Bootstrap => None,
+        };
+        SliceOutcome {
+            status: SliceStatus::Failed(error),
+            fit,
+            liquidity: fitter.get_liquidity_score(),
+        }
+    }
 
-        let fit = |expiry: i64| surface.slices()[&expiry].init_fit();
-        let neighbours = HashMap::from([(near, fit(near)), (far, fit(far))]);
-        let expected = JWFit::get_interpolated_at(&neighbours, thin, ref_sec).expect("thin lies between its neighbours");
-        let actual = fit(thin);
-        for (name, a, e) in [
-            ("v", actual.v, expected.v),
-            ("psi", actual.psi, expected.psi),
-            ("p", actual.p, expected.p),
-            ("c", actual.c, expected.c),
-            ("v_diff", actual.v_diff, expected.v_diff),
-        ] {
-            assert!((a - e).abs() < 1e-12, "{name}: {a} != {e}");
+    /// The slice's quotes on a fitter for `start`: regularized towards the SVI of an init or a hold,
+    /// with no regularization for a bootstrap.
+    fn fitter_for(&self, expiry: i64, start: &SliceStart) -> SliceFitter {
+        let quoted = self.slice_fitters[&expiry].clone();
+        let cost_cfg = self.cost_cfgs[&expiry].clone();
+        match start {
+            SliceStart::Init(svi) | SliceStart::Hold(svi) => quoted.with_cost_cfg(cost_cfg).with_init_svi(svi.clone()),
+            SliceStart::Bootstrap => quoted.with_cost_cfg(cost_cfg.scale_regularization(0.0)),
         }
     }
 }

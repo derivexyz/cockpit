@@ -11,7 +11,7 @@ use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::BFGS;
 use nalgebra::SMatrix;
 use ndarray::{arr1, Array1, Array2};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -31,6 +31,10 @@ const INV_HESSIAN_ATTEMPT_COUNT: usize = 4;
 /// start asserting on a cost of exactly zero.
 const ARB_COST_ROUND: f64 = 1e-5;
 pub const LIQ_SCORE_COUNT: usize = 8;
+/// The tenor (years) at which `default_cost_cfg`'s v and v_diff regularization holds as it is.
+const REGULARIZATION_TENOR: f64 = 30.0 / 365.0;
+/// Tau (years) is capped here before scaling the regularization, so long dated slices do not freeze.
+const MAX_REGULARIZATION_TAU: f64 = 0.25;
 /// Two-sided quotes nearest the forward that a bootstrap reads the at-the-money level and skew off.
 const BOOTSTRAP_ATM_QUOTES: usize = 5;
 /// The quotes say little about the curvature at the money, so a bootstrap starts from each of these
@@ -43,9 +47,21 @@ const BOOTSTRAP_MAX_VOL_SPREAD_SHARE: f64 = 0.15;
 /// a start read off the quotes can land on an end, where the fit could not move it.
 const BOOTSTRAP_EDGE_MARGIN: f64 = 0.01;
 
+/// The block of a `CalibrationLog` a line is written to.
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+enum LogKey {
+    /// The surface's own lines, written first.
+    #[default]
+    Surface,
+    /// One slice's lines, in expiry order.
+    Expiry(i64),
+}
+
+/// A block of lines per slice, so that slices fitted on threads of their own still read one at a time.
 #[derive(Clone, Default)]
 pub struct CalibrationLog {
-    lines: Arc<Mutex<Vec<String>>>,
+    lines: Arc<Mutex<BTreeMap<LogKey, Vec<String>>>>,
+    key: LogKey,
 }
 
 impl CalibrationLog {
@@ -53,14 +69,23 @@ impl CalibrationLog {
         Self::default()
     }
 
+    /// The same log, writing to `expiry`'s block.
+    pub fn for_expiry(&self, expiry: i64) -> Self {
+        Self {
+            lines: self.lines.clone(),
+            key: LogKey::Expiry(expiry),
+        }
+    }
+
     pub fn push(&self, line: impl Into<String>) {
         let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let mut lines = self.lines.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        lines.push(format!("{ts} {}", line.into()));
+        lines.entry(self.key).or_default().push(format!("{ts} {}", line.into()));
     }
 
     pub fn contents(&self) -> String {
         let lines = self.lines.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let lines: Vec<&str> = lines.values().flatten().map(String::as_str).collect();
         if lines.is_empty() {
             String::new()
         } else {
@@ -171,6 +196,31 @@ pub fn default_cost_cfg() -> JWFitCostConfig {
 }
 
 impl JWFitCostConfig {
+    /// The v and v_diff regularization, on the variance levels, scaled by `tau / REGULARIZATION_TENOR`,
+    /// as the bbo cost of a move in v scales: a price misses by vega times the vol move. Tau is held
+    /// within `min_tau` and `MAX_REGULARIZATION_TAU` years, so into expiry a slice keeps some
+    /// regularization. The skew and wing regularization stay as they are.
+    pub fn time_scaled(self, tau: f64, min_tau: f64) -> Self {
+        let scale = tau.clamp(min_tau, MAX_REGULARIZATION_TAU) / REGULARIZATION_TENOR;
+        Self {
+            v_cost: self.v_cost * scale,
+            v_diff_cost: self.v_diff_cost * scale,
+            ..self
+        }
+    }
+
+    /// Every parameter's regularization scaled; the quote, constraint and arbitrage costs stay as they are.
+    pub fn scale_regularization(self, scale: f64) -> Self {
+        Self {
+            v_cost: self.v_cost * scale,
+            psi_cost: self.psi_cost * scale,
+            p_cost: self.p_cost * scale,
+            c_cost: self.c_cost * scale,
+            v_diff_cost: self.v_diff_cost * scale,
+            ..self
+        }
+    }
+
     /// The fitter's optimiser coordinates: as `JWFit::to_param`, but with the wing slopes p and c as
     /// logits within their caps, and v_diff as a logit of its share of v within its band.
     fn to_param(&self, fit: &JWFit) -> Array1<f64> {
@@ -388,6 +438,42 @@ impl JWFit {
 
         None
     }
+
+    /// `get_interpolated_at`, or beyond the fitted range the nearest fit as it is: on average the skew
+    /// and wings stay flat in tenor. None only for an empty `surface`.
+    pub fn get_interpolated_or_nearest(surface: &HashMap<i64, JWFit>, expiry: i64, now_sec: i64) -> Option<JWFit> {
+        Self::get_interpolated_at(surface, expiry, now_sec).or_else(|| {
+            let nearest = surface.keys().min_by_key(|fitted| (*fitted - expiry).abs())?;
+            surface.get(nearest).cloned()
+        })
+    }
+
+    /// The weighted mean of `fits` (weight, fit), parameter by parameter. `fits` must not be empty.
+    pub fn weighted_mean<'a>(fits: impl IntoIterator<Item = (f64, &'a JWFit)>) -> JWFit {
+        let mut total = 0.0;
+        let mut sum = JWFit {
+            v: 0.0,
+            psi: 0.0,
+            p: 0.0,
+            c: 0.0,
+            v_diff: 0.0,
+        };
+        for (weight, fit) in fits {
+            total += weight;
+            sum.v += weight * fit.v;
+            sum.psi += weight * fit.psi;
+            sum.p += weight * fit.p;
+            sum.c += weight * fit.c;
+            sum.v_diff += weight * fit.v_diff;
+        }
+        JWFit {
+            v: sum.v / total,
+            psi: sum.psi / total,
+            p: sum.p / total,
+            c: sum.c / total,
+            v_diff: sum.v_diff / total,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -552,7 +638,7 @@ impl SliceFitter {
         }
     }
 
-    /// As `new` for a slice with no fit yet: every pull is off, and `fit_bootstrap` finds its starts in
+    /// As `new` for a slice with no fit yet: there is no regularization, and `fit_bootstrap` finds its starts in
     /// the quotes. Its init stays unset until `set_init_fit`, so fit it before anything reads the init,
     /// such as `remove_outliers` or `fit_bfgs`.
     pub fn new_bootstrap(cost_cfg: JWFitCostConfig, expiry: i64, fwd: f64, discount: f64, ref_sec: i64) -> Self {
@@ -583,8 +669,15 @@ impl SliceFitter {
         }
     }
 
+    /// Writes to `calibration_log` in this slice's block.
     pub fn with_calibration_log(mut self, calibration_log: CalibrationLog) -> Self {
-        self.calibration_log = Some(calibration_log);
+        self.calibration_log = Some(calibration_log.for_expiry(self.expiry));
+        self
+    }
+
+    /// E.g. to regularize a slice built by `new_bootstrap` towards an init.
+    pub fn with_cost_cfg(mut self, cost_cfg: JWFitCostConfig) -> Self {
+        self.cost_cfg = cost_cfg;
         self
     }
 
@@ -1893,7 +1986,7 @@ mod tests {
         raw.sigma = 0.4153;
 
         fitter = fitter.with_init_svi(SVIJWParams::from_raw(&raw));
-        // with no quotes, only a capped v_diff pull lets the arb cost move v_diff off this init
+        // with no quotes, only a capped v_diff regularization lets the arb cost move v_diff off this init
         fitter.cost_cfg.v_diff_pull_max_share = 0.1;
         let liquidity_score = fitter.get_liquidity_score();
         assert!(liquidity_score > 0.0);
@@ -1914,7 +2007,7 @@ mod tests {
 
     const QUOTED_REF_SEC: i64 = 1_000_000;
 
-    fn without_pulls() -> JWFitCostConfig {
+    fn without_regularization() -> JWFitCostConfig {
         JWFitCostConfig {
             v_cost: 0.0,
             psi_cost: 0.0,
@@ -1983,7 +2076,7 @@ mod tests {
 
     #[test]
     fn fit_bootstrap_lands_inside_the_quotes_with_no_init() {
-        // a new listing has no fit to start from or pull towards: its first fit comes from the quotes alone
+        // a new listing has no fit to start from or regularize towards: its first fit comes from the quotes alone
         let half_spread = 0.005;
         let month = JWFit {
             v: 0.04,
@@ -2062,7 +2155,7 @@ mod tests {
         // a tight book: in a wide one, a wing stuck on its cap can hide behind the put wing
         let half_spread = 0.001;
         let mut fitter = quoted(
-            fitter_from(without_pulls(), &market, 30.0),
+            fitter_from(without_regularization(), &market, 30.0),
             &market,
             &strikes,
             half_spread,
@@ -2100,8 +2193,8 @@ mod tests {
     }
 
     #[test]
-    fn the_v_diff_pull_aims_at_most_at_its_share_of_v() {
-        // a large init v_diff stops pulling the at-the-money curvature once it is above the cap
+    fn the_v_diff_regularization_aims_at_most_at_its_share_of_v() {
+        // a large init v_diff stops regularizing the at-the-money curvature once it is above the cap
         let init = JWFit {
             v: 0.81,
             psi: -0.25,
@@ -2114,12 +2207,12 @@ mod tests {
             ..default_cost_cfg()
         };
         let fitter = fitter_from(cost_cfg, &init, 30.0);
-        let pull_at = |v_diff: f64| {
+        let cost_at = |v_diff: f64| {
             let jw = JWFit { v_diff, ..init.clone() }.to_svi_jw(fitter.fwd, fitter.tau());
-            fitter.regularization_cost(&jw).expect("pull cost")
+            fitter.regularization_cost(&jw).expect("regularization cost")
         };
-        assert_eq!(pull_at(0.1 * init.v), 0.0);
-        assert!(pull_at(init.v_diff) > 0.0);
+        assert_eq!(cost_at(0.1 * init.v), 0.0);
+        assert!(cost_at(init.v_diff) > 0.0);
     }
 
     #[test]
