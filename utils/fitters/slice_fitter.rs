@@ -1,4 +1,5 @@
 use crate::black76::OptionContract;
+use crate::fitters::line_search::{CappedLineSearch, LINE_SEARCH_MAX_ITERS};
 use crate::fitters::svi::{SVIJWParams, SVIRawParams};
 use crate::SEC_PER_YEAR;
 use anyhow::{anyhow, bail, Result};
@@ -19,6 +20,9 @@ const BOUND_MARGIN: f64 = 1e-9;
 const FINITE_DIFF_STEP: f64 = 1e-5;
 const INITIAL_HESSIAN_STEP: f64 = 1e-3;
 const INVALID_COST: f64 = 1e50;
+/// Annualised at-the-money variance past any market, events included: a vol of 10,000%. A step
+/// that takes v past it has run off, and its line search would spin on the flat invalid cost.
+const MAX_V: f64 = 1e4;
 const MIN_INITIAL_INV_HESSIAN: f64 = 1e-8;
 const MAX_INITIAL_INV_HESSIAN: f64 = 10.0;
 const INV_HESSIAN_ATTEMPT_COUNT: usize = 4;
@@ -191,6 +195,9 @@ impl JWFitCostConfig {
 
     fn to_fit(&self, param: &Array1<f64>) -> Result<JWFit> {
         let mut fit = JWFit::try_from_param(param)?;
+        if !(fit.v <= MAX_V) {
+            bail!("JW v {} is past {MAX_V}: the step ran off", fit.v);
+        }
         fit.p = bounded_from_param(param[2], 0.0, self.p_max);
         fit.c = bounded_from_param(param[3], 0.0, self.c_max);
         fit.v_diff = fit.v * bounded_from_param(param[4], self.v_diff_min_share, self.v_diff_max_share);
@@ -985,7 +992,8 @@ impl SliceFitter {
         let best_param = Arc::new(Mutex::new(None));
         let observed_best = best_param.clone();
         let result = (|| -> Result<(JWFit, f64)> {
-            let linesearch = MoreThuenteLineSearch::<Array1<f64>, Array1<f64>, f64>::new().with_bounds(1e-6, 0.1)?;
+            let more_thuente = MoreThuenteLineSearch::<Array1<f64>, Array1<f64>, f64>::new().with_bounds(1e-6, 0.1)?;
+            let linesearch = CappedLineSearch::new(more_thuente, LINE_SEARCH_MAX_ITERS);
             let solver = BFGS::new(linesearch);
             let calibration_log = self.calibration_log.clone();
             let cost_cfg = self.cost_cfg.clone();
@@ -2188,5 +2196,19 @@ mod tests {
 
         let bbo_cost = fitter.bbo_cost(&optimized_jw, false).expect("calculate optimized BBO cost");
         println!("optimized BBO cost: {bbo_cost}");
+    }
+
+    #[test]
+    fn a_step_that_runs_v_off_is_an_error_not_a_cost() {
+        // past a 10,000% vol the cost sits on the flat invalid cost, where a line search spins forever
+        let cost_cfg = default_cost_cfg();
+        let mut param = cost_cfg.to_param(&JWFit { v: 0.25, psi: -0.1, p: 0.5, c: 0.4, v_diff: 0.01 });
+        assert!(cost_cfg.to_fit(&param).is_ok());
+        param[0] = 470.0; // v ~ 1e204, as far as a bad BFGS direction stepped
+        assert!(cost_cfg.to_fit(&param).is_err());
+        param[0] = 800.0; // v overflows to infinity
+        assert!(cost_cfg.to_fit(&param).is_err());
+        param[0] = MAX_V.ln() - 1e-9; // a 10,000% vol still fits
+        assert!(cost_cfg.to_fit(&param).is_ok());
     }
 }
