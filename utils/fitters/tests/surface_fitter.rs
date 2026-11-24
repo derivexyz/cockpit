@@ -1,3 +1,4 @@
+use super::{expiry, REF_SEC};
 use crate::black76::OptionContract;
 use crate::fitters::slice_fitter::{default_cost_cfg, JWFit};
 use crate::fitters::surface_fitter::{SliceStart, SliceStatus, SurfaceFitter};
@@ -9,53 +10,20 @@ use std::collections::{HashMap, HashSet};
 #[test]
 fn bootstrap_slices_interpolates_a_slice_too_thin_to_bootstrap() {
     // one thinly quoted expiry still gets a smile, from its neighbours, instead of failing the surface
-    let (ref_sec, fwd) = (1_000_000, 100.0);
-    let smile = JWFit {
-        v: 0.04,
-        psi: -0.3,
-        p: 1.0,
-        c: 0.4,
-        v_diff: 0.01,
-    };
-    let [near, thin, far] = [7, 14, 30].map(|days| ref_sec + days * 86_400);
-    let (mut bids, mut asks, mut strikes, mut expiries, mut is_calls) = (vec![], vec![], vec![], vec![], vec![]);
-    for expiry in [near, thin, far] {
-        let expiry_sec = (expiry - ref_sec) as f64;
-        let raw = smile.to_svi_jw(fwd, expiry_sec / crate::SEC_PER_YEAR).to_raw();
-        let quoted: Vec<f64> = if expiry == thin {
-            vec![99.0, 100.0, 101.0]
-        } else {
-            (0..15).map(|i| 86.0 + 2.0 * i as f64).collect()
-        };
-        for strike in quoted {
-            let contract = OptionContract {
-                strike,
-                expiry_sec,
-                is_call: strike >= fwd,
-            };
-            bids.push(contract.price(fwd, raw.get_vol(strike) - 0.005));
-            asks.push(contract.price(fwd, raw.get_vol(strike) + 0.005));
-            strikes.push(strike);
-            expiries.push(expiry);
-            is_calls.push(contract.is_call);
-        }
-    }
-    let forwards = HashMap::from([(near, fwd), (thin, fwd), (far, fwd)]);
-    let discounts = HashMap::from([(near, 1.0), (thin, 1.0), (far, 1.0)]);
-
-    let surface = SurfaceFitter::new(ref_sec, forwards, discounts, default_cost_cfg())
-        .bootstrap_slices(
-            Array1::from(bids),
-            Array1::from(asks),
-            Array1::from(strikes),
-            Array1::from(expiries),
-            Array1::from(is_calls),
-        )
+    let quotes =
+        Quotes::default()
+            .on(&SMILE, 7, strikes())
+            .on(&SMILE, 14, [99.0, 100.0, 101.0])
+            .on(&SMILE, 30, strikes());
+    let (bids, asks, strikes, expiries, is_calls) = quotes.arrays();
+    let surface = Quotes::fitter_on(&expiries)
+        .bootstrap_slices(bids, asks, strikes, expiries, is_calls)
         .expect("bootstrap a surface with one thin slice");
 
+    let [near, thin, far] = [7, 14, 30].map(expiry);
     let fit = |expiry: i64| surface.slices()[&expiry].init_fit();
     let neighbours = HashMap::from([(near, fit(near)), (far, fit(far))]);
-    let expected = JWFit::get_interpolated_at(&neighbours, thin, ref_sec).expect("thin lies between its neighbours");
+    let expected = JWFit::get_interpolated_at(&neighbours, thin, REF_SEC).expect("thin lies between its neighbours");
     let actual = fit(thin);
     for (name, a, e) in [
         ("v", actual.v, expected.v),
@@ -68,7 +36,6 @@ fn bootstrap_slices_interpolates_a_slice_too_thin_to_bootstrap() {
     }
 }
 
-const REF_SEC: i64 = 1_000_000;
 const FWD: f64 = 100.0;
 const SMILE: JWFit = JWFit {
     v: 0.04,
@@ -148,10 +115,6 @@ impl Quotes {
             Array1::from(is_calls),
         )
     }
-}
-
-fn expiry(days: i64) -> i64 {
-    REF_SEC + days * 86_400
 }
 
 fn strikes() -> impl Iterator<Item = f64> {

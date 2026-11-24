@@ -196,10 +196,10 @@ pub fn default_cost_cfg() -> JWFitCostConfig {
 }
 
 impl JWFitCostConfig {
-    /// The v and v_diff regularization, on the variance levels, scaled by `tau / REGULARIZATION_TENOR`,
-    /// as the bbo cost of a move in v scales: a price misses by vega times the vol move. Tau is held
-    /// within `min_tau` and `MAX_REGULARIZATION_TAU` years, so into expiry a slice keeps some
-    /// regularization. The skew and wing regularization stay as they are.
+    /// Scales the v and v_diff regularization by `tau / REGULARIZATION_TENOR`. Both are on variance
+    /// levels, and the bbo cost of a move in v grows with tau: a price misses by vega times the vol
+    /// move. Tau is held within `min_tau` and `MAX_REGULARIZATION_TAU` years, so a slice near expiry
+    /// keeps some regularization. The skew and wing regularization stay as they are.
     pub fn time_scaled(self, tau: f64, min_tau: f64) -> Self {
         let scale = tau.clamp(min_tau, MAX_REGULARIZATION_TAU) / REGULARIZATION_TENOR;
         Self {

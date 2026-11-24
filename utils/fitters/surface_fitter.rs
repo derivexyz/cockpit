@@ -326,10 +326,10 @@ impl SurfaceFitter {
         self.build_slice_fitters(None, bids, asks, strikes, expiries, is_calls)
     }
 
-    /// A copy without up to `n` outliers in each slice of `inits`, scored against its init as
-    /// `SliceFitter::remove_outliers` scores them, and the expiries whose liquidity score is past
-    /// `min_score`, too illiquid to fit, for the caller to hold. A held slice keeps its quotes, to
-    /// price its hold on. A slice with no init is left as it is.
+    /// Scores each slice in `inits` against its init, as `SliceFitter::remove_outliers` does. Returns a
+    /// copy without up to `n` outliers per slice, and the expiries whose liquidity score is past
+    /// `min_score`. Those are too illiquid to fit, for the caller to hold. A held slice keeps its quotes,
+    /// to price its hold on. A slice with no init is left as it is.
     pub fn hold_outliers(
         &self,
         inits: &HashMap<i64, SVIJWParams>,

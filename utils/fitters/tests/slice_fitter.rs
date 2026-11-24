@@ -1,7 +1,6 @@
+use super::{expiry, REF_SEC};
 use crate::fitters::slice_fitter::{default_cost_cfg, CalibrationLog, JWFit, JWFitCostConfig};
 use std::collections::HashMap;
-
-const REF_SEC: i64 = 1_000_000;
 
 fn smile(v: f64) -> JWFit {
     JWFit {
@@ -11,10 +10,6 @@ fn smile(v: f64) -> JWFit {
         c: 0.4,
         v_diff: 0.2 * v,
     }
-}
-
-fn expiry(days: i64) -> i64 {
-    REF_SEC + days * 86_400
 }
 
 #[test]

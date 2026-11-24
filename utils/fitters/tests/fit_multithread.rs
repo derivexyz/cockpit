@@ -23,6 +23,7 @@
 //! out and `b`'s 7 to 9 days get there within 15 passes. From a runner's init, the average of the last
 //! 7 minutes' fits, the same takes 25 to 135 passes of 15 s. The shortest slices do not get there
 //! within an hour, and some flat fits stay stuck, e.g. at 87 days with the skew near 0.
+use super::REF_SEC;
 use crate::black76::OptionContract;
 use crate::fitters::slice_fitter::{default_cost_cfg, JWFit, JWFitCostConfig};
 use crate::fitters::surface_fitter::{SliceOutcome, SliceStart, SliceStatus, SurfaceFitter};
@@ -32,7 +33,6 @@ use ndarray::Array1;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-const PASS_SEC: i64 = 1_000_000;
 const REGULARIZATION_SCALE: f64 = 0.1;
 const MIN_TAU: f64 = 15.0 * 60.0 / SEC_PER_YEAR;
 const MAX_ITERS: u64 = 100;
@@ -179,7 +179,7 @@ fn recorded() -> Vec<RecordedSurface> {
 
 impl RecordedSlice {
     fn expiry(&self) -> i64 {
-        PASS_SEC + self.expiry_sec
+        REF_SEC + self.expiry_sec
     }
 
     fn days(&self) -> f64 {
@@ -287,7 +287,7 @@ impl RecordedSurface {
             }
         }
         SurfaceFitter::new_with_cfgs(
-            PASS_SEC,
+            REF_SEC,
             by_expiry(|slice| slice.forward),
             by_expiry(|slice| slice.discount),
             cost_cfgs,
@@ -315,7 +315,7 @@ impl RecordedSurface {
             .filter(|other| other.expiry() != slice.expiry())
             .map(|other| (other.expiry(), other.good_init()))
             .collect();
-        JWFit::get_interpolated_or_nearest(&others, slice.expiry(), PASS_SEC).expect("other slices")
+        JWFit::get_interpolated_or_nearest(&others, slice.expiry(), REF_SEC).expect("other slices")
     }
 
     fn assert_fits(&self, outcomes: &HashMap<i64, SliceOutcome>, status: SliceStatus, expected: &[Expected]) {
