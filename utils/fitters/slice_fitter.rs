@@ -31,9 +31,9 @@ const INV_HESSIAN_ATTEMPT_COUNT: usize = 4;
 /// start asserting on a cost of exactly zero.
 const ARB_COST_ROUND: f64 = 1e-5;
 pub const LIQ_SCORE_COUNT: usize = 8;
-/// The tenor (years) at which `default_cost_cfg`'s v and v_diff regularization holds as it is.
+/// `time_scaled` leaves the regularization unchanged at this tenor (years).
 const REGULARIZATION_TENOR: f64 = 30.0 / 365.0;
-/// Tau (years) is capped here before scaling the regularization, so long dated slices do not freeze.
+/// `time_scaled` caps tau (years) here, so long dated slices do not freeze.
 const MAX_REGULARIZATION_TAU: f64 = 0.25;
 /// Two-sided quotes nearest the forward that a bootstrap reads the at-the-money level and skew off.
 const BOOTSTRAP_ATM_QUOTES: usize = 5;
@@ -50,14 +50,13 @@ const BOOTSTRAP_EDGE_MARGIN: f64 = 0.01;
 /// The block of a `CalibrationLog` a line is written to.
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 enum LogKey {
-    /// The surface's own lines, written first.
+    /// Printed first.
     #[default]
     Surface,
-    /// One slice's lines, in expiry order.
     Expiry(i64),
 }
 
-/// A block of lines per slice, so that slices fitted on threads of their own still read one at a time.
+/// Lines kept per slice, so slices fitted in parallel still print one block each.
 #[derive(Clone, Default)]
 pub struct CalibrationLog {
     lines: Arc<Mutex<BTreeMap<LogKey, Vec<String>>>>,
@@ -196,10 +195,7 @@ pub fn default_cost_cfg() -> JWFitCostConfig {
 }
 
 impl JWFitCostConfig {
-    /// Scales the v and v_diff regularization by `tau / REGULARIZATION_TENOR`. Both are on variance
-    /// levels, and the bbo cost of a move in v grows with tau: a price misses by vega times the vol
-    /// move. Tau is held within `min_tau` and `MAX_REGULARIZATION_TAU` years, so a slice near expiry
-    /// keeps some regularization. The skew and wing regularization stay as they are.
+    /// Scales the v and v_diff regularization with tau, clamped to `min_tau..=MAX_REGULARIZATION_TAU`.
     pub fn time_scaled(self, tau: f64, min_tau: f64) -> Self {
         let scale = tau.clamp(min_tau, MAX_REGULARIZATION_TAU) / REGULARIZATION_TENOR;
         Self {
@@ -209,7 +205,7 @@ impl JWFitCostConfig {
         }
     }
 
-    /// Every parameter's regularization scaled; the quote, constraint and arbitrage costs stay as they are.
+    /// Scales the regularization weights; the other costs stay.
     pub fn scale_regularization(self, scale: f64) -> Self {
         Self {
             v_cost: self.v_cost * scale,
@@ -274,12 +270,16 @@ fn bounded_slope(param: f64, lo: f64, hi: f64) -> f64 {
 }
 
 impl JWFit {
-    pub fn to_param(&self) -> Array1<f64> {
-        assert!(self.v > 0.0);
-        assert!(self.p > 0.0);
-        assert!(self.c > 0.0);
-        assert!(self.v_diff > 0.0);
+    /// The fitter works in the logs of v, p, c and v_diff, so each must be positive.
+    pub fn check_fittable(&self) -> Result<()> {
+        if !([self.v, self.p, self.c, self.v_diff].iter().all(|param| *param > 0.0)) {
+            bail!("{self:?} cannot be fitted from: v, p, c and v_diff must be positive");
+        }
+        Ok(())
+    }
 
+    pub fn to_param(&self) -> Array1<f64> {
+        self.check_fittable().expect("a fittable JW fit");
         arr1(&[self.v.ln(), self.psi, self.p.ln(), self.c.ln(), self.v_diff.ln()])
     }
 
@@ -439,8 +439,7 @@ impl JWFit {
         None
     }
 
-    /// `get_interpolated_at`, or beyond the fitted range the nearest fit as it is: on average the skew
-    /// and wings stay flat in tenor. None only for an empty `surface`.
+    /// `get_interpolated_at`, or the nearest fit outside the fitted range. None for an empty `surface`.
     pub fn get_interpolated_or_nearest(surface: &HashMap<i64, JWFit>, expiry: i64, now_sec: i64) -> Option<JWFit> {
         Self::get_interpolated_at(surface, expiry, now_sec).or_else(|| {
             let nearest = surface.keys().min_by_key(|fitted| (*fitted - expiry).abs())?;
@@ -675,7 +674,6 @@ impl SliceFitter {
         self
     }
 
-    /// E.g. to regularize a slice built by `new_bootstrap` towards an init.
     pub fn with_cost_cfg(mut self, cost_cfg: JWFitCostConfig) -> Self {
         self.cost_cfg = cost_cfg;
         self

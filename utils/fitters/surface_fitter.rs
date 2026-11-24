@@ -24,7 +24,7 @@ pub enum SliceStart {
     Init(SVIJWParams),
     /// Not fitted: this SVI, priced on the slice's quotes.
     Hold(SVIJWParams),
-    /// Fitted from its quotes alone, with no regularization (`SliceFitter::fit_bootstrap`).
+    /// From its quotes alone (`SliceFitter::fit_bootstrap`).
     Bootstrap,
 }
 
@@ -33,8 +33,7 @@ pub enum SliceStatus {
     Refit,
     Bootstrapped,
     Held,
-    /// The fit erred, or panicked where panics unwind: an init or a hold returns its SVI, a bootstrap
-    /// no fit.
+    /// The fit erred, or panicked where panics unwind. An init or a hold returns its SVI.
     Failed(String),
 }
 
@@ -59,8 +58,7 @@ impl SurfaceFitter {
         Self::new_with_cfgs(ref_sec, forwards, disc_factors, cost_cfgs)
     }
 
-    /// As [`SurfaceFitter::new`], with a cost config per expiry (sec), e.g. to weigh the
-    /// regularization by time to expiry.
+    /// As [`SurfaceFitter::new`], with a cost config per expiry (sec), e.g. to scale regularization by tenor.
     pub fn new_with_cfgs(
         ref_sec: i64,
         forwards: HashMap<i64, f64>,
@@ -309,12 +307,7 @@ impl SurfaceFitter {
         Ok(self)
     }
 
-    /// Each slice's quotes with no init, for `hold_outliers` and `fit_multithread`. They take a start
-    /// per slice per call, so a caller can refit every slice, then bootstrap some again, off the same
-    /// quotes.
-    ///
-    /// Do not call `fit_slices`, `remove_outliers` or `into_svi_jw_params` on the result. They read
-    /// each slice's init, which here is all zeros, so they panic, err or return zero smiles.
+    /// Quotes without inits, only for `hold_outliers` and `fit_multithread`: other methods read the all-zero inits.
     pub fn with_quotes(
         self,
         bids: Array1<f64>,
@@ -326,10 +319,7 @@ impl SurfaceFitter {
         self.build_slice_fitters(None, bids, asks, strikes, expiries, is_calls)
     }
 
-    /// Scores each slice in `inits` against its init, as `SliceFitter::remove_outliers` does. Returns a
-    /// copy without up to `n` outliers per slice, and the expiries whose liquidity score is past
-    /// `min_score`. Those are too illiquid to fit, for the caller to hold. A held slice keeps its quotes,
-    /// to price its hold on. A slice with no init is left as it is.
+    /// Removes up to `n` outliers per slice in `inits` from a copy; returns it with the illiquid expiries to hold.
     pub fn hold_outliers(
         &self,
         inits: &HashMap<i64, SVIJWParams>,
@@ -359,8 +349,7 @@ impl SurfaceFitter {
         Ok((cleaned, held))
     }
 
-    /// Fits each slice in `starts` on a thread of its own, each fit at most `max_iters` BFGS
-    /// iterations. Errs only on a start for an expiry with no quotes.
+    /// Fits each slice in `starts` on its own thread. Errs only on a start for an unquoted expiry.
     pub fn fit_multithread(
         &self,
         starts: &HashMap<i64, SliceStart>,
@@ -405,10 +394,8 @@ impl SurfaceFitter {
 
     fn fit_slice(&self, expiry: i64, start: &SliceStart, max_iters: u64) -> Result<SliceOutcome> {
         if let SliceStart::Init(svi) = start {
-            // the fitter asserts these, and a panic aborts a process built with panic = "abort"
-            if !([svi.v, svi.p, svi.c, svi.v_diff].iter().all(|param| *param > 0.0) && svi.psi.is_finite()) {
-                bail!("cannot start from init {svi:?}: v, p, c and v_diff must be positive");
-            }
+            // checked before the fitter asserts it, as a panic aborts a process built with panic = "abort"
+            JWFit::from_svi_jw(svi).check_fittable()?;
         }
         let fitter = self.fitter_for(expiry, start);
         let (fit, status): (JWFit, SliceStatus) = match start {
@@ -440,8 +427,6 @@ impl SurfaceFitter {
         }
     }
 
-    /// The slice's quotes on a fitter for `start`: regularized towards the SVI of an init or a hold,
-    /// with no regularization for a bootstrap.
     fn fitter_for(&self, expiry: i64, start: &SliceStart) -> SliceFitter {
         let quoted = self.slice_fitters[&expiry].clone();
         let cost_cfg = self.cost_cfgs[&expiry].clone();

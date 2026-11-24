@@ -52,8 +52,7 @@ fn an_expiry_outside_the_fitted_ones_takes_the_nearest_fit() {
 
 #[test]
 fn the_v_regularization_scales_with_tau_within_its_bounds() {
-    // the quotes' cost of a move in v grows with tau: a weight fixed across tenors would hold short
-    // slices still and let long ones wander
+    // the quotes' cost of a v move grows with tau: a fixed weight would freeze short slices, free long ones
     let base = default_cost_cfg();
     let min_tau = 1.0 / 365.0;
     let v_cost = |tau: f64| base.clone().time_scaled(tau, min_tau).v_cost;
@@ -81,8 +80,7 @@ fn the_v_regularization_scales_with_tau_within_its_bounds() {
 
 #[test]
 fn scaling_the_regularization_leaves_the_quote_constraint_and_arbitrage_costs() {
-    // a lighter regularization lets a slice follow its quotes; it must not loosen the quotes, or the
-    // constraints and arbitrage costs that keep the fit a valid smile
+    // lighter regularization lets a slice follow its quotes, but must not loosen the quote or no-arb costs
     let base = default_cost_cfg();
     let scaled = base.clone().scale_regularization(0.1);
     let weights = |cfg: &JWFitCostConfig| [cfg.v_cost, cfg.psi_cost, cfg.p_cost, cfg.c_cost, cfg.v_diff_cost];

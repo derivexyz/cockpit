@@ -159,8 +159,7 @@ fn a_slice_that_fails_leaves_the_others_fitted() {
 
 #[test]
 fn a_held_slice_is_priced_on_its_quotes_not_refitted() {
-    // the hold's cost against its book is what a caller weighs a later refit or reseed against: a
-    // hold priced on no quotes costs nothing and drags that comparison down
+    // callers weigh a refit or reseed against the hold's cost; priced on no quotes it would cost nothing
     let surface = Quotes::default().on(&SMILE, 30, strikes()).surface();
     let stale = JWFit { v: 0.09, ..SMILE };
     let starts = HashMap::from([(expiry(30), SliceStart::Hold(svi(&stale, 30)))]);
@@ -233,8 +232,7 @@ fn an_init_the_fitter_cannot_start_from_comes_back_failed() {
 
 #[test]
 fn a_bootstrap_leaves_the_init_its_slice_was_built_on() {
-    // a reseed bootstraps because the market has left the init: regularized towards that init, it
-    // would land between the two, while a refit is meant to
+    // a reseed bootstraps because the market left the init; regularized towards it, it would land between
     let stale = JWFit { v: 0.09, ..SMILE };
     let surface = Quotes::default()
         .on(&SMILE, 30, strikes())

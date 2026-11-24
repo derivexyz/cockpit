@@ -37,12 +37,10 @@ const REGULARIZATION_SCALE: f64 = 0.1;
 const MIN_TAU: f64 = 15.0 * 60.0 / SEC_PER_YEAR;
 const MAX_ITERS: u64 = 100;
 
-/// (days to expiry, at-the-money vol, largest miss (vol bp) within one at-the-money standard
-/// deviation of the forward, bbo cost)
+/// (days to expiry, at-the-money vol, largest miss (vol bp) within one ATM standard deviation, bbo cost)
 type Expected = (f64, f64, f64, f64);
 
-/// `a` and `b` quote tighter books than an SVI can thread: their fits miss some quotes near the
-/// money by up to about 25 vol bp. `c`'s wider books hold most of its fits.
+/// `a` and `b` books are tighter than an SVI can thread: fits miss near the money by up to ~25 vol bp.
 const GOOD_INIT: [(&str, &[Expected]); 3] = [
     (
         "a",
@@ -86,8 +84,7 @@ const GOOD_INIT: [(&str, &[Expected]); 3] = [
     ),
 ];
 
-/// Within a few tenths of a vol of the refits' at-the-money vols, and as close to the books near the
-/// money, closer on the shortest expiries, which regularization holds back.
+/// Within a few tenths of a vol of the refits, and as close to the books.
 const BOOTSTRAP: [(&str, &[Expected]); 3] = [
     (
         "a",
@@ -131,8 +128,7 @@ const BOOTSTRAP: [(&str, &[Expected]); 3] = [
     ),
 ];
 
-/// Each surface's 8-day slice, from an init interpolated between its 7- and 9-day neighbours: within
-/// a tenth of a vol of the refit from a good init.
+/// The 8-day slices from inits interpolated between their 7- and 9-day neighbours: close to a good refit.
 const BETWEEN_CLOSE_NEIGHBOURS: [(&str, Expected); 3] = [
     ("a", (8.08, 0.2300, 15.9, 2.219e-3)),
     ("b", (8.08, 0.3403, 12.0, 1.030e-3)),
@@ -162,8 +158,7 @@ struct RecordedSlice {
     good_init: [f64; 5],
 }
 
-/// A production runner's settings: a tenth of the default regularization, its v terms floored at
-/// 15 minutes to expiry, and no buffer on the bid and ask.
+/// A production runner's settings.
 fn cost_cfg(tau: f64) -> JWFitCostConfig {
     JWFitCostConfig {
         buffer_bp: 0.0,
@@ -233,8 +228,7 @@ impl RecordedSlice {
             .collect()
     }
 
-    /// The largest miss (vol bp) among the quotes within one at-the-money standard deviation of the
-    /// forward, where a fit's vols matter most. Further out, a vol miss costs little in price.
+    /// The largest miss (vol bp) within one at-the-money standard deviation of the forward.
     fn near_money_max_miss_bp(&self, fit: &JWFit) -> f64 {
         let atm_sd = (self.good_init().v * self.tau()).sqrt();
         let near_money = self.quotes.iter().map(|quote| (quote.0 / self.forward).ln().abs() < atm_sd);
@@ -325,8 +319,7 @@ impl RecordedSurface {
         }
     }
 
-    /// Each slice within twice the bbo cost of the refit from its good init (`GOOD_INIT`), and within
-    /// 5 vol bp of its near-the-money miss.
+    /// Each slice within 2x a good refit's bbo cost and 5 vol bp of its near-the-money miss (`GOOD_INIT`).
     fn assert_as_close_as_a_good_refit(&self, outcomes: &HashMap<i64, SliceOutcome>, good: &[Expected]) {
         for (slice, &(days, _, good_miss_bp, good_bbo_cost)) in self.slices.iter().zip(good) {
             let label = format!("surface {} at {days} days", self.name);
@@ -378,7 +371,7 @@ fn an_init_interpolated_between_close_neighbours_refits_where_its_book_is() {
 }
 
 #[test]
-#[ignore = "TODO: revisit the default config: from a flat init the fits keep its shape (see the summary above)"]
+#[ignore = "TODO: revisit the default config: from a flat init the fits keep its shape (see summary)"]
 fn a_flat_init_refits_every_slice_where_its_book_is() {
     // the at-the-money level with no shape is the generic start for a slice with nothing better
     for (surface, (name, good)) in recorded().iter().zip(GOOD_INIT) {
@@ -389,7 +382,7 @@ fn a_flat_init_refits_every_slice_where_its_book_is() {
 }
 
 #[test]
-#[ignore = "TODO: revisit the default config: across far neighbours the fits keep the interpolated shape (see the summary above)"]
+#[ignore = "TODO: revisit the default config: from far neighbours the fits keep their shape (see summary)"]
 fn an_init_interpolated_from_the_other_slices_refits_every_slice_where_its_book_is() {
     // a new listing between or beyond fitted expiries starts from them, however far they are
     for (surface, (name, good)) in recorded().iter().zip(GOOD_INIT) {
