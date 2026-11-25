@@ -157,8 +157,8 @@ fn a_slice_that_fails_leaves_the_others_fitted() {
     let starts = HashMap::from([
         (expiry(30), SliceStart::Init(svi(&ran_off, 30))),
         (expiry(60), SliceStart::Init(svi(&SMILE, 60))),
-        (expiry(90), SliceStart::Bootstrap),
-        (expiry(120), SliceStart::Bootstrap),
+        (expiry(90), SliceStart::Bootstrap(vec![])),
+        (expiry(120), SliceStart::Bootstrap(vec![])),
     ]);
     let outcomes = surface.fit_multithread(&starts, 100).expect("every start is quoted");
 
@@ -226,7 +226,7 @@ fn hold_outliers_holds_an_illiquid_slice_and_drops_an_outlier_from_a_copy() {
 fn a_start_with_no_forward_is_an_error() {
     // fitting nothing for it would pass a caller's bug off as a failed slice
     let surface = Quotes::default().on(&SMILE, 30, strikes()).get_surface();
-    let starts = HashMap::from([(expiry(60), SliceStart::Bootstrap)]);
+    let starts = HashMap::from([(expiry(60), SliceStart::Bootstrap(vec![]))]);
     assert!(surface.fit_multithread(&starts, 100).is_err());
 }
 
@@ -253,7 +253,7 @@ fn a_slice_with_no_quotes_is_held_on_an_empty_book() {
     assert_eq!(held.status, SliceStatus::Held);
     let (fit, bbo_cost) = held.fit.expect("the held smile");
     assert_eq!((fit.v, bbo_cost), (SMILE.v, 0.0));
-    let bootstrap = start(SliceStart::Bootstrap).expect("an outcome");
+    let bootstrap = start(SliceStart::Bootstrap(vec![])).expect("an outcome");
     assert!(
         matches!(bootstrap.status, SliceStatus::Failed(_)),
         "nothing to bootstrap from: {:?}",
@@ -294,7 +294,7 @@ fn a_bootstrap_leaves_the_init_its_slice_was_built_on() {
         fit.v.sqrt()
     };
     let market = SMILE.v.sqrt();
-    let bootstrapped = atm_vol(SliceStart::Bootstrap);
+    let bootstrapped = atm_vol(SliceStart::Bootstrap(vec![]));
     assert!(
         (bootstrapped - market).abs() < HALF_SPREAD,
         "bootstrapped at {bootstrapped:.4}"
@@ -324,7 +324,7 @@ fn an_illiquid_slice_is_interpolated_from_its_liquid_neighbours() {
         .get_surface();
     let starts = HashMap::from([
         (expiry(7), SliceStart::Init(svi(&SMILE, 7))),
-        (expiry(14), SliceStart::Interpolate),
+        (expiry(14), SliceStart::Interpolate(None)),
         (expiry(21), SliceStart::Init(svi(&other, 21))),
         (expiry(30), SliceStart::Init(svi(&SMILE, 30))),
     ]);
@@ -345,9 +345,64 @@ fn an_illiquid_slice_is_interpolated_from_its_liquid_neighbours() {
 fn an_interpolation_with_no_liquid_neighbour_fails() {
     let surface = Quotes::default().on(&SMILE, 30, strikes()).get_surface();
     let mut outcomes = surface
-        .fit_multithread(&HashMap::from([(expiry(30), SliceStart::Interpolate)]), 100)
+        .fit_multithread(&HashMap::from([(expiry(30), SliceStart::Interpolate(None))]), 100)
         .expect("a forward");
     let alone = outcomes.remove(&expiry(30)).expect("an outcome");
     assert!(matches!(alone.status, SliceStatus::Failed(_)), "{:?}", alone.status);
     assert!(alone.fit.is_none(), "nothing to interpolate");
+}
+
+#[test]
+fn an_interpolation_given_its_smile_needs_no_neighbours() {
+    // a caller with its own interpolation passes it in: on a book too wide to move it, the smile is kept
+    let surface = Quotes::default().on_with_spread(&SMILE, 14, strikes(), 0.15).get_surface();
+    let start = SliceStart::Interpolate(Some(svi(&SMILE, 14)));
+    let mut outcomes = surface.fit_multithread(&HashMap::from([(expiry(14), start)]), 100).expect("a forward");
+    let given = outcomes.remove(&expiry(14)).expect("an outcome");
+    assert_eq!(given.status, SliceStatus::Interpolated);
+    let (fit, _) = given.fit.expect("the given smile");
+    assert!(
+        (fit.v - SMILE.v).abs() < 1e-9 && (fit.p - SMILE.p).abs() < 1e-9,
+        "moved to {fit:?}"
+    );
+}
+
+#[test]
+fn a_bootstrap_tie_goes_to_the_extra_starts_in_the_order_given() {
+    // on a book that cannot tell smiles apart, the caller's starts come back over the ones read off the quotes
+    let surface = Quotes::default().on_with_spread(&SMILE, 30, strikes(), 0.02).get_surface();
+    let (first, second) = (
+        SMILE,
+        JWFit {
+            psi: SMILE.psi * 0.98,
+            ..SMILE
+        },
+    );
+    let psi_from = |extra: Vec<SVIJWParams>| {
+        let mut outcomes = surface.fit_multithread(&HashMap::from([(expiry(30), SliceStart::Bootstrap(extra))]), 100);
+        let outcome = outcomes.as_mut().expect("a forward").remove(&expiry(30)).expect("an outcome");
+        assert_eq!(outcome.status, SliceStatus::Bootstrapped);
+        outcome.fit.expect("a bootstrap").0.psi
+    };
+    assert_eq!(psi_from(vec![svi(&first, 30), svi(&second, 30)]), first.psi);
+    assert_eq!(psi_from(vec![svi(&second, 30), svi(&first, 30)]), second.psi);
+}
+
+#[test]
+fn a_bootstrap_too_wide_to_read_starts_off_fits_from_its_extra_starts() {
+    // a caller's start bootstraps a slice whose quotes are too loose to read one off, and an unfittable one is skipped
+    let surface = Quotes::default().on_with_spread(&SMILE, 30, strikes(), 0.15).get_surface();
+    let bootstrap = |extra: Vec<SVIJWParams>| {
+        let mut outcomes = surface.fit_multithread(&HashMap::from([(expiry(30), SliceStart::Bootstrap(extra))]), 100);
+        outcomes.as_mut().expect("a forward").remove(&expiry(30)).expect("an outcome")
+    };
+    assert!(
+        matches!(bootstrap(vec![]).status, SliceStatus::Failed(_)),
+        "no tight quote to read a start off"
+    );
+    let flat_put_wing = JWFit { p: 0.0, ..SMILE };
+    let from_extra = bootstrap(vec![svi(&flat_put_wing, 30), svi(&SMILE, 30)]);
+    assert_eq!(from_extra.status, SliceStatus::Bootstrapped);
+    let (fit, _) = from_extra.fit.expect("a bootstrap");
+    assert!((fit.p - SMILE.p).abs() < 1e-9, "p {}", fit.p);
 }

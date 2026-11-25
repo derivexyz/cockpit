@@ -830,9 +830,27 @@ impl SliceFitter {
     /// Fits from each of the starts `bootstrap_starts` reads off the quotes and keeps the cheapest fit,
     /// as one start can stop in a local minimum that another avoids. The init is not a start.
     pub fn fit_bootstrap(&self, max_iters: u64) -> Result<(JWFit, f64)> {
+        self.fit_bootstrap_from(&[], max_iters)
+    }
+
+    /// As `fit_bootstrap`, `extra` tried first: ties go to the earliest start, and quotes too loose to read starts off
+    /// leave `extra` alone.
+    pub fn fit_bootstrap_from(&self, extra: &[JWFit], max_iters: u64) -> Result<(JWFit, f64)> {
+        let quoted: Vec<JWFit> = match self.bootstrap_starts() {
+            Ok(starts) => starts,
+            Err(err) if !extra.is_empty() => {
+                self.log(format!("WARN bootstrap from the extra starts only: {err}"));
+                Vec::new()
+            }
+            Err(err) => return Err(err),
+        };
         let mut best: Option<(JWFit, f64)> = None;
-        for start in self.bootstrap_starts()? {
-            match self.fit_bfgs_from(&start, max_iters) {
+        for start in extra.iter().chain(&quoted) {
+            if let Err(err) = start.check_fittable() {
+                self.log(format!("WARN bootstrap start={start:?} skipped: {err}"));
+                continue;
+            }
+            match self.fit_bfgs_from(start, max_iters) {
                 Ok((fit, cost)) => {
                     self.log(format!("INFO bootstrap start={start:?} fit={fit:?} cost={cost}"));
                     if best.as_ref().is_none_or(|(_, best_cost)| cost < *best_cost) {

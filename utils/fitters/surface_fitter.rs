@@ -25,10 +25,10 @@ pub enum SliceStart {
     Init(SVIJWParams),
     /// Not fitted: this SVI, priced on the slice's quotes.
     Hold(SVIJWParams),
-    /// From its quotes alone (`SliceFitter::fit_bootstrap`).
-    Bootstrap,
-    /// Fitted like an init from its liquid neighbours' fits, interpolated to its expiry.
-    Interpolate,
+    /// From its quotes alone (`SliceFitter::fit_bootstrap_from`), these SVIs tried first and winning ties in order.
+    Bootstrap(Vec<SVIJWParams>),
+    /// Fitted from this SVI at `interpolation_reg` of the regularization; None takes its liquid neighbours' smile.
+    Interpolate(Option<SVIJWParams>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -362,8 +362,8 @@ impl SurfaceFitter {
         let (interpolations, fits): (HashMap<i64, SliceStart>, HashMap<i64, SliceStart>) = starts
             .iter()
             .map(|(&expiry, start)| (expiry, start.clone()))
-            .partition(|(_, start)| matches!(start, SliceStart::Interpolate));
-        let mut outcomes = self.fit_in_parallel(&fits, max_iters, false);
+            .partition(|(_, start)| matches!(start, SliceStart::Interpolate(None)));
+        let mut outcomes = self.fit_in_parallel(&fits, max_iters);
 
         let interpolated: HashMap<i64, SliceStart> = interpolations
             .keys()
@@ -371,18 +371,19 @@ impl SurfaceFitter {
                 let neighbours = Self::liquid_fits(&outcomes, self.cost_cfgs[&expiry].interpolation_max_liq);
                 let fit = JWFit::get_interpolated_or_nearest(&neighbours, expiry, self.ref_sec)?;
                 let tau = (expiry - self.ref_sec) as f64 / SEC_PER_YEAR;
-                Some((expiry, SliceStart::Init(fit.to_svi_jw(self.forwards[&expiry], tau))))
+                Some((
+                    expiry,
+                    SliceStart::Interpolate(Some(fit.to_svi_jw(self.forwards[&expiry], tau))),
+                ))
             })
             .collect();
-        for (expiry, mut outcome) in self.fit_in_parallel(&interpolated, max_iters, true) {
-            if outcome.status == SliceStatus::Refit {
-                outcome.status = SliceStatus::Interpolated;
-            }
-            outcomes.insert(expiry, outcome);
-        }
+        outcomes.extend(self.fit_in_parallel(&interpolated, max_iters));
         for &expiry in interpolations.keys().filter(|expiry| !interpolated.contains_key(expiry)) {
             let error = "no liquid neighbour to interpolate from".to_string();
-            outcomes.insert(expiry, self.failed_outcome(expiry, &SliceStart::Interpolate, error));
+            outcomes.insert(
+                expiry,
+                self.failed_outcome(expiry, &SliceStart::Interpolate(None), error),
+            );
         }
 
         for (expiry, outcome) in &outcomes {
@@ -393,13 +394,7 @@ impl SurfaceFitter {
         Ok(outcomes)
     }
 
-    /// `interpolated` starts are fitted at their `interpolation_reg` of the regularization.
-    fn fit_in_parallel(
-        &self,
-        starts: &HashMap<i64, SliceStart>,
-        max_iters: u64,
-        interpolated: bool,
-    ) -> HashMap<i64, SliceOutcome> {
+    fn fit_in_parallel(&self, starts: &HashMap<i64, SliceStart>, max_iters: u64) -> HashMap<i64, SliceOutcome> {
         thread::scope(|scope| {
             let fits: Vec<_> = starts
                 .iter()
@@ -407,7 +402,7 @@ impl SurfaceFitter {
                     (
                         expiry,
                         start,
-                        scope.spawn(move || self.fit_slice(expiry, start, max_iters, interpolated)),
+                        scope.spawn(move || self.fit_slice(expiry, start, max_iters)),
                     )
                 })
                 .collect();
@@ -434,17 +429,24 @@ impl SurfaceFitter {
             .collect()
     }
 
-    fn fit_slice(&self, expiry: i64, start: &SliceStart, max_iters: u64, interpolated: bool) -> Result<SliceOutcome> {
-        if let SliceStart::Init(svi) = start {
+    fn fit_slice(&self, expiry: i64, start: &SliceStart, max_iters: u64) -> Result<SliceOutcome> {
+        if let SliceStart::Init(svi) | SliceStart::Interpolate(Some(svi)) = start {
             // checked before the fitter asserts it, as a panic aborts a process built with panic = "abort"
             JWFit::from_svi_jw(svi).check_fittable()?;
         }
-        let fitter = self.fitter_for(expiry, start, interpolated);
+        let fitter = self.fitter_for(expiry, start);
         let (fit, status): (JWFit, SliceStatus) = match start {
             SliceStart::Init(_) => (fitter.fit_bfgs(max_iters)?.0, SliceStatus::Refit),
+            SliceStart::Interpolate(Some(_)) => (fitter.fit_bfgs(max_iters)?.0, SliceStatus::Interpolated),
             SliceStart::Hold(_) => (fitter.init_fit(), SliceStatus::Held),
-            SliceStart::Bootstrap => (fitter.fit_bootstrap(max_iters)?.0, SliceStatus::Bootstrapped),
-            SliceStart::Interpolate => bail!("an interpolation starts from its neighbours' fits"),
+            SliceStart::Bootstrap(extra) => {
+                let extra: Vec<JWFit> = extra.iter().map(JWFit::from_svi_jw).collect();
+                (
+                    fitter.fit_bootstrap_from(&extra, max_iters)?.0,
+                    SliceStatus::Bootstrapped,
+                )
+            }
+            SliceStart::Interpolate(None) => bail!("an interpolation starts from its neighbours' fits"),
         };
         let bbo_cost = fitter.bbo_cost_from_fit(&fit, false)?;
         Ok(SliceOutcome {
@@ -455,13 +457,13 @@ impl SurfaceFitter {
     }
 
     fn failed_outcome(&self, expiry: i64, start: &SliceStart, error: String) -> SliceOutcome {
-        let fitter = self.fitter_for(expiry, start, false);
+        let fitter = self.fitter_for(expiry, start);
         let fit = match start {
-            SliceStart::Init(_) | SliceStart::Hold(_) => {
+            SliceStart::Init(_) | SliceStart::Hold(_) | SliceStart::Interpolate(Some(_)) => {
                 let init = fitter.init_fit();
                 fitter.bbo_cost_from_fit(&init, false).ok().map(|bbo_cost| (init, bbo_cost))
             }
-            SliceStart::Bootstrap | SliceStart::Interpolate => None,
+            SliceStart::Bootstrap(_) | SliceStart::Interpolate(None) => None,
         };
         SliceOutcome {
             status: SliceStatus::Failed(error),
@@ -470,10 +472,8 @@ impl SurfaceFitter {
         }
     }
 
-    fn fitter_for(&self, expiry: i64, start: &SliceStart, interpolated: bool) -> SliceFitter {
+    fn fitter_for(&self, expiry: i64, start: &SliceStart) -> SliceFitter {
         let cost_cfg = self.cost_cfgs[&expiry].clone();
-        let reg = if interpolated { cost_cfg.interpolation_reg } else { 1.0 };
-        let cost_cfg = cost_cfg.scale_reg(reg);
         // a slice with no quotes, as at a daily halt, gets an empty book
         let quoted = self.slice_fitters.get(&expiry).cloned().unwrap_or_else(|| {
             let (forward, discount) = (self.forwards[&expiry], self.disc_factors[&expiry]);
@@ -482,7 +482,11 @@ impl SurfaceFitter {
         });
         match start {
             SliceStart::Init(svi) | SliceStart::Hold(svi) => quoted.with_cost_cfg(cost_cfg).with_init_svi(svi.clone()),
-            SliceStart::Bootstrap | SliceStart::Interpolate => quoted.with_cost_cfg(cost_cfg.scale_reg(0.0)),
+            SliceStart::Interpolate(Some(svi)) => {
+                let reg = cost_cfg.interpolation_reg;
+                quoted.with_cost_cfg(cost_cfg.scale_reg(reg)).with_init_svi(svi.clone())
+            }
+            SliceStart::Bootstrap(_) | SliceStart::Interpolate(None) => quoted.with_cost_cfg(cost_cfg.scale_reg(0.0)),
         }
     }
 }

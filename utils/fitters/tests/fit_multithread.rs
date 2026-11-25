@@ -395,7 +395,7 @@ impl RecordedSurface {
     /// `slice` interpolated from the others, which refit from their good inits.
     fn take_out(&self, slice: &RecordedSlice) -> SliceOutcome {
         let mut outcomes = self.fit(|other| match other.expiry() == slice.expiry() {
-            true => SliceStart::Interpolate,
+            true => SliceStart::Interpolate(None),
             false => SliceStart::Init(other.svi(&other.good_init())),
         });
         outcomes.remove(&slice.expiry()).expect("an outcome")
@@ -436,7 +436,7 @@ fn every_slice_bootstraps_from_its_quotes_alone() {
     // a new listing has no fit to start from, and its first fit is the init of every later one
     for (surface, (name, expected)) in recorded().iter().zip(BOOTSTRAP) {
         assert_eq!(surface.name, name);
-        let outcomes = surface.fit(|_| SliceStart::Bootstrap);
+        let outcomes = surface.fit(|_| SliceStart::Bootstrap(vec![]));
         surface.assert_fits(&outcomes, SliceStatus::Bootstrapped, expected);
     }
 }
