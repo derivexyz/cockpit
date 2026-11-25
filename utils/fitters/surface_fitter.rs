@@ -25,7 +25,7 @@ pub enum SliceStart {
     Init(SVIJWParams),
     /// Not fitted: this SVI, priced on the slice's quotes.
     Hold(SVIJWParams),
-    /// From these SVIs, each regularized towards itself, or with none from its quotes' starts.
+    /// From these SVIs or quote heuristics, and an interpolated start: empty books take it, wide likely, tight rarely.
     Bootstrap(Vec<SVIJWParams>),
 }
 
@@ -34,14 +34,14 @@ pub enum SliceStatus {
     Refit,
     Bootstrapped,
     Held,
-    /// The fit erred, or panicked where panics unwind. An init or a hold returns its SVI.
+    /// The fit erred or panicked; an init or a hold still carries its init.
     Failed(String),
 }
 
 #[derive(Clone, Debug)]
 pub struct SliceOutcome {
     pub status: SliceStatus,
-    /// (fit, its bbo cost on the slice's quotes); None only for a failed bootstrap
+    /// (fit, its bbo cost on the slice's quotes); None for a failed bootstrap
     pub fit: Option<(JWFit, f64)>,
     pub liquidity: f64,
 }
@@ -275,7 +275,7 @@ impl SurfaceFitter {
         Ok(self)
     }
 
-    /// Slices are fitted independently of one another, one after another.
+    /// Fits each slice from its init, one after another.
     pub fn fit_slices(mut self) -> Result<Self> {
         if self.slice_fitters.is_empty() {
             self.log("WARN empty liquidity_scores");
@@ -305,7 +305,7 @@ impl SurfaceFitter {
         Ok(self)
     }
 
-    /// Quotes without inits, only for `hold_outliers` and `fit_multithread`: other methods read the all-zero inits.
+    /// Quotes without inits, for `hold_outliers` and `fit_multithread` only: other methods would read zero inits.
     pub fn with_quotes(
         self,
         bids: Array1<f64>,
@@ -357,7 +357,7 @@ impl SurfaceFitter {
         self.validate_expiries(&expiries, None)?;
         let mut outcomes: HashMap<i64, SliceOutcome> = self.fit_in_parallel(starts, max_iters);
 
-        // the given SVIs again, then the interpolated start, then the first round's fit in place of the quotes' starts
+        // the given SVIs, the interpolated start, then the first round's fit in place of the quote heuristics
         let rebootstraps: HashMap<i64, SliceStart> = starts
             .iter()
             .filter_map(|(&expiry, start)| {

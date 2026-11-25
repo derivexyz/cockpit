@@ -173,7 +173,7 @@ pub struct JWFitCostConfig {
     pub init_edge_margin: f64,
     /// The liquidity score past which a slice's fit is left out of a bootstrap's interpolated start.
     pub interpolation_max_liq: f64,
-    /// Scales a bootstrap's regularization towards each start it is given, so a bad quote cannot run its wings off.
+    /// Scales the regularization towards each of a multistart's `starts`, so bad quotes cannot run the wings off.
     pub bootstrap_reg: f64,
 }
 
@@ -833,7 +833,7 @@ impl SliceFitter {
         self.fit_multistart(&[], max_iters)
     }
 
-    /// Fits from `starts` if not empty, each regularized towards itself, else from preset heuristics: the cheapest.
+    /// Fits from `starts` if not empty, else from preset heuristics, and keeps the cheapest fit.
     pub fn fit_multistart(&self, starts: &[JWFit], max_iters: u64) -> Result<(JWFit, f64)> {
         // weighed without the regularization, as a fit from `starts` is regularized towards its start
         let no_reg = self.clone().with_cost_cfg(self.cost_cfg.clone().scale_reg(0.0));

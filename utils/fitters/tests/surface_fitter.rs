@@ -337,6 +337,45 @@ fn a_bootstrap_too_wide_to_pin_a_smile_takes_the_interpolated_start() {
 }
 
 #[test]
+fn a_bootstrap_takes_the_interpolated_start_unless_its_book_pins_a_smile() {
+    // the 7- and 30-day slices refit on SMILE; the 14-day market is 2 vol points higher with a steeper put wing
+    let market = JWFit {
+        v: 0.0484,
+        p: 1.3,
+        ..SMILE
+    };
+    let fit_14_days = |quotes: Quotes| {
+        let (bids, asks, strikes, expiries, is_calls) =
+            quotes.on(&SMILE, 7, strikes()).on(&SMILE, 30, strikes()).into_arrays();
+        let surface = Quotes::get_fitter_on(&Array1::from(vec![expiry(7), expiry(14), expiry(30)]))
+            .with_quotes(bids, asks, strikes, expiries, is_calls)
+            .expect("a forward and a discount for every quoted expiry");
+        let starts = HashMap::from([
+            (expiry(7), SliceStart::Init(svi(&SMILE, 7))),
+            (expiry(14), SliceStart::Bootstrap(vec![])),
+            (expiry(30), SliceStart::Init(svi(&SMILE, 30))),
+        ]);
+        let outcome = surface.fit_multithread(&starts, 100).expect("every start has a forward").remove(&expiry(14));
+        let outcome = outcome.expect("an outcome");
+        assert_eq!(outcome.status, SliceStatus::Bootstrapped);
+        outcome.fit.expect("a bootstrap").0
+    };
+    let is_near = |fit: &JWFit, smile: &JWFit| {
+        (fit.v.sqrt() - smile.v.sqrt()).abs() < HALF_SPREAD && (fit.p - smile.p).abs() < 0.1 * smile.p
+    };
+
+    // an empty book has only the interpolated smile to go on
+    let empty = fit_14_days(Quotes::default());
+    assert!(is_near(&empty, &SMILE), "empty book: {empty:?}");
+    // 15 vol points either side reads no start off the quotes, and the interpolated smile fits inside them
+    let wide = fit_14_days(Quotes::default().on_with_spread(&market, 14, strikes(), 0.15));
+    assert!(is_near(&wide, &SMILE), "wide book: {wide:?}");
+    // a tight book pins its own smile, which the quote heuristics find and the interpolated start misses
+    let tight = fit_14_days(Quotes::default().on(&market, 14, strikes()));
+    assert!(is_near(&tight, &market), "tight book: {tight:?}");
+}
+
+#[test]
 fn a_restart_interpolates_a_wide_slice_from_the_other_bootstraps() {
     // a runner with no fits to start from bootstraps every slice: a wide one must not fail for want of a refit
     let surface = Quotes::default()
