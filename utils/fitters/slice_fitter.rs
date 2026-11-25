@@ -212,7 +212,7 @@ impl JWFitCostConfig {
     }
 
     /// Scales the regularization weights; the other costs stay.
-    pub fn scale_regularization(self, scale: f64) -> Self {
+    pub fn scale_reg(self, scale: f64) -> Self {
         Self {
             v_cost: self.v_cost * scale,
             psi_cost: self.psi_cost * scale,

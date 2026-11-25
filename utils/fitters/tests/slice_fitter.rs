@@ -82,7 +82,7 @@ fn the_v_regularization_scales_with_tau_within_its_bounds() {
 fn scaling_the_regularization_leaves_the_quote_constraint_and_arbitrage_costs() {
     // lighter regularization lets a slice follow its quotes, but must not loosen the quote or no-arb costs
     let base = default_cost_cfg();
-    let scaled = base.clone().scale_regularization(0.1);
+    let scaled = base.clone().scale_reg(0.1);
     let weights = |cfg: &JWFitCostConfig| [cfg.v_cost, cfg.psi_cost, cfg.p_cost, cfg.c_cost, cfg.v_diff_cost];
     assert_eq!(weights(&scaled), weights(&base).map(|weight| weight * 0.1));
     assert_eq!(

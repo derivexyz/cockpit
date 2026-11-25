@@ -378,7 +378,7 @@ impl SurfaceFitter {
             cost_cfgs: self
                 .cost_cfgs
                 .iter()
-                .map(|(&expiry, cfg)| (expiry, cfg.clone().scale_regularization(cfg.interpolation_reg)))
+                .map(|(&expiry, cfg)| (expiry, cfg.clone().scale_reg(cfg.interpolation_reg)))
                 .collect(),
             ..self.clone()
         };
@@ -482,7 +482,7 @@ impl SurfaceFitter {
         });
         match start {
             SliceStart::Init(svi) | SliceStart::Hold(svi) => quoted.with_cost_cfg(cost_cfg).with_init_svi(svi.clone()),
-            SliceStart::Bootstrap | SliceStart::Interpolate => quoted.with_cost_cfg(cost_cfg.scale_regularization(0.0)),
+            SliceStart::Bootstrap | SliceStart::Interpolate => quoted.with_cost_cfg(cost_cfg.scale_reg(0.0)),
         }
     }
 }

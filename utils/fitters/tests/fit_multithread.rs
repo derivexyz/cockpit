@@ -208,7 +208,7 @@ fn cost_cfg(tau: f64) -> JWFitCostConfig {
     JWFitCostConfig {
         buffer_bp: 0.0,
         interpolation_max_liq: 0.1,
-        ..default_cost_cfg().time_scaled(tau, MIN_TAU).scale_regularization(REGULARIZATION_SCALE)
+        ..default_cost_cfg().time_scaled(tau, MIN_TAU).scale_reg(REGULARIZATION_SCALE)
     }
 }
 
