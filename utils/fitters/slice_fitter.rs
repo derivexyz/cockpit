@@ -171,10 +171,10 @@ pub struct JWFitCostConfig {
     pub v_diff_max_share: f64,
     pub v_diff_pull_max_share: f64,
     pub init_edge_margin: f64,
-    /// The liquidity score past which a slice's fit is no neighbour to interpolate from.
+    /// The liquidity score past which a slice's fit is no neighbour for a bootstrap to start from.
     pub interpolation_max_liq: f64,
-    /// Scales the regularization of an interpolated slice's fit, so a bad quote cannot run its wings off.
-    pub interpolation_reg: f64,
+    /// Scales a bootstrap's regularization towards each start it is given, so a bad quote cannot run its wings off.
+    pub bootstrap_reg: f64,
 }
 
 pub fn default_cost_cfg() -> JWFitCostConfig {
@@ -196,7 +196,7 @@ pub fn default_cost_cfg() -> JWFitCostConfig {
         v_diff_pull_max_share: 1.0,
         init_edge_margin: 0.05,
         interpolation_max_liq: 1.0,
-        interpolation_reg: 0.01,
+        bootstrap_reg: 0.01,
     }
 }
 
@@ -830,12 +830,11 @@ impl SliceFitter {
     /// Fits from each of the starts `bootstrap_starts` reads off the quotes and keeps the cheapest fit,
     /// as one start can stop in a local minimum that another avoids. The init is not a start.
     pub fn fit_bootstrap(&self, max_iters: u64) -> Result<(JWFit, f64)> {
-        self.fit_bootstrap_from(&[], max_iters)
+        self.fit_bootstrap_from(&[], max_iters).map(|(fit, cost, _)| (fit, cost))
     }
 
-    /// As `fit_bootstrap`, `extra` tried first: ties go to the earliest start, and quotes too loose to read starts off
-    /// leave `extra` alone.
-    pub fn fit_bootstrap_from(&self, extra: &[JWFit], max_iters: u64) -> Result<(JWFit, f64)> {
+    /// `fit_cheapest` from `extra`, each regularized towards itself, then from the quotes' starts.
+    pub fn fit_bootstrap_from(&self, extra: &[JWFit], max_iters: u64) -> Result<(JWFit, f64, usize)> {
         let quoted: Vec<JWFit> = match self.bootstrap_starts() {
             Ok(starts) => starts,
             Err(err) if !extra.is_empty() => {
@@ -844,17 +843,39 @@ impl SliceFitter {
             }
             Err(err) => return Err(err),
         };
-        let mut best: Option<(JWFit, f64)> = None;
-        for start in extra.iter().chain(&quoted) {
+        self.fit_cheapest(extra, &quoted, max_iters)
+    }
+
+    /// From `regularized` starts, each regularized towards itself, then `unregularized` ones: (fit, cost, start index).
+    pub fn fit_cheapest(
+        &self,
+        regularized: &[JWFit],
+        unregularized: &[JWFit],
+        max_iters: u64,
+    ) -> Result<(JWFit, f64, usize)> {
+        // weighed without the regularization, as each regularized start's fit is regularized towards it
+        let no_reg = self.clone().with_cost_cfg(self.cost_cfg.clone().scale_reg(0.0));
+        let mut from_start = self.clone();
+        let mut best: Option<(JWFit, f64, usize)> = None;
+        for (index, start) in regularized.iter().chain(unregularized).enumerate() {
             if let Err(err) = start.check_fittable() {
                 self.log(format!("WARN bootstrap start={start:?} skipped: {err}"));
                 continue;
             }
-            match self.fit_bfgs_from(start, max_iters) {
-                Ok((fit, cost)) => {
+            let fitter = match index < regularized.len() {
+                true => {
+                    from_start.set_init_fit(start);
+                    &from_start
+                }
+                false => &no_reg,
+            };
+            let fitted = fitter.fit_bfgs_from(start, max_iters);
+            match fitted.and_then(|(fit, _)| Ok((no_reg.cost_from_fit(&fit, false)?, fit))) {
+                Ok((cost, fit)) => {
                     self.log(format!("INFO bootstrap start={start:?} fit={fit:?} cost={cost}"));
-                    if best.as_ref().is_none_or(|(_, best_cost)| cost < *best_cost) {
-                        best = Some((fit, cost));
+                    // ties go to the earliest start
+                    if best.as_ref().is_none_or(|(_, best_cost, _)| cost < *best_cost) {
+                        best = Some((fit, cost, index));
                     }
                 }
                 Err(err) => self.log(format!("WARN bootstrap start={start:?} failed: {err}")),
