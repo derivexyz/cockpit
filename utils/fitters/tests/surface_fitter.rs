@@ -204,11 +204,42 @@ fn hold_outliers_holds_an_illiquid_slice_and_drops_an_outlier_from_a_copy() {
 }
 
 #[test]
-fn a_start_for_an_unquoted_expiry_is_an_error() {
+fn a_start_with_no_forward_is_an_error() {
     // fitting nothing for it would pass a caller's bug off as a failed slice
     let surface = Quotes::default().on(&SMILE, 30, strikes()).surface();
     let starts = HashMap::from([(expiry(60), SliceStart::Bootstrap)]);
     assert!(surface.fit_multithread(&starts, 100).is_err());
+}
+
+#[test]
+fn a_slice_with_no_quotes_is_held_on_an_empty_book() {
+    // books empty at a daily halt, and a market maker keeps quoting the smile it held
+    let (bids, asks, strikes, expiries, is_calls) = Quotes::default().on(&SMILE, 30, strikes()).arrays();
+    let both = HashMap::from([(expiry(30), FWD), (expiry(60), FWD)]);
+    let surface = SurfaceFitter::new(
+        REF_SEC,
+        both.clone(),
+        both.iter().map(|(&expiry, _)| (expiry, 1.0)).collect(),
+        default_cost_cfg(),
+    )
+    .with_quotes(bids, asks, strikes, expiries, is_calls)
+    .expect("a forward and a discount for every quoted expiry");
+    let start = |start: SliceStart| {
+        surface
+            .fit_multithread(&HashMap::from([(expiry(60), start)]), 100)
+            .expect("a forward")
+            .remove(&expiry(60))
+    };
+    let held = start(SliceStart::Hold(svi(&SMILE, 60))).expect("an outcome");
+    assert_eq!(held.status, SliceStatus::Held);
+    let (fit, bbo_cost) = held.fit.expect("the held smile");
+    assert_eq!((fit.v, bbo_cost), (SMILE.v, 0.0));
+    let bootstrap = start(SliceStart::Bootstrap).expect("an outcome");
+    assert!(
+        matches!(bootstrap.status, SliceStatus::Failed(_)),
+        "nothing to bootstrap from: {:?}",
+        bootstrap.status
+    );
 }
 
 #[test]

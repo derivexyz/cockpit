@@ -249,10 +249,7 @@ impl SurfaceFitter {
         if problems.is_empty() {
             Ok(())
         } else {
-            bail!(
-                "quoted expiries do not match the fitter inputs: {}",
-                problems.join("; ")
-            )
+            bail!("expiries do not match the fitter inputs: {}", problems.join("; "))
         }
     }
 
@@ -349,18 +346,14 @@ impl SurfaceFitter {
         Ok((cleaned, held))
     }
 
-    /// Fits each slice in `starts` on its own thread. Errs only on a start for an unquoted expiry.
+    /// Fits each slice in `starts` on its own thread. Errs only on a start with no forward, discount or cost config.
     pub fn fit_multithread(
         &self,
         starts: &HashMap<i64, SliceStart>,
         max_iters: u64,
     ) -> Result<HashMap<i64, SliceOutcome>> {
-        let mut unquoted: Vec<i64> =
-            starts.keys().copied().filter(|expiry| !self.slice_fitters.contains_key(expiry)).collect();
-        if !unquoted.is_empty() {
-            unquoted.sort_unstable();
-            bail!("starts for expiries with no quotes: {unquoted:?}");
-        }
+        let expiries: Vec<i64> = starts.keys().copied().collect();
+        self.check_expiries_covered(&expiries, None)?;
 
         let outcomes: HashMap<i64, SliceOutcome> = thread::scope(|scope| {
             let fits: Vec<_> = starts
@@ -385,7 +378,7 @@ impl SurfaceFitter {
                 .collect()
         });
         for (expiry, outcome) in &outcomes {
-            let dte = self.slice_fitters[expiry].dte();
+            let dte = (expiry - self.ref_sec) as f64 / 86_400.0;
             let line = format!("INFO {dte:.2} DTE {:?} with {:?}", outcome.status, outcome.fit);
             self.calibration_log.for_expiry(*expiry).push(line);
         }
@@ -428,8 +421,13 @@ impl SurfaceFitter {
     }
 
     fn fitter_for(&self, expiry: i64, start: &SliceStart) -> SliceFitter {
-        let quoted = self.slice_fitters[&expiry].clone();
         let cost_cfg = self.cost_cfgs[&expiry].clone();
+        // a slice with no quotes, as at a daily halt, gets an empty book
+        let quoted = self.slice_fitters.get(&expiry).cloned().unwrap_or_else(|| {
+            let (forward, discount) = (self.forwards[&expiry], self.disc_factors[&expiry]);
+            SliceFitter::new_bootstrap(cost_cfg.clone(), expiry, forward, discount, self.ref_sec)
+                .with_calibration_log(self.calibration_log.clone())
+        });
         match start {
             SliceStart::Init(svi) | SliceStart::Hold(svi) => quoted.with_cost_cfg(cost_cfg).with_init_svi(svi.clone()),
             SliceStart::Bootstrap => quoted.with_cost_cfg(cost_cfg.scale_regularization(0.0)),
