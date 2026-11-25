@@ -355,7 +355,7 @@ impl SurfaceFitter {
     ) -> Result<HashMap<i64, SliceOutcome>> {
         let expiries: Vec<i64> = starts.keys().copied().collect();
         self.validate_expiries(&expiries, None)?;
-        let mut outcomes = self.fit_in_parallel(starts, max_iters);
+        let mut outcomes: HashMap<i64, SliceOutcome> = self.fit_in_parallel(starts, max_iters);
 
         // the given SVIs again, then the interpolated start, then the first round's fit in place of the quotes' starts
         let rebootstraps: HashMap<i64, SliceStart> = starts
@@ -365,10 +365,9 @@ impl SurfaceFitter {
                     return None;
                 };
                 let interpolated = self.get_interpolated(expiry, &outcomes)?;
-                let first_fit = outcomes[&expiry].fit.as_ref().map(|(fit, _)| fit);
-                let tau = (expiry - self.ref_sec) as f64 / SEC_PER_YEAR;
-                let to_svi = |fit: &JWFit| fit.to_svi_jw(self.forwards[&expiry], tau);
-                let svis = given.iter().cloned().chain([&interpolated].into_iter().chain(first_fit).map(to_svi));
+                let bootstrapped: Option<&JWFit> = outcomes[&expiry].fit.as_ref().map(|(fit, _)| fit);
+                let to_svi = |fit: &JWFit| fit.to_svi_jw(self.forwards[&expiry], self.tau(expiry));
+                let svis = given.iter().cloned().chain([&interpolated].into_iter().chain(bootstrapped).map(to_svi));
                 Some((expiry, SliceStart::Bootstrap(svis.collect())))
             })
             .collect();
@@ -380,6 +379,11 @@ impl SurfaceFitter {
             self.calibration_log.for_expiry(*expiry).push(line);
         }
         Ok(outcomes)
+    }
+
+    /// Years from the reference to `expiry`.
+    fn tau(&self, expiry: i64) -> f64 {
+        (expiry - self.ref_sec) as f64 / SEC_PER_YEAR
     }
 
     fn fit_in_parallel(&self, starts: &HashMap<i64, SliceStart>, max_iters: u64) -> HashMap<i64, SliceOutcome> {
@@ -426,16 +430,15 @@ impl SurfaceFitter {
 
     fn fit_slice(&self, expiry: i64, start: &SliceStart, max_iters: u64) -> Result<SliceOutcome> {
         if let SliceStart::Init(svi) = start {
-            // checked before the fitter asserts it, as a panic aborts a process built with panic = "abort"
             JWFit::from_svi_jw(svi).check_fittable()?;
         }
         let fitter = self.fitter_for(expiry, start);
         let (fit, status): (JWFit, SliceStatus) = match start {
             SliceStart::Init(_) => (fitter.fit_bfgs(max_iters)?.0, SliceStatus::Refit),
             SliceStart::Hold(_) => (fitter.init_fit(), SliceStatus::Held),
-            SliceStart::Bootstrap(given) => {
-                let given: Vec<JWFit> = given.iter().map(JWFit::from_svi_jw).collect();
-                let (fit, _) = fitter.fit_bootstrap_from(&given, max_iters)?;
+            SliceStart::Bootstrap(svis) => {
+                let starts: Vec<JWFit> = svis.iter().map(JWFit::from_svi_jw).collect();
+                let (fit, _) = fitter.fit_multistart(&starts, max_iters)?;
                 (fit, SliceStatus::Bootstrapped)
             }
         };

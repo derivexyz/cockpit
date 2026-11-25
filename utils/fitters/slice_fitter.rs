@@ -830,16 +830,16 @@ impl SliceFitter {
     /// Fits from each of the starts `bootstrap_starts` reads off the quotes and keeps the cheapest fit,
     /// as one start can stop in a local minimum that another avoids. The init is not a start.
     pub fn fit_bootstrap(&self, max_iters: u64) -> Result<(JWFit, f64)> {
-        self.fit_bootstrap_from(&[], max_iters)
+        self.fit_multistart(&[], max_iters)
     }
 
-    /// As `fit_bootstrap`, from `given` instead when there are any, each regularized towards itself.
-    pub fn fit_bootstrap_from(&self, given: &[JWFit], max_iters: u64) -> Result<(JWFit, f64)> {
-        // weighed without the regularization, as a given start's fit is regularized towards it
+    /// Fits from `starts` if not empty, each regularized towards itself, else from preset heuristics: the cheapest.
+    pub fn fit_multistart(&self, starts: &[JWFit], max_iters: u64) -> Result<(JWFit, f64)> {
+        // weighed without the regularization, as a fit from `starts` is regularized towards its start
         let no_reg = self.clone().with_cost_cfg(self.cost_cfg.clone().scale_reg(0.0));
-        let (starts, mut from_start): (Vec<JWFit>, SliceFitter) = match given.is_empty() {
+        let (starts, mut from_start): (Vec<JWFit>, SliceFitter) = match starts.is_empty() {
             true => (self.bootstrap_starts()?, no_reg.clone()),
-            false => (given.to_vec(), self.clone()),
+            false => (starts.to_vec(), self.clone()),
         };
         let mut best: Option<(JWFit, f64)> = None;
         for start in &starts {
