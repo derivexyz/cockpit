@@ -370,8 +370,8 @@ impl SurfaceFitter {
                 .map(|(expiry, start, fit)| {
                     let outcome = match fit.join() {
                         Ok(Ok(outcome)) => outcome,
-                        Ok(Err(error)) => self.failed(expiry, start, format!("{error:#}")),
-                        Err(_) => self.failed(expiry, start, "the fit panicked".to_string()),
+                        Ok(Err(error)) => self.failed_outcome(expiry, start, format!("{error:#}")),
+                        Err(_) => self.failed_outcome(expiry, start, "the fit panicked".to_string()),
                     };
                     (expiry, outcome)
                 })
@@ -404,7 +404,7 @@ impl SurfaceFitter {
         })
     }
 
-    fn failed(&self, expiry: i64, start: &SliceStart, error: String) -> SliceOutcome {
+    fn failed_outcome(&self, expiry: i64, start: &SliceStart, error: String) -> SliceOutcome {
         let fitter = self.fitter_for(expiry, start);
         let fit = match start {
             SliceStart::Init(_) | SliceStart::Hold(_) => {

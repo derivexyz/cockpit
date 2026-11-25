@@ -264,7 +264,7 @@ impl RecordedSlice {
 }
 
 impl RecordedSurface {
-    fn fitter(&self) -> SurfaceFitter {
+    fn get_fitter(&self) -> SurfaceFitter {
         let by_expiry = |value: fn(&RecordedSlice) -> f64| -> HashMap<i64, f64> {
             self.slices.iter().map(|slice| (slice.expiry(), value(slice))).collect()
         };
@@ -298,7 +298,7 @@ impl RecordedSurface {
 
     fn fit(&self, start: impl Fn(&RecordedSlice) -> SliceStart) -> HashMap<i64, SliceOutcome> {
         let starts: HashMap<i64, SliceStart> = self.slices.iter().map(|slice| (slice.expiry(), start(slice))).collect();
-        self.fitter().fit_multithread(&starts, MAX_ITERS).expect("every start is quoted")
+        self.get_fitter().fit_multithread(&starts, MAX_ITERS).expect("every start is quoted")
     }
 
     /// The other slices' good inits interpolated to `slice`'s expiry, or the nearest beyond either end.
@@ -364,7 +364,7 @@ fn an_init_interpolated_between_close_neighbours_refits_where_its_book_is() {
         assert_eq!(surface.name, name);
         let slice = surface.slices.iter().find(|slice| (slice.days() - expected.0).abs() < 0.005).expect("the slice");
         let start = SliceStart::Init(slice.svi(&surface.interpolated_init(slice)));
-        let outcomes = surface.fitter().fit_multithread(&HashMap::from([(slice.expiry(), start)]), MAX_ITERS);
+        let outcomes = surface.get_fitter().fit_multithread(&HashMap::from([(slice.expiry(), start)]), MAX_ITERS);
         let outcome = &outcomes.expect("the start is quoted")[&slice.expiry()];
         slice.assert_fit(name, outcome, SliceStatus::Refit, expected);
     }

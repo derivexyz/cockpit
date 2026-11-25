@@ -15,8 +15,8 @@ fn bootstrap_slices_interpolates_a_slice_too_thin_to_bootstrap() {
             .on(&SMILE, 7, strikes())
             .on(&SMILE, 14, [99.0, 100.0, 101.0])
             .on(&SMILE, 30, strikes());
-    let (bids, asks, strikes, expiries, is_calls) = quotes.arrays();
-    let surface = Quotes::fitter_on(&expiries)
+    let (bids, asks, strikes, expiries, is_calls) = quotes.into_arrays();
+    let surface = Quotes::get_fitter_on(&expiries)
         .bootstrap_slices(bids, asks, strikes, expiries, is_calls)
         .expect("bootstrap a surface with one thin slice");
 
@@ -76,22 +76,22 @@ impl Quotes {
         self
     }
 
-    fn surface(self) -> SurfaceFitter {
-        let (bids, asks, strikes, expiries, is_calls) = self.arrays();
-        Self::fitter_on(&expiries)
+    fn get_surface(self) -> SurfaceFitter {
+        let (bids, asks, strikes, expiries, is_calls) = self.into_arrays();
+        Self::get_fitter_on(&expiries)
             .with_quotes(bids, asks, strikes, expiries, is_calls)
             .expect("a forward and a discount for every quoted expiry")
     }
 
     /// The surface `build_slices` makes, its slices built on `inits`.
-    fn surface_built_on(self, inits: HashMap<i64, SVIJWParams>) -> SurfaceFitter {
-        let (bids, asks, strikes, expiries, is_calls) = self.arrays();
-        Self::fitter_on(&expiries)
+    fn get_surface_built_on(self, inits: HashMap<i64, SVIJWParams>) -> SurfaceFitter {
+        let (bids, asks, strikes, expiries, is_calls) = self.into_arrays();
+        Self::get_fitter_on(&expiries)
             .build_slices(inits, bids, asks, strikes, expiries, is_calls)
             .expect("a forward, a discount and an init for every quoted expiry")
     }
 
-    fn fitter_on(expiries: &Array1<i64>) -> SurfaceFitter {
+    fn get_fitter_on(expiries: &Array1<i64>) -> SurfaceFitter {
         let expiries: HashSet<i64> = expiries.iter().copied().collect();
         let forwards: HashMap<i64, f64> = expiries.iter().map(|&expiry| (expiry, FWD)).collect();
         let discounts: HashMap<i64, f64> = expiries.iter().map(|&expiry| (expiry, 1.0)).collect();
@@ -99,7 +99,7 @@ impl Quotes {
     }
 
     #[allow(clippy::type_complexity)]
-    fn arrays(self) -> (Array1<f64>, Array1<f64>, Array1<f64>, Array1<i64>, Array1<bool>) {
+    fn into_arrays(self) -> (Array1<f64>, Array1<f64>, Array1<f64>, Array1<i64>, Array1<bool>) {
         let Self {
             bids,
             asks,
@@ -133,7 +133,7 @@ fn a_slice_that_fails_leaves_the_others_fitted() {
         .on(&SMILE, 60, strikes())
         .on(&SMILE, 90, [99.0, 100.0, 101.0])
         .on(&SMILE, 120, strikes())
-        .surface();
+        .get_surface();
     let ran_off = JWFit { v: 1e5, ..SMILE };
     let starts = HashMap::from([
         (expiry(30), SliceStart::Init(svi(&ran_off, 30))),
@@ -160,7 +160,7 @@ fn a_slice_that_fails_leaves_the_others_fitted() {
 #[test]
 fn a_held_slice_is_priced_on_its_quotes_not_refitted() {
     // callers weigh a refit or reseed against the hold's cost; priced on no quotes it would cost nothing
-    let surface = Quotes::default().on(&SMILE, 30, strikes()).surface();
+    let surface = Quotes::default().on(&SMILE, 30, strikes()).get_surface();
     let stale = JWFit { v: 0.09, ..SMILE };
     let starts = HashMap::from([(expiry(30), SliceStart::Hold(svi(&stale, 30)))]);
     let held = surface
@@ -181,7 +181,7 @@ fn hold_outliers_holds_an_illiquid_slice_and_drops_an_outlier_from_a_copy() {
         .on(&SMILE, 30, strikes())
         .on(&JWFit { v: 0.09, ..SMILE }, 30, [111.0])
         .on(&SMILE, 60, [99.0, 100.0, 101.0])
-        .surface();
+        .get_surface();
     let inits = HashMap::from([(expiry(30), svi(&SMILE, 30)), (expiry(60), svi(&SMILE, 60))]);
     let (cleaned, held) = surface.hold_outliers(&inits, 1, 3.0, 1.0).expect("valid outlier settings");
 
@@ -206,7 +206,7 @@ fn hold_outliers_holds_an_illiquid_slice_and_drops_an_outlier_from_a_copy() {
 #[test]
 fn a_start_with_no_forward_is_an_error() {
     // fitting nothing for it would pass a caller's bug off as a failed slice
-    let surface = Quotes::default().on(&SMILE, 30, strikes()).surface();
+    let surface = Quotes::default().on(&SMILE, 30, strikes()).get_surface();
     let starts = HashMap::from([(expiry(60), SliceStart::Bootstrap)]);
     assert!(surface.fit_multithread(&starts, 100).is_err());
 }
@@ -214,7 +214,7 @@ fn a_start_with_no_forward_is_an_error() {
 #[test]
 fn a_slice_with_no_quotes_is_held_on_an_empty_book() {
     // books empty at a daily halt, and a market maker keeps quoting the smile it held
-    let (bids, asks, strikes, expiries, is_calls) = Quotes::default().on(&SMILE, 30, strikes()).arrays();
+    let (bids, asks, strikes, expiries, is_calls) = Quotes::default().on(&SMILE, 30, strikes()).into_arrays();
     let both = HashMap::from([(expiry(30), FWD), (expiry(60), FWD)]);
     let surface = SurfaceFitter::new(
         REF_SEC,
@@ -245,7 +245,7 @@ fn a_slice_with_no_quotes_is_held_on_an_empty_book() {
 #[test]
 fn an_init_the_fitter_cannot_start_from_comes_back_failed() {
     // the fitter asserts on it, and a panic aborts a process built with panic = "abort", every slice with it
-    let surface = Quotes::default().on(&SMILE, 30, strikes()).on(&SMILE, 60, strikes()).surface();
+    let surface = Quotes::default().on(&SMILE, 30, strikes()).on(&SMILE, 60, strikes()).get_surface();
     let flat_put_wing = JWFit { p: 0.0, ..SMILE };
     let starts = HashMap::from([
         (expiry(30), SliceStart::Init(svi(&flat_put_wing, 30))),
@@ -267,7 +267,7 @@ fn a_bootstrap_leaves_the_init_its_slice_was_built_on() {
     let stale = JWFit { v: 0.09, ..SMILE };
     let surface = Quotes::default()
         .on(&SMILE, 30, strikes())
-        .surface_built_on(HashMap::from([(expiry(30), svi(&stale, 30))]));
+        .get_surface_built_on(HashMap::from([(expiry(30), svi(&stale, 30))]));
     let atm_vol = |start: SliceStart| {
         let mut outcomes =
             surface.fit_multithread(&HashMap::from([(expiry(30), start)]), 100).expect("the start is quoted");
