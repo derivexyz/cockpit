@@ -1,6 +1,6 @@
 use super::{expiry, REF_SEC};
 use crate::black76::OptionContract;
-use crate::fitters::slice_fitter::{default_cost_cfg, JWFit};
+use crate::fitters::slice_fitter::{default_cost_cfg, JWFit, JWFitCostConfig};
 use crate::fitters::surface_fitter::{SliceStart, SliceStatus, SurfaceFitter};
 use crate::fitters::svi::SVIJWParams;
 use crate::SEC_PER_YEAR;
@@ -46,6 +46,14 @@ const SMILE: JWFit = JWFit {
 };
 const HALF_SPREAD: f64 = 0.005;
 
+/// The default cost config, with a stricter bar for a neighbour to interpolate from.
+fn cost_cfg() -> JWFitCostConfig {
+    JWFitCostConfig {
+        interpolation_max_liq: 0.1,
+        ..default_cost_cfg()
+    }
+}
+
 #[derive(Default)]
 struct Quotes {
     bids: Vec<f64>,
@@ -57,7 +65,18 @@ struct Quotes {
 
 impl Quotes {
     /// Out-of-the-money quotes on `smile` at `strikes`, `HALF_SPREAD` of vol either side of it.
-    fn on(mut self, smile: &JWFit, days: i64, strikes: impl IntoIterator<Item = f64>) -> Self {
+    fn on(self, smile: &JWFit, days: i64, strikes: impl IntoIterator<Item = f64>) -> Self {
+        self.on_with_spread(smile, days, strikes, HALF_SPREAD)
+    }
+
+    /// Out-of-the-money quotes on `smile` at `strikes`, `half_spread` of vol either side of it.
+    fn on_with_spread(
+        mut self,
+        smile: &JWFit,
+        days: i64,
+        strikes: impl IntoIterator<Item = f64>,
+        half_spread: f64,
+    ) -> Self {
         let expiry_sec = (expiry(days) - REF_SEC) as f64;
         let raw = smile.to_svi_jw(FWD, expiry_sec / SEC_PER_YEAR).to_raw();
         for strike in strikes {
@@ -67,8 +86,8 @@ impl Quotes {
                 is_call: strike >= FWD,
             };
             let vol = raw.get_vol(strike);
-            self.bids.push(contract.price(FWD, vol - HALF_SPREAD));
-            self.asks.push(contract.price(FWD, vol + HALF_SPREAD));
+            self.bids.push(contract.price(FWD, vol - half_spread));
+            self.asks.push(contract.price(FWD, vol + half_spread));
             self.strikes.push(strike);
             self.expiries.push(expiry(days));
             self.is_calls.push(contract.is_call);
@@ -95,7 +114,7 @@ impl Quotes {
         let expiries: HashSet<i64> = expiries.iter().copied().collect();
         let forwards: HashMap<i64, f64> = expiries.iter().map(|&expiry| (expiry, FWD)).collect();
         let discounts: HashMap<i64, f64> = expiries.iter().map(|&expiry| (expiry, 1.0)).collect();
-        SurfaceFitter::new(REF_SEC, forwards, discounts, default_cost_cfg())
+        SurfaceFitter::new(REF_SEC, forwards, discounts, cost_cfg())
     }
 
     #[allow(clippy::type_complexity)]
@@ -220,7 +239,7 @@ fn a_slice_with_no_quotes_is_held_on_an_empty_book() {
         REF_SEC,
         both.clone(),
         both.iter().map(|(&expiry, _)| (expiry, 1.0)).collect(),
-        default_cost_cfg(),
+        cost_cfg(),
     )
     .with_quotes(bids, asks, strikes, expiries, is_calls)
     .expect("a forward and a discount for every quoted expiry");
@@ -285,4 +304,50 @@ fn a_bootstrap_leaves_the_init_its_slice_was_built_on() {
         refit > market + HALF_SPREAD,
         "regularized towards a 30% init, refit at {refit:.4}"
     );
+}
+
+#[test]
+fn an_illiquid_slice_is_interpolated_from_its_liquid_neighbours() {
+    // a book too wide to pin a smile takes its shape from the slices whose books do, not from other wide ones
+    let wide = 0.15;
+    let other = JWFit {
+        v: 0.09,
+        p: 0.2,
+        c: 0.2,
+        ..SMILE
+    };
+    let surface = Quotes::default()
+        .on(&SMILE, 7, strikes())
+        .on_with_spread(&SMILE, 14, strikes(), wide)
+        .on_with_spread(&other, 21, strikes(), wide)
+        .on(&SMILE, 30, strikes())
+        .get_surface();
+    let starts = HashMap::from([
+        (expiry(7), SliceStart::Init(svi(&SMILE, 7))),
+        (expiry(14), SliceStart::Interpolate),
+        (expiry(21), SliceStart::Init(svi(&other, 21))),
+        (expiry(30), SliceStart::Init(svi(&SMILE, 30))),
+    ]);
+    let outcomes = surface.fit_multithread(&starts, 100).expect("every start has a forward");
+
+    let interpolated = &outcomes[&expiry(14)];
+    assert_eq!(interpolated.status, SliceStatus::Interpolated);
+    let (fit, _) = interpolated.fit.as_ref().expect("an interpolated smile");
+    for (name, got, want) in [("v", fit.v, SMILE.v), ("p", fit.p, SMILE.p), ("c", fit.c, SMILE.c)] {
+        assert!(
+            (got - want).abs() < 0.05 * want,
+            "{name} {got:.4}, from the liquid 7- and 30-day slices it is {want}"
+        );
+    }
+}
+
+#[test]
+fn an_interpolation_with_no_liquid_neighbour_fails() {
+    let surface = Quotes::default().on(&SMILE, 30, strikes()).get_surface();
+    let mut outcomes = surface
+        .fit_multithread(&HashMap::from([(expiry(30), SliceStart::Interpolate)]), 100)
+        .expect("a forward");
+    let alone = outcomes.remove(&expiry(30)).expect("an outcome");
+    assert!(matches!(alone.status, SliceStatus::Failed(_)), "{:?}", alone.status);
+    assert!(alone.fit.is_none(), "nothing to interpolate");
 }

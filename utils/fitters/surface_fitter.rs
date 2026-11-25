@@ -1,5 +1,6 @@
 use crate::fitters::slice_fitter::{CalibrationLog, JWFit, JWFitCostConfig, SliceFitter, LIQ_SCORE_COUNT};
 use crate::fitters::svi::SVIJWParams;
+use crate::SEC_PER_YEAR;
 use anyhow::{anyhow, bail, Result};
 use ndarray::Array1;
 use std::collections::{HashMap, HashSet};
@@ -26,6 +27,8 @@ pub enum SliceStart {
     Hold(SVIJWParams),
     /// From its quotes alone (`SliceFitter::fit_bootstrap`).
     Bootstrap,
+    /// Fitted like an init from its liquid neighbours' fits, interpolated to its expiry.
+    Interpolate,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -33,6 +36,7 @@ pub enum SliceStatus {
     Refit,
     Bootstrapped,
     Held,
+    Interpolated,
     /// The fit erred, or panicked where panics unwind. An init or a hold returns its SVI.
     Failed(String),
 }
@@ -346,7 +350,7 @@ impl SurfaceFitter {
         Ok((cleaned, held))
     }
 
-    /// Fits each slice in `starts` on its own thread. Errs only on a start with no forward, discount or cost config.
+    /// Fits each start on its own thread, interpolations last; errs on a start without forward, discount or cost config.
     pub fn fit_multithread(
         &self,
         starts: &HashMap<i64, SliceStart>,
@@ -355,7 +359,50 @@ impl SurfaceFitter {
         let expiries: Vec<i64> = starts.keys().copied().collect();
         self.check_expiries_covered(&expiries, None)?;
 
-        let outcomes: HashMap<i64, SliceOutcome> = thread::scope(|scope| {
+        let (interpolations, fits): (HashMap<i64, SliceStart>, HashMap<i64, SliceStart>) = starts
+            .iter()
+            .map(|(&expiry, start)| (expiry, start.clone()))
+            .partition(|(_, start)| matches!(start, SliceStart::Interpolate));
+        let mut outcomes = self.fit_in_parallel(&fits, max_iters);
+
+        let interpolated: HashMap<i64, SliceStart> = interpolations
+            .keys()
+            .filter_map(|&expiry| {
+                let neighbours = Self::liquid_fits(&outcomes, self.cost_cfgs[&expiry].interpolation_max_liq);
+                let fit = JWFit::get_interpolated_or_nearest(&neighbours, expiry, self.ref_sec)?;
+                let tau = (expiry - self.ref_sec) as f64 / SEC_PER_YEAR;
+                Some((expiry, SliceStart::Init(fit.to_svi_jw(self.forwards[&expiry], tau))))
+            })
+            .collect();
+        let interpolating = Self {
+            cost_cfgs: self
+                .cost_cfgs
+                .iter()
+                .map(|(&expiry, cfg)| (expiry, cfg.clone().scale_regularization(cfg.interpolation_reg)))
+                .collect(),
+            ..self.clone()
+        };
+        for (expiry, mut outcome) in interpolating.fit_in_parallel(&interpolated, max_iters) {
+            if outcome.status == SliceStatus::Refit {
+                outcome.status = SliceStatus::Interpolated;
+            }
+            outcomes.insert(expiry, outcome);
+        }
+        for &expiry in interpolations.keys().filter(|expiry| !interpolated.contains_key(expiry)) {
+            let error = "no liquid neighbour to interpolate from".to_string();
+            outcomes.insert(expiry, self.failed_outcome(expiry, &SliceStart::Interpolate, error));
+        }
+
+        for (expiry, outcome) in &outcomes {
+            let dte = (expiry - self.ref_sec) as f64 / 86_400.0;
+            let line = format!("INFO {dte:.2} DTE {:?} with {:?}", outcome.status, outcome.fit);
+            self.calibration_log.for_expiry(*expiry).push(line);
+        }
+        Ok(outcomes)
+    }
+
+    fn fit_in_parallel(&self, starts: &HashMap<i64, SliceStart>, max_iters: u64) -> HashMap<i64, SliceOutcome> {
+        thread::scope(|scope| {
             let fits: Vec<_> = starts
                 .iter()
                 .map(|(&expiry, start)| {
@@ -376,13 +423,17 @@ impl SurfaceFitter {
                     (expiry, outcome)
                 })
                 .collect()
-        });
-        for (expiry, outcome) in &outcomes {
-            let dte = (expiry - self.ref_sec) as f64 / 86_400.0;
-            let line = format!("INFO {dte:.2} DTE {:?} with {:?}", outcome.status, outcome.fit);
-            self.calibration_log.for_expiry(*expiry).push(line);
-        }
-        Ok(outcomes)
+        })
+    }
+
+    /// The refits and bootstraps no less liquid than `max_liq`.
+    fn liquid_fits(outcomes: &HashMap<i64, SliceOutcome>, max_liq: f64) -> HashMap<i64, JWFit> {
+        outcomes
+            .iter()
+            .filter(|(_, outcome)| matches!(outcome.status, SliceStatus::Refit | SliceStatus::Bootstrapped))
+            .filter(|(_, outcome)| outcome.liquidity <= max_liq)
+            .filter_map(|(&expiry, outcome)| Some((expiry, outcome.fit.as_ref()?.0.clone())))
+            .collect()
     }
 
     fn fit_slice(&self, expiry: i64, start: &SliceStart, max_iters: u64) -> Result<SliceOutcome> {
@@ -395,6 +446,7 @@ impl SurfaceFitter {
             SliceStart::Init(_) => (fitter.fit_bfgs(max_iters)?.0, SliceStatus::Refit),
             SliceStart::Hold(_) => (fitter.init_fit(), SliceStatus::Held),
             SliceStart::Bootstrap => (fitter.fit_bootstrap(max_iters)?.0, SliceStatus::Bootstrapped),
+            SliceStart::Interpolate => bail!("an interpolation starts from its neighbours' fits"),
         };
         let bbo_cost = fitter.bbo_cost_from_fit(&fit, false)?;
         Ok(SliceOutcome {
@@ -411,7 +463,7 @@ impl SurfaceFitter {
                 let init = fitter.init_fit();
                 fitter.bbo_cost_from_fit(&init, false).ok().map(|bbo_cost| (init, bbo_cost))
             }
-            SliceStart::Bootstrap => None,
+            SliceStart::Bootstrap | SliceStart::Interpolate => None,
         };
         SliceOutcome {
             status: SliceStatus::Failed(error),
@@ -430,7 +482,7 @@ impl SurfaceFitter {
         });
         match start {
             SliceStart::Init(svi) | SliceStart::Hold(svi) => quoted.with_cost_cfg(cost_cfg).with_init_svi(svi.clone()),
-            SliceStart::Bootstrap => quoted.with_cost_cfg(cost_cfg.scale_regularization(0.0)),
+            SliceStart::Bootstrap | SliceStart::Interpolate => quoted.with_cost_cfg(cost_cfg.scale_regularization(0.0)),
         }
     }
 }

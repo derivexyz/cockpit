@@ -16,6 +16,9 @@
 //!   the init unchanged.
 //! - An init interpolated across far neighbours, e.g. 1 day between 2 hours and 7 days. The fits miss
 //!   near the money by up to 2.3 vol pts, at up to 156 times a good refit's bbo cost.
+//! - An interpolation, a slice fitted from its neighbours' smile at a hundredth of the regularization,
+//!   interior or extrapolated, unless the slice's shape is far from its neighbours': the 2-hour and 1-day
+//!   slices of `a` and `b`, and `c`'s longest, miss near the money by 0.2 to 3 vol pts.
 //! - Not tested: an init 20% above the at-the-money vol, with the right shape. `a` and `b` recover from
 //!   it, but on `c`'s wide books the fits stay at the edge nearest the init, up to 2.2 vol pts high.
 //!
@@ -135,6 +138,48 @@ const BETWEEN_CLOSE_NEIGHBOURS: [(&str, Expected); 3] = [
     ("c", (8.02, 0.4173, 0.0, 3.146e-11)),
 ];
 
+/// Each slice interpolated from the others, which refit from their good inits.
+const TAKE_ONE_OUT: [(&str, &[Expected]); 3] = [
+    (
+        "a",
+        &[
+            (7.08, 0.2234, 7.5, 1.070e-3),
+            (8.08, 0.2300, 11.4, 2.081e-3),
+            (9.08, 0.2348, 14.8, 3.188e-3),
+            (35.08, 0.2138, 9.9, 5.544e-3),
+            (66.08, 0.2058, 12.1, 1.453e-2),
+            (87.08, 0.2022, 11.1, 2.311e-2),
+            (178.04, 0.1992, 12.2, 3.631e-2),
+        ],
+    ),
+    (
+        "b",
+        &[
+            (7.08, 0.3320, 5.8, 9.561e-4),
+            (8.08, 0.3406, 7.7, 6.833e-4),
+            (9.08, 0.3471, 8.0, 9.799e-4),
+            (37.08, 0.3063, 8.4, 1.155e-3),
+            (66.08, 0.2895, 6.7, 8.710e-4),
+            (87.08, 0.2841, 5.1, 2.111e-3),
+        ],
+    ),
+    (
+        "c",
+        &[
+            (1.02, 0.4660, 0.0, 4.071e-4),
+            (7.02, 0.3946, 0.0, 1.890e-4),
+            (8.02, 0.4173, 0.0, 1.104e-11),
+            (9.02, 0.4285, 0.6, 4.958e-5),
+            (22.02, 0.4700, 15.2, 2.608e-3),
+            (51.02, 0.4618, 1.0, 5.242e-4),
+            (85.02, 0.4421, 5.4, 1.858e-3),
+        ],
+    ),
+];
+
+/// Slices whose shape is far from their neighbours': 2 hours and 1 day out, and `c`'s longest.
+const UNLIKE_THEIR_NEIGHBOURS: [(&str, &[f64]); 3] = [("a", &[0.08, 1.08]), ("b", &[0.08, 1.08]), ("c", &[173.98])];
+
 #[derive(Deserialize)]
 struct Recorded {
     surfaces: Vec<RecordedSurface>,
@@ -162,6 +207,7 @@ struct RecordedSlice {
 fn cost_cfg(tau: f64) -> JWFitCostConfig {
     JWFitCostConfig {
         buffer_bp: 0.0,
+        interpolation_max_liq: 0.1,
         ..default_cost_cfg().time_scaled(tau, MIN_TAU).scale_regularization(REGULARIZATION_SCALE)
     }
 }
@@ -237,6 +283,22 @@ impl RecordedSlice {
             .filter(|(near, _)| *near)
             .map(|(_, miss)| miss)
             .fold(0.0, f64::max)
+    }
+
+    /// Within 2x `good`'s bbo cost and 5 vol bp of its near-the-money miss.
+    fn assert_as_close_as(&self, surface: &str, outcome: &SliceOutcome, good: Expected) {
+        let (days, _, good_miss_bp, good_bbo_cost) = good;
+        let label = format!("surface {surface} at {days} days");
+        let (fit, bbo_cost) = outcome.fit.as_ref().expect("a fit");
+        assert!(
+            *bbo_cost <= 2.0 * good_bbo_cost + 1e-6,
+            "{label}: bbo cost {bbo_cost:.3e}"
+        );
+        let miss_bp = self.near_money_max_miss_bp(fit);
+        assert!(
+            miss_bp <= good_miss_bp + 5.0,
+            "{label}: near-the-money miss {miss_bp:.1} bp"
+        );
     }
 
     fn assert_fit(&self, surface: &str, outcome: &SliceOutcome, status: SliceStatus, expected: Expected) {
@@ -321,18 +383,40 @@ impl RecordedSurface {
 
     /// Each slice within 2x a good refit's bbo cost and 5 vol bp of its near-the-money miss (`GOOD_INIT`).
     fn assert_as_close_as_a_good_refit(&self, outcomes: &HashMap<i64, SliceOutcome>, good: &[Expected]) {
-        for (slice, &(days, _, good_miss_bp, good_bbo_cost)) in self.slices.iter().zip(good) {
-            let label = format!("surface {} at {days} days", self.name);
-            let (fit, bbo_cost) = outcomes[&slice.expiry()].fit.as_ref().expect("a fit");
-            assert!(
-                *bbo_cost <= 2.0 * good_bbo_cost + 1e-6,
-                "{label}: bbo cost {bbo_cost:.3e}"
-            );
-            let miss_bp = slice.near_money_max_miss_bp(fit);
-            assert!(
-                miss_bp <= good_miss_bp + 5.0,
-                "{label}: near-the-money miss {miss_bp:.1} bp"
-            );
+        for (slice, &good) in self.slices.iter().zip(good) {
+            slice.assert_as_close_as(&self.name, &outcomes[&slice.expiry()], good);
+        }
+    }
+
+    fn slice_at(&self, days: f64) -> &RecordedSlice {
+        self.slices.iter().find(|slice| (slice.days() - days).abs() < 0.005).expect("a recorded slice")
+    }
+
+    /// `slice` interpolated from the others, which refit from their good inits.
+    fn take_out(&self, slice: &RecordedSlice) -> SliceOutcome {
+        let mut outcomes = self.fit(|other| match other.expiry() == slice.expiry() {
+            true => SliceStart::Interpolate,
+            false => SliceStart::Init(other.svi(&other.good_init())),
+        });
+        outcomes.remove(&slice.expiry()).expect("an outcome")
+    }
+
+    /// The two lowest put strikes at `days` quoted 20 vol points over the slice's good init.
+    fn quote_far_puts_rich(&mut self, days: f64) {
+        let slice = self.slices.iter_mut().find(|slice| (slice.days() - days).abs() < 0.005).expect("a recorded slice");
+        let raw = slice.svi(&slice.good_init()).to_raw();
+        let mut puts: Vec<usize> = (0..slice.quotes.len()).filter(|&i| !slice.quotes[i].1).collect();
+        puts.sort_by(|&left, &right| slice.quotes[left].0.total_cmp(&slice.quotes[right].0));
+        for i in puts.into_iter().take(2) {
+            let (strike, is_call, _, _) = slice.quotes[i];
+            let contract = OptionContract {
+                strike,
+                expiry_sec: slice.expiry_sec as f64,
+                is_call,
+            };
+            let price = |vol: f64| Some(contract.price(slice.forward, vol) * slice.discount);
+            let rich = raw.get_vol(strike) + 0.20;
+            slice.quotes[i] = (strike, is_call, price(rich - 0.01), price(rich + 0.01));
         }
     }
 }
@@ -389,5 +473,46 @@ fn an_init_interpolated_from_the_other_slices_refits_every_slice_where_its_book_
         assert_eq!(surface.name, name);
         let outcomes = surface.fit(|slice| SliceStart::Init(slice.svi(&surface.interpolated_init(slice))));
         surface.assert_as_close_as_a_good_refit(&outcomes, good);
+    }
+}
+
+#[test]
+fn a_slice_taken_out_is_interpolated_from_the_others_near_its_book() {
+    // a slice too illiquid to fit borrows its smile from its neighbours: on liquid books the borrowed smile must fit too
+    for (surface, (name, expected)) in recorded().iter().zip(TAKE_ONE_OUT) {
+        assert_eq!(surface.name, name);
+        for &row in expected {
+            let slice = surface.slice_at(row.0);
+            slice.assert_fit(name, &surface.take_out(slice), SliceStatus::Interpolated, row);
+        }
+    }
+}
+
+#[test]
+#[ignore = "TODO: revisit the default config: a slice unlike its neighbours keeps their shape (see the summary above)"]
+fn a_slice_unlike_its_neighbours_taken_out_fits_as_close_as_a_good_refit() {
+    for (surface, ((name, days), (_, good))) in recorded().iter().zip(UNLIKE_THEIR_NEIGHBOURS.iter().zip(GOOD_INIT)) {
+        assert_eq!(surface.name, *name);
+        for &day in *days {
+            let slice = surface.slice_at(day);
+            let good_row = *good.iter().find(|row| (row.0 - day).abs() < 0.005).expect("a good refit");
+            slice.assert_as_close_as(name, &surface.take_out(slice), good_row);
+        }
+    }
+}
+
+#[test]
+fn two_bad_quotes_do_not_run_an_interpolated_slices_wings_off() {
+    // fitted with no regularization, two far puts quoted 20 vol points rich sent the put wing to its cap of 12
+    for (name, days) in [("a", 35.08), ("b", 37.08), ("c", 51.02)] {
+        let mut surface = recorded().into_iter().find(|surface| surface.name == name).expect("a recorded surface");
+        surface.quote_far_puts_rich(days);
+        let (fit, _) = surface.take_out(surface.slice_at(days)).fit.expect("an interpolated smile");
+        assert!(
+            fit.p < 3.0 && fit.c < 3.0,
+            "surface {name} at {days} days: wings p {:.2} c {:.2}",
+            fit.p,
+            fit.c
+        );
     }
 }

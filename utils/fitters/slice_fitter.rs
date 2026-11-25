@@ -171,6 +171,10 @@ pub struct JWFitCostConfig {
     pub v_diff_max_share: f64,
     pub v_diff_pull_max_share: f64,
     pub init_edge_margin: f64,
+    /// The liquidity score past which a slice's fit is no neighbour to interpolate from.
+    pub interpolation_max_liq: f64,
+    /// Scales the regularization of an interpolated slice's fit, so a bad quote cannot run its wings off.
+    pub interpolation_reg: f64,
 }
 
 pub fn default_cost_cfg() -> JWFitCostConfig {
@@ -191,6 +195,8 @@ pub fn default_cost_cfg() -> JWFitCostConfig {
         v_diff_max_share: 0.8,
         v_diff_pull_max_share: 1.0,
         init_edge_margin: 0.05,
+        interpolation_max_liq: 1.0,
+        interpolation_reg: 0.01,
     }
 }
 
