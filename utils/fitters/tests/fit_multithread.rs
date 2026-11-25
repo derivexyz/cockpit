@@ -7,9 +7,9 @@
 //! - A refit from a good init, and a bootstrap, on every slice. Near the money the fits miss `a`'s and
 //!   `b`'s tight books by at most about 25 vol bp, and sit inside most of `c`'s wider ones.
 //! - An init interpolated between close neighbours, e.g. 8 days between 7 and 9.
-//! - A slice taken out and bootstrapped among the others' refits, from its quotes or its neighbours' smile,
-//!   whichever fits cheaper: within a few tenths of a vol of a good refit.
-//! - Two bad quotes on a wide book, which starts from its neighbours' smile: the regularization towards it,
+//! - A slice taken out and bootstrapped among the others' refits, from its quotes or the start interpolated
+//!   from the others, whichever fits cheaper: within a few tenths of a vol of a good refit.
+//! - Two bad quotes on a wide book, which starts from the interpolated start: the regularization towards it,
 //!   at a hundredth of the runner's, holds the wings.
 //!
 //! What they fail at, `#[ignore]`d below until the default config is revisited:
@@ -42,8 +42,6 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 const REGULARIZATION_SCALE: f64 = 0.1;
-/// Whichever start a bootstrap fitted best from, its neighbours' smile or one read off its quotes.
-const BOOTSTRAPPED: [SliceStatus; 2] = [SliceStatus::Bootstrapped, SliceStatus::Interpolated];
 const MIN_TAU: f64 = 15.0 * 60.0 / SEC_PER_YEAR;
 const MAX_ITERS: u64 = 100;
 
@@ -313,11 +311,11 @@ impl RecordedSlice {
         );
     }
 
-    fn assert_fit(&self, surface: &str, outcome: &SliceOutcome, statuses: &[SliceStatus], expected: Expected) {
+    fn assert_fit(&self, surface: &str, outcome: &SliceOutcome, status: SliceStatus, expected: Expected) {
         let (days, atm_vol, max_miss_bp, bbo_cost) = expected;
         let label = format!("surface {surface} at {days} days");
         assert!((self.days() - days).abs() < 0.005, "{label}: rows follow the slices");
-        assert!(statuses.contains(&outcome.status), "{label}: {:?}", outcome.status);
+        assert_eq!(outcome.status, status, "{label}");
         let (fit, actual_bbo_cost) = outcome.fit.as_ref().expect("a fit");
         assert!(
             (fit.v.sqrt() - atm_vol).abs() < 1e-4,
@@ -386,10 +384,10 @@ impl RecordedSurface {
         JWFit::get_interpolated_or_nearest(&others, slice.expiry(), REF_SEC).expect("other slices")
     }
 
-    fn assert_fits(&self, outcomes: &HashMap<i64, SliceOutcome>, statuses: &[SliceStatus], expected: &[Expected]) {
+    fn assert_fits(&self, outcomes: &HashMap<i64, SliceOutcome>, status: SliceStatus, expected: &[Expected]) {
         assert_eq!(self.slices.len(), expected.len(), "surface {}", self.name);
         for (slice, &expected) in self.slices.iter().zip(expected) {
-            slice.assert_fit(&self.name, &outcomes[&slice.expiry()], statuses, expected);
+            slice.assert_fit(&self.name, &outcomes[&slice.expiry()], status.clone(), expected);
         }
     }
 
@@ -444,7 +442,7 @@ fn a_good_init_refits_every_slice_where_its_book_is() {
     for (surface, (name, expected)) in recorded().iter().zip(GOOD_INIT) {
         assert_eq!(surface.name, name);
         let outcomes = surface.fit(|slice| SliceStart::Init(slice.svi(&slice.good_init())));
-        surface.assert_fits(&outcomes, &[SliceStatus::Refit], expected);
+        surface.assert_fits(&outcomes, SliceStatus::Refit, expected);
     }
 }
 
@@ -454,7 +452,7 @@ fn every_slice_bootstraps_from_its_quotes_alone() {
     for (surface, (name, expected)) in recorded().iter().zip(BOOTSTRAP) {
         assert_eq!(surface.name, name);
         let outcomes = surface.fit(|_| SliceStart::Bootstrap(vec![]));
-        surface.assert_fits(&outcomes, &BOOTSTRAPPED, expected);
+        surface.assert_fits(&outcomes, SliceStatus::Bootstrapped, expected);
     }
 }
 
@@ -467,7 +465,7 @@ fn an_init_interpolated_between_close_neighbours_refits_where_its_book_is() {
         let start = SliceStart::Init(slice.svi(&surface.interpolated_init(slice)));
         let outcomes = surface.get_fitter().fit_multithread(&HashMap::from([(slice.expiry(), start)]), MAX_ITERS);
         let outcome = &outcomes.expect("the start is quoted")[&slice.expiry()];
-        slice.assert_fit(name, outcome, &[SliceStatus::Refit], expected);
+        slice.assert_fit(name, outcome, SliceStatus::Refit, expected);
     }
 }
 
@@ -495,12 +493,12 @@ fn an_init_interpolated_from_the_other_slices_refits_every_slice_where_its_book_
 
 #[test]
 fn a_slice_taken_out_bootstraps_among_the_others_near_its_book() {
-    // a new listing among fitted slices starts from its quotes or its neighbours' smile: either must fit its book
+    // a new listing among fitted slices starts from its quotes or the interpolated start: either must fit its book
     for (surface, (name, expected)) in recorded().iter().zip(TAKE_ONE_OUT) {
         assert_eq!(surface.name, name);
         for &row in expected {
             let slice = surface.slice_at(row.0);
-            slice.assert_fit(name, &surface.take_out(slice), &BOOTSTRAPPED, row);
+            slice.assert_fit(name, &surface.take_out(slice), SliceStatus::Bootstrapped, row);
         }
     }
 }
@@ -525,11 +523,7 @@ fn two_bad_quotes_do_not_run_a_wide_books_wings_off() {
         let mut surface = recorded().into_iter().find(|surface| surface.name == name).expect("a recorded surface");
         surface.quote_wide_with_far_puts_rich(days);
         let outcome = surface.take_out(surface.slice_at(days));
-        assert_eq!(
-            outcome.status,
-            SliceStatus::Interpolated,
-            "surface {name} at {days} days"
-        );
+        assert_eq!(outcome.status, SliceStatus::Bootstrapped, "{name} at {days} days");
         let (fit, _) = outcome.fit.expect("an interpolated smile");
         assert!(
             fit.p < 3.0 && fit.c < 3.0,
