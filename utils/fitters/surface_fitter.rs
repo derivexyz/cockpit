@@ -363,7 +363,7 @@ impl SurfaceFitter {
             .iter()
             .map(|(&expiry, start)| (expiry, start.clone()))
             .partition(|(_, start)| matches!(start, SliceStart::Interpolate));
-        let mut outcomes = self.fit_in_parallel(&fits, max_iters);
+        let mut outcomes = self.fit_in_parallel(&fits, max_iters, false);
 
         let interpolated: HashMap<i64, SliceStart> = interpolations
             .keys()
@@ -374,15 +374,7 @@ impl SurfaceFitter {
                 Some((expiry, SliceStart::Init(fit.to_svi_jw(self.forwards[&expiry], tau))))
             })
             .collect();
-        let interpolating = Self {
-            cost_cfgs: self
-                .cost_cfgs
-                .iter()
-                .map(|(&expiry, cfg)| (expiry, cfg.clone().scale_reg(cfg.interpolation_reg)))
-                .collect(),
-            ..self.clone()
-        };
-        for (expiry, mut outcome) in interpolating.fit_in_parallel(&interpolated, max_iters) {
+        for (expiry, mut outcome) in self.fit_in_parallel(&interpolated, max_iters, true) {
             if outcome.status == SliceStatus::Refit {
                 outcome.status = SliceStatus::Interpolated;
             }
@@ -401,7 +393,13 @@ impl SurfaceFitter {
         Ok(outcomes)
     }
 
-    fn fit_in_parallel(&self, starts: &HashMap<i64, SliceStart>, max_iters: u64) -> HashMap<i64, SliceOutcome> {
+    /// `interpolated` starts are fitted at their `interpolation_reg` of the regularization.
+    fn fit_in_parallel(
+        &self,
+        starts: &HashMap<i64, SliceStart>,
+        max_iters: u64,
+        interpolated: bool,
+    ) -> HashMap<i64, SliceOutcome> {
         thread::scope(|scope| {
             let fits: Vec<_> = starts
                 .iter()
@@ -409,7 +407,7 @@ impl SurfaceFitter {
                     (
                         expiry,
                         start,
-                        scope.spawn(move || self.fit_slice(expiry, start, max_iters)),
+                        scope.spawn(move || self.fit_slice(expiry, start, max_iters, interpolated)),
                     )
                 })
                 .collect();
@@ -436,12 +434,12 @@ impl SurfaceFitter {
             .collect()
     }
 
-    fn fit_slice(&self, expiry: i64, start: &SliceStart, max_iters: u64) -> Result<SliceOutcome> {
+    fn fit_slice(&self, expiry: i64, start: &SliceStart, max_iters: u64, interpolated: bool) -> Result<SliceOutcome> {
         if let SliceStart::Init(svi) = start {
             // checked before the fitter asserts it, as a panic aborts a process built with panic = "abort"
             JWFit::from_svi_jw(svi).check_fittable()?;
         }
-        let fitter = self.fitter_for(expiry, start);
+        let fitter = self.fitter_for(expiry, start, interpolated);
         let (fit, status): (JWFit, SliceStatus) = match start {
             SliceStart::Init(_) => (fitter.fit_bfgs(max_iters)?.0, SliceStatus::Refit),
             SliceStart::Hold(_) => (fitter.init_fit(), SliceStatus::Held),
@@ -457,7 +455,7 @@ impl SurfaceFitter {
     }
 
     fn failed_outcome(&self, expiry: i64, start: &SliceStart, error: String) -> SliceOutcome {
-        let fitter = self.fitter_for(expiry, start);
+        let fitter = self.fitter_for(expiry, start, false);
         let fit = match start {
             SliceStart::Init(_) | SliceStart::Hold(_) => {
                 let init = fitter.init_fit();
@@ -472,8 +470,10 @@ impl SurfaceFitter {
         }
     }
 
-    fn fitter_for(&self, expiry: i64, start: &SliceStart) -> SliceFitter {
+    fn fitter_for(&self, expiry: i64, start: &SliceStart, interpolated: bool) -> SliceFitter {
         let cost_cfg = self.cost_cfgs[&expiry].clone();
+        let reg = if interpolated { cost_cfg.interpolation_reg } else { 1.0 };
+        let cost_cfg = cost_cfg.scale_reg(reg);
         // a slice with no quotes, as at a daily halt, gets an empty book
         let quoted = self.slice_fitters.get(&expiry).cloned().unwrap_or_else(|| {
             let (forward, discount) = (self.forwards[&expiry], self.disc_factors[&expiry]);
