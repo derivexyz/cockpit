@@ -1,3 +1,4 @@
+mod clock;
 mod fit_multithread;
 mod forward_var;
 mod slice_fitter;

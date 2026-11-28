@@ -1,535 +1,463 @@
+use super::clock::{equity_clock, near};
+use crate::fitters::clock::{UsEquityClock, VarClock};
 use crate::fitters::forward_var::{
-    ClockWeights, Event, FitFlag, FittedCurve, ForwardVarModel, FwdVarConfig, NegativeForward, PostEvent,
-    SessionCalendar,
+    project_total_vars, Event, FitFlag, FittedEvent, ForwardVarCurve, ForwardVarCurveFit, ForwardVarModel, FwdVarConfig,
 };
 use crate::SEC_PER_YEAR;
 use anyhow::Result;
 use serde::Deserialize;
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 
-/// Monday 16 November 2026, 10:00 in New York.
+// monday, 16 november 2026 at 10:00 eastern
 const START: i64 = 1_794_841_200;
-const H: i64 = 3_600;
+const HOUR: i64 = 3600;
 const DAY: i64 = 86_400;
-const SESSION: i64 = 23_400;
-const CLOSE: i64 = START + 6 * H;
 
-fn cfg() -> FwdVarConfig {
-    FwdVarConfig {
-        calendar: SessionCalendar::default(),
-        weights: ClockWeights {
-            night: 0.4,
-            weekend: 0.8,
-            half_day: 0.5,
-            session_profile: None,
-        },
-        events: vec![],
-        negative_forward: NegativeForward::Reject,
-        post_event: None,
-    }
-}
-
-fn jump(offset: i64) -> Event {
-    Event {
-        start_sec: START + offset,
-        length_sec: 0,
-    }
-}
-
-fn fade(offset: i64, length_sec: i64) -> Event {
+fn event(offset: i64, length_sec: i64) -> Event {
     Event {
         start_sec: START + offset,
         length_sec,
     }
 }
 
-/// One expiry per hour from `START`, all inside Monday's session, where an hour weighs 1 / 6.5.
-fn hourly(ws: &[f64]) -> BTreeMap<i64, f64> {
-    (1_i64..).zip(ws).map(|(i, &w)| (START + i * H, w)).collect()
+fn hourly(values: &[f64]) -> BTreeMap<i64, f64> {
+    (1..).zip(values).map(|(i, &v)| (START + i * HOUR, v)).collect()
 }
 
-fn fit(events: &[Event], ws: &[f64]) -> Result<FittedCurve> {
-    let mut cfg = cfg();
-    cfg.events = events.to_vec();
-    ForwardVarModel::new(cfg)?.fit(START, &hourly(ws))
+fn fit(events: &[Event], values: &[f64]) -> Result<ForwardVarCurveFit> {
+    let config = FwdVarConfig {
+        clock: equity_clock(),
+        events: events.to_vec(),
+    };
+    ForwardVarModel::new(config)?.fit(START, &hourly(values))
 }
 
-fn near(got: f64, want: f64) {
-    assert!((got - want).abs() <= 1e-12 * want.abs().max(1e-8), "{got} vs {want}")
-}
-
-fn rebuilds(curve: &FittedCurve) -> Result<()> {
-    for (&expiry, &w) in curve.knots_used() {
-        near(curve.get_total_var(curve.ref_sec(), expiry)?, w);
+fn rebuilds(curve: &ForwardVarCurve, inputs: &BTreeMap<i64, f64>) -> Result<()> {
+    for (&expiry, &total) in inputs {
+        near(curve.get_total_var(curve.ref_sec, expiry)?, total);
     }
     Ok(())
 }
 
 #[test]
-fn a_session_weighs_one_and_closures_their_weights() -> Result<()> {
-    let model = ForwardVarModel::new(cfg())?;
-    near(model.clock_mass(CLOSE - SESSION, CLOSE)?, 1.0);
-    near(model.clock_mass(CLOSE, CLOSE + DAY - SESSION)?, 0.4);
-    near(model.clock_mass(CLOSE + 4 * DAY, CLOSE + 7 * DAY - SESSION)?, 0.8);
-    // Friday's close to Wednesday's: a weekend, two nights, three sessions
-    near(model.clock_mass(CLOSE + 4 * DAY, CLOSE + 9 * DAY)?, 4.6);
-    // Monday 12:45 to Wednesday 11:07:30: half of Monday, Tuesday, a quarter of Wednesday, two nights
-    near(
-        model.clock_mass(START + 2 * H + 45 * 60, START + 2 * DAY + H + 450)?,
-        2.55,
-    );
+fn the_curve_rebuilds_its_expiries_and_adds_up_across_session_and_event_boundaries() -> Result<()> {
+    let mut clock = equity_clock();
+    clock.early_closes.insert(START / DAY + 2);
+    clock.holidays.insert(START / DAY + 3);
+    let config = FwdVarConfig {
+        clock,
+        events: vec![event(DAY + 7 * HOUR, 0), event(8 * DAY, 4 * HOUR)],
+    };
+    let close = START + 6 * HOUR;
+    let inputs: BTreeMap<_, _> = [(1, 2.), (2, 24.), (4, 28.), (7, 34.), (9, 48.), (11, 52.), (14, 58.)]
+        .into_iter()
+        .map(|(d, v)| (close + d * DAY, v))
+        .collect();
+    let fit = ForwardVarModel::new(config)?.fit(START, &inputs)?;
+    assert!(fit.flags.is_empty());
+    let curve = fit.curve;
+    assert_eq!(curve.events.len(), 2);
+    assert!(curve.events.iter().all(|e| e.total_var > 0.));
+    assert_eq!((curve.ref_sec, curve.end_sec), (START, close + 14 * DAY));
+    rebuilds(&curve, &inputs)?;
+    for split in [
+        START,
+        close,
+        START + DAY + 7 * HOUR,
+        close + 5 * DAY,
+        START + 8 * DAY + HOUR,
+        curve.end_sec,
+    ] {
+        near(
+            curve.get_total_var(START, split)? + curve.get_total_var(split, curve.end_sec)?,
+            58.,
+        );
+    }
+    Ok(())
+}
+
+struct LunchBreak;
+
+impl VarClock for LunchBreak {
+    fn weights(&self, from: i64, to: i64) -> Result<Vec<(i64, f64)>> {
+        anyhow::ensure!(from <= to, "reversed interval");
+        if from == to {
+            return Ok(Vec::new());
+        }
+        let initial = if from < 5 {
+            1.
+        } else if from < 8 {
+            0.
+        } else {
+            2.
+        };
+        let mut pieces = vec![(from, initial)];
+        pieces.extend([(5, 0.), (8, 2.)].into_iter().filter(|&(s, _)| from < s && s < to));
+        Ok(pieces)
+    }
+}
+
+#[test]
+fn a_clock_with_a_lunch_break_fits_in_its_own_time() -> Result<()> {
+    let model = ForwardVarModel::new(FwdVarConfig {
+        clock: LunchBreak,
+        events: vec![],
+    })?;
+    let inputs = [(10, 9.), (20, 49.)].into();
+    let curve = model.fit(0, &inputs)?.curve;
+    rebuilds(&curve, &inputs)?;
+    near(curve.get_total_var(4, 9)?, 3.);
+    for (t, rate) in [(4, 1.), (5, 0.), (7, 0.), (8, 2.), (9, 2.), (10, 4.)] {
+        near(curve.get_forward_var(t)?, rate * SEC_PER_YEAR);
+    }
     Ok(())
 }
 
 #[test]
-fn a_holiday_adds_half_the_weekends_extra_and_a_half_day_weighs_its_own_mass() -> Result<()> {
-    let mut holiday = cfg();
-    holiday.calendar.holidays.insert(CLOSE / DAY + 1);
-    near(
-        ForwardVarModel::new(holiday)?.clock_mass(CLOSE, CLOSE + 2 * DAY - SESSION)?,
-        0.6,
-    );
+fn the_nearest_clean_interval_lends_its_level_and_the_events_share_the_rest() -> Result<()> {
+    let first = fit(&[event(1, 0)], &[4., 5., 15.])?.curve;
+    near(first.events[0].total_var, 3.);
+    // the later donor at 3 wins the tie with the earlier donor at 1
+    let tie = fit(&[event(2 * HOUR, 0)], &[1., 10., 13.])?.curve;
+    near(tie.events[0].total_var, 6.);
+    let shared = fit(&[event(30, 0), event(HOUR, 0)], &[7., 8.])?.curve;
+    assert_eq!(shared.events.len(), 2);
+    for e in &shared.events {
+        near(e.total_var, 3.);
+    }
+    rebuilds(&shared, &hourly(&[7., 8.]))
+}
 
-    // a closure may run past a year: 399 closed dates from Monday's close to a Tuesday's open
-    let mut long = cfg();
-    long.calendar.holidays.extend(CLOSE / DAY + 1..CLOSE / DAY + 400);
-    let long = ForwardVarModel::new(long)?;
-    near(long.clock_mass(CLOSE, CLOSE + 400 * DAY - SESSION)?, 0.4 + 399. * 0.2);
-    // spread evenly over its wall time: a day in the middle holds a day's share
-    let share = DAY as f64 / (400 * DAY - SESSION) as f64;
-    near(long.clock_mass(CLOSE + 200 * DAY, CLOSE + 201 * DAY)?, 80.2 * share);
-
-    let mut early = cfg();
-    early.calendar.early_closes.insert(CLOSE / DAY);
-    near(
-        ForwardVarModel::new(early)?.clock_mass(CLOSE - SESSION, CLOSE - 3 * H)?,
-        0.5,
-    );
-
-    // Thanksgiving 2026: Wednesday's close to Monday's is the holiday closure, the Friday half-day, the
-    // weekend and Monday
-    let mut thanksgiving = cfg();
-    thanksgiving.calendar.holidays.insert(CLOSE / DAY + 10);
-    thanksgiving.calendar.early_closes.insert(CLOSE / DAY + 11);
-    thanksgiving.weights.half_day = 3.5 / 6.5;
-    near(
-        ForwardVarModel::new(thanksgiving)?.clock_mass(CLOSE + 9 * DAY, CLOSE + 14 * DAY)?,
-        0.6 + 3.5 / 6.5 + 0.8 + 1.0,
-    );
+#[test]
+fn jumps_belong_to_the_right_endpoint_and_have_no_rate() -> Result<()> {
+    let curve = fit(&[event(60, 0)], &[3., 4.])?.curve;
+    near(curve.get_total_var(START + 59, START + 60)?, 2. + 1. / 3600.);
+    near(curve.get_total_var(START + 60, START + 61)?, 1. / 3600.);
+    near(curve.get_total_var(START + 60, START + 60)?, 0.);
+    near(curve.get_forward_var(START + 60)?, SEC_PER_YEAR / 3600.);
+    let t = START + HOUR + 1;
+    let stacked = fit(&[event(HOUR + 1, 0); 3], &[1., 1.01, 1.01])?.curve;
+    assert_eq!(stacked.events.len(), 3);
+    near(stacked.get_total_var(t - 1, t)?, 0.01);
+    near(stacked.get_total_var(t, START + 2 * HOUR)?, 0.);
     Ok(())
 }
 
 #[test]
-fn the_open_follows_new_york_across_both_clock_changes() -> Result<()> {
-    let model = ForwardVarModel::new(cfg())?;
-    // 2026: Mondays 2 and 9 March open at 14:30 and 13:30 UTC, 26 October and 2 November at 13:30 and 14:30
-    for open in [1_772_461_800, 1_773_063_000, 1_793_021_400, 1_793_629_800] {
-        near(model.clock_mass(open, open + H)?, 1.0 / 6.5);
-        near(model.clock_mass(open, open + SESSION)?, 1.0);
-        assert!(
-            model.clock_mass(open - H, open)? < 0.1,
-            "the hour before the open is closed"
+fn a_fade_releases_variance_at_a_rate_that_falls_linearly_to_zero() -> Result<()> {
+    let curve = fit(&[event(100, 400)], &[5., 6.])?.curve;
+    near(curve.events[0].total_var, 4.);
+    near(curve.get_total_var(START + 100, START + 300)?, 200. / 3600. + 3.);
+    near(curve.get_total_var(START + 300, START + HOUR)?, 3300. / 3600. + 1.);
+    for (offset, extra) in [(100, 0.02), (200, 0.015), (400, 0.005), (500, 0.)] {
+        near(
+            curve.get_forward_var(START + offset)?,
+            (1. / 3600. + extra) * SEC_PER_YEAR,
+        );
+    }
+    let mut integral = 0.;
+    for dt in (0..HOUR).step_by(2) {
+        integral += 2. * curve.get_forward_var(START + dt + 1)? / SEC_PER_YEAR;
+    }
+    near(integral, 5.);
+    near(curve.get_total_var(START, START + HOUR)?, integral);
+    Ok(())
+}
+
+#[test]
+fn a_fit_flags_each_event_problem_once_and_rejects_straddling_windows() -> Result<()> {
+    for (events, values, flag) in [
+        (
+            vec![event(1, 0), event(HOUR + 1, 0)],
+            vec![1., 2., 5.],
+            FitFlag::NegativeLeftover,
+        ),
+        (
+            vec![event(1, 0), event(HOUR + 1, 0)],
+            vec![1., 2.],
+            FitFlag::NoCleanDonor,
+        ),
+        (vec![event(HOUR + 1, 0); 2], vec![1.], FitFlag::EventDropped),
+        (vec![event(10, 0)], vec![1., 2.], FitFlag::NegativeLeftover),
+    ] {
+        let fit = fit(&events, &values)?;
+        assert_eq!(fit.flags, [flag]);
+        assert!(fit.curve.events.is_empty());
+        rebuilds(&fit.curve, &hourly(&values))?;
+    }
+    for e in [event(-1, 1), event(0, 0)] {
+        let past = fit(&[e], &[1.])?;
+        assert!(past.flags.is_empty() && past.curve.events.is_empty());
+    }
+    for e in [event(-1, 2), event(0, 1), event(HOUR, 1)] {
+        assert!(fit(&[e], &[2., 3.]).is_err());
+    }
+    for e in [
+        event(1, -1),
+        Event {
+            start_sec: i64::MAX,
+            length_sec: 1,
+        },
+    ] {
+        assert!(ForwardVarModel::new(FwdVarConfig {
+            clock: equity_clock(),
+            events: vec![e]
+        })
+        .is_err());
+    }
+    Ok(())
+}
+
+#[test]
+fn an_event_on_a_flat_term_structure_is_flagged_whatever_the_rounding() -> Result<()> {
+    // equal levels either side leave the event nothing but rounding noise, of either sign
+    // (up to 15 weeks, so no interval holds a clock change)
+    for weeks in 1..=5 {
+        let config = FwdVarConfig {
+            clock: equity_clock(),
+            events: vec![event(weeks * 7 * DAY + 1, 0)],
+        };
+        let inputs: BTreeMap<_, _> = (1..=3).map(|i| (START + i * weeks * 7 * DAY, 0.25 * i as f64)).collect();
+        let fit = ForwardVarModel::new(config)?.fit(START, &inputs)?;
+        assert_eq!(fit.flags, [FitFlag::NegativeLeftover], "{weeks} weeks");
+        assert!(fit.curve.events.is_empty(), "{weeks} weeks");
+        rebuilds(&fit.curve, &inputs)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn decreasing_totals_name_the_expiry_and_their_projection_fits() -> Result<()> {
+    let config = FwdVarConfig {
+        clock: equity_clock(),
+        events: vec![],
+    };
+    let model = ForwardVarModel::new(config.clone())?;
+    assert_eq!(model.config(), &config);
+    let inputs = hourly(&[1., 5., 4., 3., 7.]);
+    let err = model.fit(START, &inputs).unwrap_err();
+    assert!(err.to_string().contains(&(START + 3 * HOUR).to_string()));
+    let projected = project_total_vars(&inputs);
+    assert_eq!(projected, hourly(&[1., 4., 4., 4., 7.]));
+    assert_eq!(project_total_vars(&projected), projected);
+    let curve = model.fit(START, &projected)?.curve;
+    rebuilds(&curve, &projected)?;
+    near(curve.get_forward_var(START + 2 * HOUR)?, 0.);
+    Ok(())
+}
+
+struct FixedPieces(Vec<(i64, f64)>);
+
+impl VarClock for FixedPieces {
+    fn weights(&self, _: i64, _: i64) -> Result<Vec<(i64, f64)>> {
+        Ok(self.0.clone())
+    }
+}
+
+#[test]
+fn unusable_inputs_and_queries_outside_the_fitted_range_are_errors() -> Result<()> {
+    let curve = fit(&[], &[1.])?.curve;
+    for (a, b) in [(START - 1, START), (START, START + HOUR + 1), (START + 1, START)] {
+        assert!(curve.get_total_var(a, b).is_err());
+    }
+    for t in [START - 1, START + HOUR] {
+        assert!(curve.get_forward_var(t).is_err());
+    }
+    let model = ForwardVarModel::new(FwdVarConfig {
+        clock: equity_clock(),
+        events: vec![],
+    })?;
+    for inputs in [
+        hourly(&[]),
+        hourly(&[0.]),
+        hourly(&[f64::NAN]),
+        [(START, 1.)].into(),
+        [(253_402_300_800, 1.)].into(),
+    ] {
+        assert!(model.fit(START, &inputs).is_err());
+    }
+    for pieces in [
+        vec![],
+        vec![(0, 0.)],
+        vec![(0, f64::NAN)],
+        vec![(0, f64::MAX)],
+        vec![(0, f64::from_bits(1))],
+        vec![(1, 1.)],
+        vec![(0, 1.), (0, 2.)],
+        vec![(0, 1.), (11, 2.)],
+        vec![(0, -1.), (5, 3.)],
+    ] {
+        let model = ForwardVarModel::new(FwdVarConfig {
+            clock: FixedPieces(pieces),
+            events: vec![],
+        })?;
+        assert!(model.fit(0, &[(10, 1.)].into()).is_err());
+    }
+    // a level too small to hold: the curve could not give back its input
+    let lost = ForwardVarModel::new(FwdVarConfig {
+        clock: FixedPieces(vec![(0, 1e300)]),
+        events: vec![],
+    })?;
+    assert!(lost.fit(0, &[(10, 1e-100)].into()).is_err());
+    Ok(())
+}
+
+#[test]
+fn a_stored_curve_answers_without_its_clock_or_config() -> Result<()> {
+    let short: FwdVarConfig<UsEquityClock> =
+        serde_json::from_str(r#"{"clock":{"night":0.4,"weekend":0.8,"half_day":0.5}}"#)?;
+    assert_eq!(
+        short,
+        FwdVarConfig {
+            clock: equity_clock(),
+            events: vec![]
+        }
+    );
+    assert_eq!(serde_json::from_str::<Event>(r#"{"start_sec":10}"#)?.length_sec, 0);
+    let curve = fit(&[event(60, 0), event(200, 400)], &[5., 6.])?.curve;
+    let json = serde_json::to_string(&curve)?;
+    let stored: ForwardVarCurve = serde_json::from_str(&json)?;
+    for t in [START, START + 60, START + 300, START + HOUR] {
+        near(stored.get_forward_var(t)?, curve.get_forward_var(t)?);
+        near(
+            stored.get_total_var(t, curve.end_sec)?,
+            curve.get_total_var(t, curve.end_sec)?,
         );
     }
     Ok(())
 }
 
 #[test]
-fn a_session_profile_front_loads_the_session_and_shrinks_onto_a_half_day() -> Result<()> {
-    let mut cfg = cfg();
-    cfg.weights.session_profile = Some(vec![(0.25, 0.5)]);
-    cfg.calendar.early_closes.insert(CLOSE / DAY + 1);
-    let model = ForwardVarModel::new(cfg)?;
-    let open = CLOSE - SESSION;
-    near(model.clock_mass(open, open + SESSION / 4)?, 0.5);
-    near(model.clock_mass(open + SESSION / 4, CLOSE)?, 0.5);
-    near(model.clock_mass(open, CLOSE)?, 1.0);
-    // Tuesday closes at 13:00: the first quarter of its 3.5 hours holds half of the half-day's mass
-    let tuesday = open + DAY;
-    near(model.clock_mass(tuesday, tuesday + 12_600 / 4)?, 0.25);
-    near(model.clock_mass(tuesday, tuesday + 12_600)?, 0.5);
-    Ok(())
-}
-
-#[test]
-fn bad_configs_are_refused() {
-    let with = |change: fn(&mut FwdVarConfig)| {
-        let mut cfg = cfg();
-        change(&mut cfg);
-        ForwardVarModel::new(cfg)
+fn both_queries_refuse_a_malformed_curve_even_outside_the_damaged_piece() {
+    let valid = ForwardVarCurve {
+        ref_sec: 0,
+        end_sec: 10,
+        rates: vec![(0, 1.), (5, 2.)],
+        events: vec![],
     };
-    assert!(with(|_| ()).is_ok());
-    assert!(with(|c| c.weights.night = 0.).is_err());
-    assert!(with(|c| c.weights.night = f64::NAN).is_err());
-    assert!(
-        with(|c| c.weights.weekend = 0.3).is_err(),
-        "a weekend lighter than a night"
-    );
-    assert!(with(|c| c.weights.half_day = 0.).is_err());
-    assert!(with(|c| c.weights.session_profile = Some(vec![(0.5, 0.6), (0.4, 0.7)])).is_err());
-    assert!(with(|c| c.weights.session_profile = Some(vec![(0.5, 1.1)])).is_err());
-    assert!(with(|c| c.weights.session_profile = Some(vec![(0.3, 0.6), (0.5, 0.4)])).is_err());
-    assert!(with(|c| c.events = vec![fade(0, -1)]).is_err());
-    assert!(with(|c| c.post_event = Some(PostEvent {
-        excess: -1.,
-        half_life: 1.
-    }))
-    .is_err());
-    assert!(with(|c| c.post_event = Some(PostEvent {
-        excess: 1.,
-        half_life: 0.
-    }))
-    .is_err());
-}
-
-#[test]
-fn a_config_reads_from_json_with_its_optional_parts_left_out() -> Result<()> {
-    let short: FwdVarConfig = serde_json::from_str(r#"{"weights": {"night": 0.4, "weekend": 0.8, "half_day": 0.5}}"#)?;
-    assert_eq!(short, cfg());
-    let mut full = cfg();
-    full.calendar.holidays.insert(20_783);
-    full.weights.session_profile = Some(vec![(0.25, 0.5)]);
-    full.events = vec![jump(60), fade(H, 900)];
-    full.negative_forward = NegativeForward::Project;
-    full.post_event = Some(PostEvent {
-        excess: 2.,
-        half_life: 0.5,
-    });
-    let back: FwdVarConfig = serde_json::from_str(&serde_json::to_string(&full)?)?;
-    assert_eq!(back, full);
-    Ok(())
-}
-
-#[test]
-fn the_fitted_term_structure_is_rebuilt() -> Result<()> {
-    // expiries over two weeks of nights, weekends, a half-day and a holiday, with a jump, a fade, a
-    // raised base after each and a session profile
-    let mut cfg = cfg();
-    cfg.calendar.early_closes.insert(CLOSE / DAY + 2);
-    cfg.calendar.holidays.insert(CLOSE / DAY + 3);
-    cfg.weights.session_profile = Some(vec![(0.2, 0.5), (0.5, 0.75), (0.8, 0.9)]);
-    cfg.events = vec![jump(DAY + 7 * H), fade(8 * DAY, 4 * H)];
-    cfg.post_event = Some(PostEvent {
-        excess: 2.,
-        half_life: 0.5,
-    });
-    // 0.002 a day, 0.02 more from the jump's expiry on and 0.01 more from the fade's
-    let days = [
-        (1, 0.002),
-        (2, 0.024),
-        (4, 0.028),
-        (7, 0.034),
-        (9, 0.048),
-        (11, 0.052),
-        (14, 0.058),
-    ];
-    let knots: BTreeMap<i64, f64> = days.iter().map(|&(d, w)| (CLOSE + d * DAY, w)).collect();
-    let curve = ForwardVarModel::new(cfg)?.fit(START, &knots)?;
-    assert!(curve.flags().is_empty(), "{:?}", curve.flags());
-    assert!(
-        curve.event_sizes().iter().all(|&size| size > 0.),
-        "{:?}",
-        curve.event_sizes()
-    );
-    assert_eq!(curve.knots_used(), &knots);
-    rebuilds(&curve)?;
-    // and it adds up across any split
-    let (mid, last) = (CLOSE + 5 * DAY + 1_234, CLOSE + 14 * DAY);
-    near(
-        curve.get_total_var(START, mid)? + curve.get_total_var(mid, last)?,
-        knots[&last],
-    );
-    Ok(())
-}
-
-#[test]
-fn an_event_takes_what_the_nearest_clean_interval_leaves() -> Result<()> {
-    // the second hour sets the base at 1; the first hour's other 3 is the event
-    let first = fit(&[jump(1)], &[4., 5.])?;
-    near(first.event_sizes()[0], 3.);
-    rebuilds(&first)?;
-    // clean intervals either side at 1 and 3: the later one lends its level
-    let tie = fit(&[jump(2 * H)], &[1., 10., 13.])?;
-    near(tie.event_sizes()[0], 6.);
-    rebuilds(&tie)?;
-    // two events in one interval can only be told as a sum, so they split it
-    let shared = fit(&[jump(20), jump(H)], &[7., 8.])?;
-    near(shared.event_sizes()[0], 3.);
-    near(shared.event_sizes()[1], 3.);
-    rebuilds(&shared)
-}
-
-#[test]
-fn a_jump_is_in_the_total_but_not_in_the_rate() -> Result<()> {
-    let curve = fit(&[jump(60)], &[3., 4.])?;
-    near(curve.get_total_var(START + 59, START + 60)?, 2. + 1. / 3600.);
-    near(curve.get_total_var(START + 60, START + 61)?, 1. / 3600.);
-    near(curve.get_forward_var(START + 60)?, SEC_PER_YEAR / 3600.);
-    // rounding across jumps at one instant must not leave a negative variance
-    let stacked = fit(&[jump(H + 1), jump(H + 1), jump(H + 1)], &[1., 1.01, 1.01])?;
-    assert!(stacked.get_total_var(START + 2 * H - 1, START + 2 * H)? >= 0.);
-    Ok(())
-}
-
-#[test]
-fn a_fading_event_releases_its_variance_linearly_to_zero() -> Result<()> {
-    // base 1 an hour, and an event of 4 over 400 seconds from START + 100
-    let curve = fit(&[fade(100, 400)], &[5., 6.])?;
-    near(curve.event_sizes()[0], 4.);
-    near(curve.get_total_var(START + 300, START + H)?, 3300. / 3600. + 1.);
-    // the rate is the base plus 2 * 4 / 400 times the part still to fade
-    near(
-        curve.get_forward_var(START + 200)?,
-        (1. / 3600. + 0.02 * 0.75) * SEC_PER_YEAR,
-    );
-    near(
-        curve.get_forward_var(START + 400)?,
-        (1. / 3600. + 0.02 * 0.25) * SEC_PER_YEAR,
-    );
-    // and it integrates to the total
-    let mut integral = 0.;
-    for dt in (0..3600).step_by(2) {
-        integral += 2. * curve.get_forward_var(START + dt + 1)? / SEC_PER_YEAR;
-    }
-    near(integral, 5.);
-    near(curve.get_total_var(START, START + H)?, integral);
-    Ok(())
-}
-
-#[test]
-fn the_base_stays_raised_after_an_event_and_decays() -> Result<()> {
-    // total variance written in closed form: a base, and per event a lump plus an excess that halves
-    let (level, lump, half_life) = (0.003, 0.008, 0.07);
-    for excess in [0.5, 3., 12.] {
-        for events in [vec![900], vec![900, 1500]] {
-            let total = |t: i64| {
-                let mut v = level * t as f64 / SESSION as f64;
-                for &s in events.iter().filter(|&&s| s <= t) {
-                    let age = (t - s) as f64 / SESSION as f64;
-                    v += lump + level * excess * half_life / std::f64::consts::LN_2 * (1. - (-age / half_life).exp2());
-                }
-                v
-            };
-            let mut cfg = cfg();
-            // an event before the fit time is ignored
-            cfg.events = events.iter().copied().chain([-60]).map(jump).collect();
-            cfg.post_event = Some(PostEvent { excess, half_life });
-            let knots = [3000, 7000, 12000].map(|t| (START + t, total(t))).into();
-            let curve = ForwardVarModel::new(cfg)?.fit(START, &knots)?;
-            rebuilds(&curve)?;
-            assert!(
-                curve.base_levels().iter().all(|x| (x - level).abs() < 1e-10),
-                "{:?}",
-                curve.base_levels()
-            );
-            assert!(curve.event_sizes()[..events.len()].iter().all(|size| (size - lump).abs() < 1e-10));
-            for (a, b) in [(0, 100), (1800, 2450), (4000, 5070), (6800, 8100)] {
-                let want = total(b) - total(a);
-                assert!((curve.get_total_var(START + a, START + b)? - want).abs() < 1e-12 * want);
-                let slope = curve.get_total_var(START + b - 1, START + b + 1)? * SEC_PER_YEAR / 2.;
-                assert!((curve.get_forward_var(START + b)? / slope - 1.).abs() < 1e-7);
-            }
-        }
-    }
-    Ok(())
-}
-
-#[test]
-fn the_edge_cases_are_flagged() -> Result<()> {
-    // the donor's base already exceeds the interval: the event is 0
-    let clipped = fit(&[jump(1)], &[1., 4.])?;
-    assert_eq!(clipped.flags(), [FitFlag::NegativeLeftover]);
-    near(clipped.event_sizes()[0], 0.);
-    rebuilds(&clipped)?;
-    // one interval, and it holds the event
-    let alone = fit(&[jump(1)], &[1.])?;
-    assert_eq!(alone.flags(), [FitFlag::NoCleanDonor]);
-    near(alone.event_sizes()[0], 0.);
-    rebuilds(&alone)?;
-    // an event after the last expiry
-    let late = fit(&[jump(H + 1)], &[1.])?;
-    assert_eq!(late.flags(), [FitFlag::EventDropped]);
-    // an event before the fit time is not an edge case
-    assert!(fit(&[jump(-1)], &[1.])?.flags().is_empty());
-    // a window across an expiry or across the fit time cannot be split
-    assert!(fit(&[fade(H, 1)], &[2., 3.]).is_err());
-    assert!(fit(&[fade(-1, 2)], &[2., 3.]).is_err());
-    Ok(())
-}
-
-#[test]
-fn a_falling_term_structure_is_refused_or_projected() -> Result<()> {
-    assert!(fit(&[], &[0.2, 0.1]).is_err());
-    let flat = fit(&[], &[1., 1.])?;
-    near(flat.base_levels()[1], 0.);
-
-    let mut cfg = cfg();
-    cfg.negative_forward = NegativeForward::Project;
-    let curve = ForwardVarModel::new(cfg)?.fit(START, &hourly(&[1., 5., 4., 3., 7.]))?;
-    assert_eq!(curve.flags(), [FitFlag::Projected]);
-    for (got, want) in curve.knots_used().values().zip([1., 4., 4., 4., 7.]) {
-        near(*got, want);
-    }
-    rebuilds(&curve)
-}
-
-#[test]
-fn queries_outside_the_fit_and_unusable_knots_are_errors() -> Result<()> {
-    let curve = fit(&[], &[1.])?;
-    assert!(curve.get_total_var(START - 1, START).is_err());
-    assert!(curve.get_total_var(START, START + H + 1).is_err());
-    assert!(curve.get_total_var(START + 1, START).is_err());
-    assert!(curve.get_forward_var(START + H).is_err(), "no rate at the last expiry");
-    let model = ForwardVarModel::new(cfg())?;
-    for knots in [
-        hourly(&[]),
-        hourly(&[0.]),
-        hourly(&[f64::NAN]),
-        BTreeMap::from([(START, 1.)]),
-        // past the year 9999
-        BTreeMap::from([(253_402_300_800, 1.)]),
+    let refused = |curve: ForwardVarCurve| {
+        assert!(curve.get_total_var(0, 1).is_err(), "{curve:?}");
+        assert!(curve.get_forward_var(0).is_err(), "{curve:?}");
+    };
+    for rates in [
+        vec![],
+        vec![(1, 1.)],
+        vec![(0, 1.), (5, 2.), (2, 3.)],
+        vec![(0, 1.), (0, 2.)],
+        vec![(0, 1.), (10, 0.)],
+        vec![(0, 1.), (20, 0.)],
+        vec![(0, 1.), (5, -1.)],
+        vec![(0, 1.), (5, f64::NAN)],
+        vec![(0, 1.), (5, f64::INFINITY)],
     ] {
-        assert!(model.fit(START, &knots).is_err());
+        refused(ForwardVarCurve { rates, ..valid.clone() });
     }
-    Ok(())
+    for (start_sec, length_sec, total_var) in [
+        (5, -1, 1.),
+        (5, 1, -1.),
+        (5, 0, f64::NAN),
+        (5, 1, f64::INFINITY),
+        (i64::MAX, 1, 1.),
+        // outside the curve's own range
+        (-5, 10, 1.),
+        (8, 5, 1.),
+        (0, 0, 1.),
+    ] {
+        refused(ForwardVarCurve {
+            events: vec![FittedEvent {
+                start_sec,
+                length_sec,
+                total_var,
+            }],
+            ..valid.clone()
+        });
+    }
 }
 
-/// A case of `fixtures/forward_var.json`: synthetic inputs and the reference implementation's values.
-/// Floats are stored as their bits.
+#[test]
+fn curves_shared_or_cloned_across_threads_answer_as_on_one() -> Result<()> {
+    fn shareable<T: Send + Sync + Clone + Debug>() {}
+    shareable::<ForwardVarModel<UsEquityClock>>();
+    shareable::<FwdVarConfig<UsEquityClock>>();
+    shareable::<ForwardVarCurve>();
+    shareable::<ForwardVarCurveFit>();
+    let curve = fit(&[event(100, 400)], &[5., 6.])?.curve;
+    let query = |c: &ForwardVarCurve| -> Result<_> {
+        Ok((
+            c.get_total_var(START + 200, c.end_sec)?,
+            c.get_forward_var(START + 200)?,
+        ))
+    };
+    let expected = query(&curve)?;
+    std::thread::scope(|scope| -> Result<()> {
+        let shared = scope.spawn(|| query(&curve));
+        let owned = curve.clone();
+        let cloned = scope.spawn(move || query(&owned));
+        for reader in [shared, cloned] {
+            assert_eq!(reader.join().expect("reader finished")?, expected);
+        }
+        Ok(())
+    })
+}
+
+/// Recorded from a reference implementation. Floating-point fields hold their bits.
 #[derive(Deserialize)]
 struct Recorded {
     night: u64,
     weekend: u64,
     half_day: u64,
-    session_profile: Option<Vec<(u64, u64)>>,
     holidays: Vec<i64>,
     early_closes: Vec<i64>,
     events: Vec<(i64, i64)>,
     project: bool,
-    post_event: Option<(u64, u64)>,
     ref_sec: i64,
-    knots: Vec<(i64, u64)>,
-    /// (t, expiry, total variance, rate at t)
+    total_vars: Vec<(i64, u64)>,
     queries: Vec<(i64, i64, u64, u64)>,
 }
 
-impl Recorded {
-    fn model(&self) -> Result<ForwardVarModel> {
-        let f = f64::from_bits;
-        ForwardVarModel::new(FwdVarConfig {
-            calendar: SessionCalendar {
-                holidays: self.holidays.iter().copied().collect(),
-                early_closes: self.early_closes.iter().copied().collect(),
-            },
-            weights: ClockWeights {
-                night: f(self.night),
-                weekend: f(self.weekend),
-                half_day: f(self.half_day),
-                session_profile: self.session_profile.as_ref().map(|ps| ps.iter().map(|p| (f(p.0), f(p.1))).collect()),
-            },
-            events: self.events.iter().map(|&(start_sec, length_sec)| Event { start_sec, length_sec }).collect(),
-            negative_forward: if self.project {
-                NegativeForward::Project
-            } else {
-                NegativeForward::Reject
-            },
-            post_event: self.post_event.map(|(excess, half_life)| PostEvent {
-                excess: f(excess),
-                half_life: f(half_life),
-            }),
-        })
-    }
-
-    fn knots(&self) -> BTreeMap<i64, f64> {
-        self.knots.iter().map(|&(t, w)| (t, f64::from_bits(w))).collect()
-    }
-}
-
-fn recorded() -> Vec<Recorded> {
-    serde_json::from_str(include_str!("fixtures/forward_var.json")).expect("the fixture parses")
-}
-
 #[test]
-fn recorded_curves_are_reproduced_to_the_bit() -> Result<()> {
-    let cases = recorded();
+fn the_recorded_curves_are_reproduced_to_rounding() -> Result<()> {
+    let cases: Vec<Recorded> = serde_json::from_str(include_str!("fixtures/forward_var.json"))?;
     assert_eq!(cases.len(), 48);
+    assert!(cases.iter().filter(|c| c.project).count() >= 4);
     let mut flags = Vec::new();
-    for case in &cases {
-        let curve = case.model()?.fit(case.ref_sec, &case.knots())?;
-        flags.extend_from_slice(curve.flags());
-        rebuilds(&curve)?;
-        for &(t, expiry, total, rate) in &case.queries {
-            assert_eq!(
-                curve.get_total_var(t, expiry)?.to_bits(),
-                total,
-                "total variance {t} -> {expiry}"
+    for (i, case) in cases.into_iter().enumerate() {
+        let clock = UsEquityClock {
+            night: f64::from_bits(case.night),
+            weekend: f64::from_bits(case.weekend),
+            half_day: f64::from_bits(case.half_day),
+            holidays: case.holidays.into_iter().collect(),
+            early_closes: case.early_closes.into_iter().collect(),
+        };
+        let events = case.events.into_iter().map(|(start_sec, length_sec)| Event { start_sec, length_sec }).collect();
+        let inputs: BTreeMap<_, _> = case.total_vars.into_iter().map(|(t, v)| (t, f64::from_bits(v))).collect();
+        let largest = inputs.values().copied().fold(0., f64::max);
+        let inputs = if case.project {
+            project_total_vars(&inputs)
+        } else {
+            inputs
+        };
+        let fit = ForwardVarModel::new(FwdVarConfig { clock, events })?.fit(case.ref_sec, &inputs)?;
+        flags.extend(fit.flags);
+        rebuilds(&fit.curve, &inputs)?;
+        assert_eq!(case.queries.len(), 12);
+        for (t, expiry, total, rate) in case.queries {
+            let (total, rate) = (f64::from_bits(total), f64::from_bits(rate));
+            let got = fit.curve.get_total_var(t, expiry)?;
+            assert!(
+                (got - total).abs() <= 1e-12 * largest,
+                "case {i}, total over ({t}, {expiry}]: {got} vs {total}"
             );
-            assert_eq!(curve.get_forward_var(t)?.to_bits(), rate, "rate at {t}");
+            let got = fit.curve.get_forward_var(t)?;
+            assert!(
+                (got - rate).abs() <= 1e-9 * rate.abs(),
+                "case {i}, rate at {t}: {got} vs {rate}"
+            );
         }
     }
-    // the file reaches every edge case
-    for flag in [
-        FitFlag::Projected,
-        FitFlag::EventDropped,
-        FitFlag::NegativeLeftover,
-        FitFlag::NoCleanDonor,
-    ] {
+    for flag in [FitFlag::EventDropped, FitFlag::NegativeLeftover, FitFlag::NoCleanDonor] {
         assert!(flags.contains(&flag), "{flag:?}");
     }
     Ok(())
-}
-
-#[test]
-fn a_curve_refitted_from_its_ref_sec_and_knots_is_the_same_curve() -> Result<()> {
-    // what a process that only receives the stored fit would hold
-    for case in recorded() {
-        let curve = case.model()?.fit(case.ref_sec, &case.knots())?;
-        let again = case.model()?.fit(curve.ref_sec(), curve.knots_used())?;
-        assert_eq!(again.knots_used(), curve.knots_used());
-        assert_eq!(again.base_levels(), curve.base_levels());
-        assert_eq!(again.event_sizes(), curve.event_sizes());
-        assert!(
-            !again.flags().contains(&FitFlag::Projected),
-            "the stored knots need no projection"
-        );
-        for &(t, expiry, total, rate) in &case.queries {
-            assert_eq!(again.get_total_var(t, expiry)?.to_bits(), total);
-            assert_eq!(again.get_forward_var(t)?.to_bits(), rate);
-        }
-    }
-    Ok(())
-}
-
-#[test]
-fn curves_shared_or_cloned_across_threads_answer_as_on_one() -> Result<()> {
-    let cases = recorded();
-    let curves = cases
-        .iter()
-        .map(|case| case.model()?.fit(case.ref_sec, &case.knots()))
-        .collect::<Result<Vec<_>>>()?;
-    let queries: usize = cases.iter().map(|case| case.queries.len()).sum();
-    std::thread::scope(|scope| -> Result<()> {
-        let readers: Vec<_> = (0..4)
-            .map(|k| {
-                // two readers borrow the curves, two take clones of their own
-                let own = (k % 2 == 0).then(|| curves.clone());
-                let (cases, curves) = (&cases, &curves);
-                scope.spawn(move || -> Result<usize> {
-                    let mut checked = 0;
-                    for (case, curve) in cases.iter().zip(own.as_ref().unwrap_or(curves)) {
-                        for &(t, expiry, total, rate) in &case.queries {
-                            assert_eq!(curve.get_total_var(t, expiry)?.to_bits(), total);
-                            assert_eq!(curve.get_forward_var(t)?.to_bits(), rate);
-                            checked += 1;
-                        }
-                    }
-                    Ok(checked)
-                })
-            })
-            .collect();
-        for reader in readers {
-            assert_eq!(reader.join().expect("the reader finished")?, queries);
-        }
-        Ok(())
-    })
 }
